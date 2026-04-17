@@ -1,0 +1,140 @@
+:root {
+  --primary-purple: #82328c;
+  --accent-orange: #e7653d;
+  --dark-purple: #5a2261;
+  --btn-login: #82328c;
+  --btn-login-hover: #e7653d;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+  max-width: 100vw;
+}
+
+body {
+  min-height: 100vh;
+  background-color: #f8f9fa;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+.login-page {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 15px;
+}
+
+.login-card {
+  background: #fff;
+  border-radius: 20px;
+  overflow: hidden;
+  width: 100%;
+  max-width: 1000px;
+  border: 2px solid rgba(130, 50, 140, 0.45);
+  box-shadow:
+    0 0 0 1px rgba(90, 34, 97, 0.18),
+    0 8px 24px rgba(130, 50, 140, 0.14),
+    0 22px 48px rgba(0, 0, 0, 0.12);
+}
+
+.brand-side {
+  background: linear-gradient(
+    135deg,
+    var(--primary-purple) 0%,
+    var(--dark-purple) 100%
+  );
+  padding: 40px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  color: white;
+  text-align: center;
+}
+
+.logo-placeholder {
+  width: 120px;
+  height: 120px;
+  background: white;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 20px;
+  border: 4px solid var(--accent-orange);
+  color: var(--primary-purple);
+  font-size: 3rem;
+}
+
+.form-side {
+  padding: 50px;
+}
+
+/* Sobrescreve estilos do Bootstrap no botão de login */
+.btn.btn-login {
+  background-color: var(--btn-login) !important;
+  border: none !important;
+  color: #fff !important;
+  padding: 12px;
+  font-weight: 600;
+  border-radius: 8px;
+  transition:
+    background-color 0.3s ease,
+    transform 0.3s ease,
+    box-shadow 0.3s ease;
+}
+
+.btn.btn-login:hover,
+.btn.btn-login:focus-visible {
+  background-color: var(--btn-login-hover) !important;
+  color: #fff !important;
+  transform: translateY(-2px);
+  box-shadow: 0 0.25rem 0.75rem rgba(231, 101, 61, 0.35);
+}
+
+.btn.btn-login:active {
+  background-color: var(--btn-login-hover) !important;
+  color: #fff !important;
+}
+
+.btn.btn-login:disabled {
+  background-color: var(--btn-login) !important;
+  color: #fff !important;
+  opacity: 0.65;
+  transform: none;
+  box-shadow: none;
+}
+
+.form-control:focus {
+  border-color: var(--primary-purple);
+  box-shadow: 0 0 0 0.25rem rgba(130, 50, 140, 0.15);
+}
+
+.text-purple {
+  color: var(--primary-purple);
+}
+.text-orange {
+  color: var(--accent-orange);
+}
+
+@media (max-width: 767.98px) {
+  .brand-side {
+    padding: 30px 20px;
+  }
+  .form-side {
+    padding: 30px 20px;
+  }
+  .logo-placeholder {
+    width: 80px;
+    height: 80px;
+    font-size: 2rem;
+  }
+}
