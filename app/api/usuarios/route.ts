@@ -52,6 +52,7 @@ export async function POST(request: Request) {
     senha?: string;
     email?: string | null;
     id_grupo_usuarios?: number;
+    id_empresa?: number;
   };
   try {
     body = await request.json();
@@ -63,6 +64,7 @@ export async function POST(request: Request) {
   const senha = body.senha?.trim();
   const email = body.email?.trim() || null;
   const idGrupo = Number(body.id_grupo_usuarios);
+  const idEmpresaAlvo = Number(body.id_empresa);
 
   if (!usuario) {
     return NextResponse.json({ error: "Informe o usuário." }, { status: 400 });
@@ -76,8 +78,28 @@ export async function POST(request: Request) {
       { status: 400 },
     );
   }
+  if (!Number.isFinite(idEmpresaAlvo) || idEmpresaAlvo <= 0) {
+    return NextResponse.json({ error: "Selecione uma empresa." }, { status: 400 });
+  }
 
   const supabase = createAdminClient();
+
+  const { data: empresaOk, error: empresaError } = await supabase
+    .from("empresas")
+    .select("id")
+    .eq("id", idEmpresaAlvo)
+    .eq("ativo", true)
+    .maybeSingle();
+  if (empresaError) {
+    console.error(empresaError);
+    return NextResponse.json({ error: empresaError.message }, { status: 500 });
+  }
+  if (!empresaOk) {
+    return NextResponse.json(
+      { error: "Empresa inválida ou inativa." },
+      { status: 400 },
+    );
+  }
 
   const { data: grupoAtivo, error: grupoError } = await supabase
     .from("usuarios_grupos")
@@ -103,7 +125,7 @@ export async function POST(request: Request) {
       usuario,
       senha_hash: senhaHash,
       email,
-      id_empresa: empresaId,
+      id_empresa: idEmpresaAlvo,
       id_grupo_usuarios: idGrupo,
       ativo: true,
     })

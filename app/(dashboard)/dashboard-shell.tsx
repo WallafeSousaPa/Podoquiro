@@ -69,10 +69,14 @@ export function DashboardShell({
   const [openEmpresas, setOpenEmpresas] = useState(() =>
     pathname.startsWith("/empresas"),
   );
+  const [openPacientes, setOpenPacientes] = useState(() =>
+    pathname.startsWith("/pacientes"),
+  );
 
   useEffect(() => {
     setOpenUsuarios(pathname.startsWith("/usuarios"));
     setOpenEmpresas(pathname.startsWith("/empresas"));
+    setOpenPacientes(pathname.startsWith("/pacientes"));
   }, [pathname]);
 
   useEffect(() => {
@@ -109,6 +113,7 @@ export function DashboardShell({
   const isInicio = pathname === "/inicio";
   const isUsuarios = pathname.startsWith("/usuarios");
   const isEmpresas = pathname.startsWith("/empresas");
+  const isPacientes = pathname.startsWith("/pacientes");
 
   return (
     <div className="wrapper">
@@ -221,6 +226,43 @@ export function DashboardShell({
                     >
                       <i className="far fa-circle nav-icon" />
                       <p>Grupo de usuários</p>
+                    </Link>
+                  </li>
+                </ul>
+              </li>
+
+              <li
+                className={cx(
+                  "nav-item",
+                  "has-treeview",
+                  openPacientes && "menu-open",
+                )}
+              >
+                <a
+                  href="#"
+                  className={cx("nav-link", isPacientes && "active")}
+                  onClick={(e) => {
+                    e.preventDefault();
+                    setOpenPacientes((v) => !v);
+                  }}
+                >
+                  <i className="nav-icon fas fa-user-injured" />
+                  <p>
+                    Pacientes
+                    <i className="right fas fa-angle-left" />
+                  </p>
+                </a>
+                <ul className="nav nav-treeview">
+                  <li className="nav-item">
+                    <Link
+                      href="/pacientes/cadastro"
+                      className={cx(
+                        "nav-link",
+                        pathname === "/pacientes/cadastro" && "active",
+                      )}
+                    >
+                      <i className="far fa-circle nav-icon" />
+                      <p>Cadastrar</p>
                     </Link>
                   </li>
                 </ul>

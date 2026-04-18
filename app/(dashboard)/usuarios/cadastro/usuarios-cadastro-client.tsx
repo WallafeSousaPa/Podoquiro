@@ -8,12 +8,19 @@ type GrupoItem = {
   grupo_usuarios: string;
 };
 
+type EmpresaItem = {
+  id: number;
+  nome_fantasia: string;
+};
+
 type UsuarioItem = {
   id: number;
   usuario: string;
   email: string | null;
   ativo: boolean;
   id_grupo_usuarios: number;
+  id_empresa: number;
+  nome_empresa: string | null;
   grupo_usuarios: string | null;
 };
 
@@ -46,11 +53,19 @@ function ModalBackdrop({
 
 type Props = {
   grupos: GrupoItem[];
+  empresas: EmpresaItem[];
+  idEmpresaSessao: number;
   usuarios: UsuarioItem[];
   loadError?: string | null;
 };
 
-export function UsuariosCadastroClient({ grupos, usuarios, loadError }: Props) {
+export function UsuariosCadastroClient({
+  grupos,
+  empresas,
+  idEmpresaSessao,
+  usuarios,
+  loadError,
+}: Props) {
   const router = useRouter();
   const modalTitleId = useId();
   const confirmTitleId = useId();
@@ -66,6 +81,7 @@ export function UsuariosCadastroClient({ grupos, usuarios, loadError }: Props) {
   const [email, setEmail] = useState("");
   const [senha, setSenha] = useState("");
   const [idGrupo, setIdGrupo] = useState("");
+  const [idEmpresa, setIdEmpresa] = useState(String(idEmpresaSessao));
   const [saving, setSaving] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
   const [listError, setListError] = useState<string | null>(null);
@@ -84,6 +100,7 @@ export function UsuariosCadastroClient({ grupos, usuarios, loadError }: Props) {
     setEmail("");
     setSenha("");
     setIdGrupo("");
+    setIdEmpresa(String(idEmpresaSessao));
     setFormError(null);
   }
 
@@ -98,6 +115,7 @@ export function UsuariosCadastroClient({ grupos, usuarios, loadError }: Props) {
     setEmail(row.email ?? "");
     setSenha("");
     setIdGrupo(String(row.id_grupo_usuarios));
+    setIdEmpresa(String(row.id_empresa));
     setFormError(null);
     setModalOpen(true);
   }
@@ -118,6 +136,10 @@ export function UsuariosCadastroClient({ grupos, usuarios, loadError }: Props) {
       setFormError("Selecione o grupo de usuários.");
       return;
     }
+    if (!idEmpresa) {
+      setFormError("Selecione a empresa.");
+      return;
+    }
     if (!editing && !senha.trim()) {
       setFormError("Informe a senha.");
       return;
@@ -130,6 +152,7 @@ export function UsuariosCadastroClient({ grupos, usuarios, loadError }: Props) {
         usuario: usuarioTrim,
         email: email.trim() || null,
         id_grupo_usuarios: Number(idGrupo),
+        id_empresa: Number(idEmpresa),
       };
       if (senha.trim()) payload.senha = senha.trim();
 
@@ -226,6 +249,7 @@ export function UsuariosCadastroClient({ grupos, usuarios, loadError }: Props) {
                 <th style={{ width: "70px" }}>ID</th>
                 <th>Usuário</th>
                 <th>E-mail</th>
+                <th>Empresa</th>
                 <th>Grupo</th>
                 <th style={{ width: "90px" }}>Status</th>
                 <th style={{ width: "260px" }} className="text-right">
@@ -236,7 +260,7 @@ export function UsuariosCadastroClient({ grupos, usuarios, loadError }: Props) {
             <tbody>
               {rows.length === 0 ? (
                 <tr>
-                  <td colSpan={6} className="text-center text-muted py-4">
+                  <td colSpan={7} className="text-center text-muted py-4">
                     Nenhum usuário cadastrado.
                   </td>
                 </tr>
@@ -246,6 +270,7 @@ export function UsuariosCadastroClient({ grupos, usuarios, loadError }: Props) {
                     <td>{row.id}</td>
                     <td>{row.usuario}</td>
                     <td>{row.email || "-"}</td>
+                    <td>{row.nome_empresa || "-"}</td>
                     <td>{row.grupo_usuarios || "-"}</td>
                     <td>
                       {row.ativo ? (
@@ -331,6 +356,23 @@ export function UsuariosCadastroClient({ grupos, usuarios, loadError }: Props) {
                       value={email}
                       onChange={(e) => setEmail(e.target.value)}
                     />
+                  </div>
+                  <div className="form-group">
+                    <label htmlFor="usuario-empresa">Empresa</label>
+                    <select
+                      id="usuario-empresa"
+                      className="form-control"
+                      value={idEmpresa}
+                      onChange={(e) => setIdEmpresa(e.target.value)}
+                      required
+                    >
+                      <option value="">Selecione...</option>
+                      {empresas.map((emp) => (
+                        <option key={emp.id} value={emp.id}>
+                          {emp.nome_fantasia}
+                        </option>
+                      ))}
+                    </select>
                   </div>
                   <div className="form-group">
                     <label htmlFor="usuario-grupo">Grupo de usuários</label>

@@ -32,6 +32,7 @@ export async function PATCH(request: Request, context: RouteContext) {
     email?: string | null;
     senha?: string;
     id_grupo_usuarios?: number;
+    id_empresa?: number;
     ativo?: boolean;
   };
   try {
@@ -63,6 +64,16 @@ export async function PATCH(request: Request, context: RouteContext) {
       );
     }
     patch.id_grupo_usuarios = idGrupo;
+  }
+  if (typeof body.id_empresa !== "undefined") {
+    const idEmpresaNovo = Number(body.id_empresa);
+    if (!Number.isFinite(idEmpresaNovo) || idEmpresaNovo <= 0) {
+      return NextResponse.json(
+        { error: "Selecione uma empresa válida." },
+        { status: 400 },
+      );
+    }
+    patch.id_empresa = idEmpresaNovo;
   }
   if (typeof body.senha === "string" && body.senha.trim()) {
     patch.senha_hash = await bcrypt.hash(body.senha.trim(), 10);
@@ -96,12 +107,44 @@ export async function PATCH(request: Request, context: RouteContext) {
     }
   }
 
+  if (typeof patch.id_empresa === "number") {
+    const { data: empAtiva, error: empErr } = await supabase
+      .from("empresas")
+      .select("id")
+      .eq("id", patch.id_empresa)
+      .eq("ativo", true)
+      .maybeSingle();
+    if (empErr) {
+      console.error(empErr);
+      return NextResponse.json({ error: empErr.message }, { status: 500 });
+    }
+    if (!empAtiva) {
+      return NextResponse.json(
+        { error: "Empresa inválida ou inativa." },
+        { status: 400 },
+      );
+    }
+  }
+
+  const { data: pertenceSessao, error: checkErr } = await supabase
+    .from("usuarios")
+    .select("id")
+    .eq("id", id)
+    .eq("id_empresa", empresaId)
+    .maybeSingle();
+  if (checkErr) {
+    console.error(checkErr);
+    return NextResponse.json({ error: checkErr.message }, { status: 500 });
+  }
+  if (!pertenceSessao) {
+    return NextResponse.json({ error: "Usuário não encontrado." }, { status: 404 });
+  }
+
   const { data, error } = await supabase
     .from("usuarios")
     .update(patch)
     .eq("id", id)
-    .eq("id_empresa", empresaId)
-    .select("id, usuario, email, ativo, id_grupo_usuarios")
+    .select("id, usuario, email, ativo, id_grupo_usuarios, id_empresa")
     .maybeSingle();
 
   if (error) {
