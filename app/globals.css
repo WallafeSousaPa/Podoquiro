@@ -71,7 +71,12 @@ body {
   margin-bottom: 20px;
   border: 4px solid var(--accent-orange);
   color: var(--primary-purple);
-  font-size: 3rem;
+}
+
+.logo-placeholder img {
+  width: 72px;
+  height: 72px;
+  object-fit: contain;
 }
 
 .form-side {
@@ -135,6 +140,9 @@ body {
   .logo-placeholder {
     width: 80px;
     height: 80px;
-    font-size: 2rem;
+  }
+  .logo-placeholder img {
+    width: 48px;
+    height: 48px;
   }
 }

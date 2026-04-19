@@ -1,6 +1,7 @@
 import bcrypt from "bcryptjs";
 import { NextResponse } from "next/server";
 import { getSession } from "@/lib/auth/session";
+import { isCpfLengthOk, normalizeCpfDigits } from "@/lib/pacientes";
 import { createAdminClient } from "@/lib/supabase/admin";
 
 function parseEmpresaId(idEmpresa: string) {
@@ -23,7 +24,7 @@ export async function GET() {
   const { data, error } = await supabase
     .from("usuarios")
     .select(
-      "id, usuario, email, ativo, id_grupo_usuarios, usuarios_grupos:usuarios_grupos!usuarios_id_grupo_usuarios_fkey(id, grupo_usuarios)",
+      "id, usuario, nome_completo, cpf, email, ativo, id_grupo_usuarios, usuarios_grupos:usuarios_grupos!usuarios_id_grupo_usuarios_fkey(id, grupo_usuarios)",
     )
     .eq("id_empresa", empresaId)
     .order("usuario", { ascending: true });
@@ -49,6 +50,8 @@ export async function POST(request: Request) {
 
   let body: {
     usuario?: string;
+    nome_completo?: string;
+    cpf?: string;
     senha?: string;
     email?: string | null;
     id_grupo_usuarios?: number;
@@ -61,6 +64,11 @@ export async function POST(request: Request) {
   }
 
   const usuario = body.usuario?.trim();
+  const nomeCompleto =
+    typeof body.nome_completo === "string" ? body.nome_completo.trim() : "";
+  const cpfDigits = normalizeCpfDigits(
+    typeof body.cpf === "string" ? body.cpf : "",
+  );
   const senha = body.senha?.trim();
   const email = body.email?.trim() || null;
   const idGrupo = Number(body.id_grupo_usuarios);
@@ -68,6 +76,18 @@ export async function POST(request: Request) {
 
   if (!usuario) {
     return NextResponse.json({ error: "Informe o usuário." }, { status: 400 });
+  }
+  if (!nomeCompleto) {
+    return NextResponse.json(
+      { error: "Informe o nome completo." },
+      { status: 400 },
+    );
+  }
+  if (!isCpfLengthOk(cpfDigits)) {
+    return NextResponse.json(
+      { error: "Informe um CPF válido (11 dígitos)." },
+      { status: 400 },
+    );
   }
   if (!senha) {
     return NextResponse.json({ error: "Informe a senha." }, { status: 400 });
@@ -123,17 +143,25 @@ export async function POST(request: Request) {
     .from("usuarios")
     .insert({
       usuario,
+      nome_completo: nomeCompleto,
+      cpf: cpfDigits,
       senha_hash: senhaHash,
       email,
       id_empresa: idEmpresaAlvo,
       id_grupo_usuarios: idGrupo,
       ativo: true,
     })
-    .select("id, usuario, email, ativo, id_grupo_usuarios")
+    .select("id, usuario, nome_completo, cpf, email, ativo, id_grupo_usuarios")
     .single();
 
   if (error) {
     console.error(error);
+    if (error.code === "23505") {
+      return NextResponse.json(
+        { error: "Já existe um usuário com este CPF nesta empresa." },
+        { status: 409 },
+      );
+    }
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 

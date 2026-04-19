@@ -41,7 +41,7 @@ export function LoginForm() {
       ) : null}
 
       <div className="mb-3">
-        <label className="form-label fw-semibold">E-mail ou usuário</label>
+        <label className="form-label fw-semibold">Usuário</label>
         <div className="input-group">
           <span className="input-group-text bg-light border-end-0">
             <i className="bi bi-person text-purple" aria-hidden />
@@ -49,7 +49,7 @@ export function LoginForm() {
           <input
             type="text"
             className="form-control bg-light border-start-0"
-            placeholder="nome de usuário ou e-mail"
+            placeholder="nome de usuário"
             value={login}
             onChange={(e) => setLogin(e.target.value)}
             autoComplete="username"
@@ -60,10 +60,7 @@ export function LoginForm() {
       </div>
 
       <div className="mb-4">
-        <div className="d-flex justify-content-between">
-          <label className="form-label fw-semibold">Senha</label>
-          <span className="text-orange small">Esqueceu a senha?</span>
-        </div>
+        <label className="form-label fw-semibold">Senha</label>
         <div className="input-group">
           <span className="input-group-text bg-light border-end-0">
             <i className="bi bi-lock text-purple" aria-hidden />

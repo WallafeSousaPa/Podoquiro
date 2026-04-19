@@ -1,6 +1,7 @@
 import bcrypt from "bcryptjs";
 import { NextResponse } from "next/server";
 import { getSession } from "@/lib/auth/session";
+import { isCpfLengthOk, normalizeCpfDigits } from "@/lib/pacientes";
 import { createAdminClient } from "@/lib/supabase/admin";
 
 type RouteContext = { params: Promise<{ id: string }> };
@@ -29,6 +30,8 @@ export async function PATCH(request: Request, context: RouteContext) {
 
   let body: {
     usuario?: string;
+    nome_completo?: string;
+    cpf?: string | null;
     email?: string | null;
     senha?: string;
     id_grupo_usuarios?: number;
@@ -48,6 +51,32 @@ export async function PATCH(request: Request, context: RouteContext) {
       return NextResponse.json({ error: "Usuário inválido." }, { status: 400 });
     }
     patch.usuario = usuario;
+  }
+  if (typeof body.nome_completo === "string") {
+    const nome = body.nome_completo.trim();
+    if (!nome) {
+      return NextResponse.json(
+        { error: "Nome completo inválido." },
+        { status: 400 },
+      );
+    }
+    patch.nome_completo = nome;
+  }
+  if (typeof body.cpf !== "undefined") {
+    if (body.cpf === null || body.cpf === "") {
+      patch.cpf = null;
+    } else if (typeof body.cpf === "string") {
+      const d = normalizeCpfDigits(body.cpf);
+      if (!isCpfLengthOk(d)) {
+        return NextResponse.json(
+          { error: "CPF inválido (informe 11 dígitos ou deixe em branco)." },
+          { status: 400 },
+        );
+      }
+      patch.cpf = d;
+    } else {
+      return NextResponse.json({ error: "CPF inválido." }, { status: 400 });
+    }
   }
   if (typeof body.email === "string") {
     patch.email = body.email.trim() || null;
@@ -144,11 +173,17 @@ export async function PATCH(request: Request, context: RouteContext) {
     .from("usuarios")
     .update(patch)
     .eq("id", id)
-    .select("id, usuario, email, ativo, id_grupo_usuarios, id_empresa")
+    .select("id, usuario, nome_completo, cpf, email, ativo, id_grupo_usuarios, id_empresa")
     .maybeSingle();
 
   if (error) {
     console.error(error);
+    if (error.code === "23505") {
+      return NextResponse.json(
+        { error: "Já existe um usuário com este CPF nesta empresa." },
+        { status: 409 },
+      );
+    }
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
   if (!data) {

@@ -1,37 +1,71 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { type FormEvent, type ReactNode, useEffect, useId, useState } from "react";
-import { isCpfLengthOk, normalizeCpfDigits } from "@/lib/pacientes";
+import {
+  type FormEvent,
+  type ReactNode,
+  useEffect,
+  useId,
+  useMemo,
+  useState,
+} from "react";
+import { calcularValorTotalProcedimento } from "@/lib/procedimentos";
 
-type GrupoItem = {
+type ProcedimentoRaw = {
   id: number;
-  grupo_usuarios: string;
-};
-
-type EmpresaItem = {
-  id: number;
-  nome_fantasia: string;
-};
-
-type UsuarioItem = {
-  id: number;
-  usuario: string;
-  nome_completo: string | null;
-  cpf: string | null;
-  email: string | null;
+  procedimento: string;
+  custo_base: string | number;
+  margem_lucro: string | number;
+  taxas_impostos: string | number;
+  valor_total: string | number;
   ativo: boolean;
-  id_grupo_usuarios: number;
-  id_empresa: number;
-  nome_empresa: string | null;
-  grupo_usuarios: string | null;
+  ultima_atualizacao: string;
 };
 
-function formatCpfExibicao(digits: string | null | undefined): string {
-  if (digits == null || digits === "") return "-";
-  const d = normalizeCpfDigits(digits);
-  if (d.length !== 11) return digits.trim() || "-";
-  return `${d.slice(0, 3)}.${d.slice(3, 6)}.${d.slice(6, 9)}-${d.slice(9)}`;
+type ProcedimentoItem = {
+  id: number;
+  procedimento: string;
+  custo_base: number;
+  margem_lucro: number;
+  taxas_impostos: number;
+  valor_total: number;
+  ativo: boolean;
+  ultima_atualizacao: string;
+};
+
+function normalizeNum(v: string | number): number {
+  if (typeof v === "number") return v;
+  const n = Number(v);
+  return Number.isFinite(n) ? n : 0;
+}
+
+function mapRaw(p: ProcedimentoRaw): ProcedimentoItem {
+  return {
+    id: p.id,
+    procedimento: p.procedimento,
+    custo_base: normalizeNum(p.custo_base),
+    margem_lucro: normalizeNum(p.margem_lucro),
+    taxas_impostos: normalizeNum(p.taxas_impostos),
+    valor_total: normalizeNum(p.valor_total),
+    ativo: p.ativo,
+    ultima_atualizacao: p.ultima_atualizacao,
+  };
+}
+
+const moneyFmt = new Intl.NumberFormat("pt-BR", {
+  style: "currency",
+  currency: "BRL",
+});
+
+const pctFmt = new Intl.NumberFormat("pt-BR", {
+  minimumFractionDigits: 0,
+  maximumFractionDigits: 2,
+});
+
+function formatDateTime(iso: string): string {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "-";
+  return d.toLocaleString("pt-BR");
 }
 
 function ModalBackdrop({
@@ -62,43 +96,37 @@ function ModalBackdrop({
 }
 
 type Props = {
-  grupos: GrupoItem[];
-  empresas: EmpresaItem[];
-  idEmpresaSessao: number;
-  usuarios: UsuarioItem[];
+  procedimentos: ProcedimentoRaw[];
   loadError?: string | null;
 };
 
-export function UsuariosCadastroClient({
-  grupos,
-  empresas,
-  idEmpresaSessao,
-  usuarios,
+export function ProcedimentosCadastroClient({
+  procedimentos: procedimentosProp,
   loadError,
 }: Props) {
   const router = useRouter();
   const modalTitleId = useId();
   const confirmTitleId = useId();
 
-  const [rows, setRows] = useState(usuarios);
+  const [rows, setRows] = useState<ProcedimentoItem[]>(() =>
+    procedimentosProp.map(mapRaw),
+  );
   useEffect(() => {
-    setRows(usuarios);
-  }, [usuarios]);
+    setRows(procedimentosProp.map(mapRaw));
+  }, [procedimentosProp]);
 
   const [modalOpen, setModalOpen] = useState(false);
-  const [editing, setEditing] = useState<UsuarioItem | null>(null);
-  const [usuario, setUsuario] = useState("");
-  const [nomeCompleto, setNomeCompleto] = useState("");
-  const [cpf, setCpf] = useState("");
-  const [email, setEmail] = useState("");
-  const [senha, setSenha] = useState("");
-  const [idGrupo, setIdGrupo] = useState("");
-  const [idEmpresa, setIdEmpresa] = useState(String(idEmpresaSessao));
+  const [editing, setEditing] = useState<ProcedimentoItem | null>(null);
+  const [nome, setNome] = useState("");
+  const [custoBase, setCustoBase] = useState("");
+  const [margem, setMargem] = useState("");
+  const [taxas, setTaxas] = useState("");
+  const [ativo, setAtivo] = useState(false);
   const [saving, setSaving] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
   const [listError, setListError] = useState<string | null>(null);
   const [confirmStatus, setConfirmStatus] = useState<{
-    row: UsuarioItem;
+    row: ProcedimentoItem;
     acao: "ativar" | "inativar";
   } | null>(null);
   const [changingStatus, setChangingStatus] = useState(false);
@@ -106,32 +134,41 @@ export function UsuariosCadastroClient({
     null,
   );
 
+  const previewTotal = useMemo(() => {
+    const c = Number(String(custoBase).trim().replace(",", "."));
+    const m = Number(String(margem).trim().replace(",", "."));
+    const t = Number(String(taxas).trim().replace(",", "."));
+    if (!Number.isFinite(c) || c < 0) return null;
+    const mp = Number.isFinite(m) && m >= 0 ? m : 0;
+    const tp = Number.isFinite(t) && t >= 0 ? t : 0;
+    return calcularValorTotalProcedimento(c, mp, tp);
+  }, [custoBase, margem, taxas]);
+
   function resetForm() {
     setEditing(null);
-    setUsuario("");
-    setNomeCompleto("");
-    setCpf("");
-    setEmail("");
-    setSenha("");
-    setIdGrupo("");
-    setIdEmpresa(String(idEmpresaSessao));
+    setNome("");
+    setCustoBase("");
+    setMargem("");
+    setTaxas("");
+    setAtivo(false);
     setFormError(null);
   }
 
   function openCreate() {
     resetForm();
+    setMargem("0");
+    setTaxas("0");
+    setAtivo(true);
     setModalOpen(true);
   }
 
-  function openEdit(row: UsuarioItem) {
+  function openEdit(row: ProcedimentoItem) {
     setEditing(row);
-    setUsuario(row.usuario);
-    setNomeCompleto(row.nome_completo ?? "");
-    setCpf(row.cpf ?? "");
-    setEmail(row.email ?? "");
-    setSenha("");
-    setIdGrupo(String(row.id_grupo_usuarios));
-    setIdEmpresa(String(row.id_empresa));
+    setNome(row.procedimento);
+    setCustoBase(String(row.custo_base));
+    setMargem(String(row.margem_lucro));
+    setTaxas(String(row.taxas_impostos));
+    setAtivo(row.ativo);
     setFormError(null);
     setModalOpen(true);
   }
@@ -143,48 +180,43 @@ export function UsuariosCadastroClient({
 
   async function submit(e: FormEvent) {
     e.preventDefault();
-    const usuarioTrim = usuario.trim();
-    const nomeTrim = nomeCompleto.trim();
-    const cpfDigits = normalizeCpfDigits(cpf);
-    if (!usuarioTrim) {
-      setFormError("Informe o usuário.");
-      return;
-    }
+    const nomeTrim = nome.trim();
     if (!nomeTrim) {
-      setFormError("Informe o nome completo.");
+      setFormError("Informe o nome do procedimento.");
       return;
     }
-    if (!isCpfLengthOk(cpfDigits)) {
-      setFormError("Informe um CPF válido (11 dígitos).");
+
+    const custoStr = String(custoBase).trim().replace(",", ".");
+    const margemStr = String(margem).trim().replace(",", ".");
+    const taxasStr = String(taxas).trim().replace(",", ".");
+
+    const custo = Number(custoStr);
+    if (!Number.isFinite(custo) || custo < 0) {
+      setFormError("Informe um custo base válido (≥ 0).");
       return;
     }
-    if (!idGrupo) {
-      setFormError("Selecione o grupo de usuários.");
+    const margemN = margemStr === "" ? 0 : Number(margemStr);
+    const taxasN = taxasStr === "" ? 0 : Number(taxasStr);
+    if (!Number.isFinite(margemN) || margemN < 0) {
+      setFormError("Margem de lucro inválida (≥ 0).");
       return;
     }
-    if (!idEmpresa) {
-      setFormError("Selecione a empresa.");
-      return;
-    }
-    if (!editing && !senha.trim()) {
-      setFormError("Informe a senha.");
+    if (!Number.isFinite(taxasN) || taxasN < 0) {
+      setFormError("Taxas/impostos inválidos (≥ 0).");
       return;
     }
 
     setSaving(true);
     setFormError(null);
     try {
-      const payload: Record<string, unknown> = {
-        usuario: usuarioTrim,
-        nome_completo: nomeTrim,
-        cpf: cpfDigits,
-        email: email.trim() || null,
-        id_grupo_usuarios: Number(idGrupo),
-        id_empresa: Number(idEmpresa),
+      const payload = {
+        procedimento: nomeTrim,
+        custo_base: custo,
+        margem_lucro: margemN,
+        taxas_impostos: taxasN,
+        ativo,
       };
-      if (senha.trim()) payload.senha = senha.trim();
-
-      const url = editing ? `/api/usuarios/${editing.id}` : "/api/usuarios";
+      const url = editing ? `/api/procedimentos/${editing.id}` : "/api/procedimentos";
       const method = editing ? "PATCH" : "POST";
       const res = await fetch(url, {
         method,
@@ -192,18 +224,20 @@ export function UsuariosCadastroClient({
         body: JSON.stringify(payload),
       });
       const json = (await res.json().catch(() => ({}))) as { error?: string };
-      if (!res.ok) throw new Error(json.error ?? "Erro ao salvar usuário.");
+      if (!res.ok) throw new Error(json.error ?? "Erro ao salvar procedimento.");
 
       closeModal();
       setFeedback({
-        title: editing ? "Usuário atualizado" : "Usuário cadastrado",
+        title: editing ? "Procedimento atualizado" : "Procedimento cadastrado",
         message: editing
-          ? `As alterações do usuário "${usuarioTrim}" foram salvas.`
-          : `O usuário "${usuarioTrim}" foi cadastrado com sucesso.`,
+          ? `As alterações em "${nomeTrim}" foram salvas.`
+          : `O procedimento "${nomeTrim}" foi cadastrado com sucesso.`,
       });
       router.refresh();
     } catch (err) {
-      setFormError(err instanceof Error ? err.message : "Erro ao salvar usuário.");
+      setFormError(
+        err instanceof Error ? err.message : "Erro ao salvar procedimento.",
+      );
     } finally {
       setSaving(false);
     }
@@ -214,11 +248,11 @@ export function UsuariosCadastroClient({
     setChangingStatus(true);
     setListError(null);
     try {
-      const ativo = confirmStatus.acao === "ativar";
-      const res = await fetch(`/api/usuarios/${confirmStatus.row.id}`, {
+      const novoAtivo = confirmStatus.acao === "ativar";
+      const res = await fetch(`/api/procedimentos/${confirmStatus.row.id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ativo }),
+        body: JSON.stringify({ ativo: novoAtivo }),
       });
       const json = (await res.json().catch(() => ({}))) as { error?: string };
       if (!res.ok) {
@@ -227,10 +261,10 @@ export function UsuariosCadastroClient({
         return;
       }
       setFeedback({
-        title: ativo ? "Usuário ativado" : "Usuário inativado",
-        message: ativo
-          ? `O usuário "${confirmStatus.row.usuario}" foi ativado.`
-          : `O usuário "${confirmStatus.row.usuario}" foi inativado.`,
+        title: novoAtivo ? "Procedimento ativado" : "Procedimento inativado",
+        message: novoAtivo
+          ? `"${confirmStatus.row.procedimento}" foi ativado.`
+          : `"${confirmStatus.row.procedimento}" foi inativado.`,
       });
       setConfirmStatus(null);
       router.refresh();
@@ -265,9 +299,9 @@ export function UsuariosCadastroClient({
 
       <div className="card card-outline card-primary">
         <div className="card-header d-flex flex-wrap justify-content-between align-items-center">
-          <h3 className="card-title mb-2 mb-sm-0">Usuários cadastrados</h3>
+          <h3 className="card-title mb-2 mb-sm-0">Procedimentos</h3>
           <button type="button" className="btn btn-primary btn-sm" onClick={openCreate}>
-            <i className="fas fa-user-plus mr-1" aria-hidden /> Novo usuário
+            <i className="fas fa-plus mr-1" aria-hidden /> Novo procedimento
           </button>
         </div>
         <div className="card-body table-responsive p-0">
@@ -275,14 +309,14 @@ export function UsuariosCadastroClient({
             <thead>
               <tr>
                 <th style={{ width: "70px" }}>ID</th>
-                <th>Usuário</th>
-                <th>Nome completo</th>
-                <th>CPF</th>
-                <th>E-mail</th>
-                <th>Empresa</th>
-                <th>Grupo</th>
+                <th>Procedimento</th>
+                <th>Custo base</th>
+                <th>Margem (%)</th>
+                <th>Taxas/impostos (%)</th>
+                <th>Valor total</th>
                 <th style={{ width: "90px" }}>Status</th>
-                <th style={{ width: "260px" }} className="text-right">
+                <th>Última atualização</th>
+                <th style={{ width: "220px" }} className="text-right">
                   Ações
                 </th>
               </tr>
@@ -291,19 +325,18 @@ export function UsuariosCadastroClient({
               {rows.length === 0 ? (
                 <tr>
                   <td colSpan={9} className="text-center text-muted py-4">
-                    Nenhum usuário cadastrado.
+                    Nenhum procedimento cadastrado.
                   </td>
                 </tr>
               ) : (
                 rows.map((row) => (
                   <tr key={row.id}>
                     <td>{row.id}</td>
-                    <td>{row.usuario}</td>
-                    <td>{row.nome_completo?.trim() || "-"}</td>
-                    <td className="text-nowrap">{formatCpfExibicao(row.cpf)}</td>
-                    <td>{row.email || "-"}</td>
-                    <td>{row.nome_empresa || "-"}</td>
-                    <td>{row.grupo_usuarios || "-"}</td>
+                    <td>{row.procedimento}</td>
+                    <td>{moneyFmt.format(row.custo_base)}</td>
+                    <td>{pctFmt.format(row.margem_lucro)}%</td>
+                    <td>{pctFmt.format(row.taxas_impostos)}%</td>
+                    <td>{moneyFmt.format(row.valor_total)}</td>
                     <td>
                       {row.ativo ? (
                         <span className="badge badge-success">Ativo</span>
@@ -311,6 +344,7 @@ export function UsuariosCadastroClient({
                         <span className="badge badge-secondary">Inativo</span>
                       )}
                     </td>
+                    <td className="text-nowrap small">{formatDateTime(row.ultima_atualizacao)}</td>
                     <td className="text-right text-nowrap">
                       <button
                         type="button"
@@ -347,19 +381,14 @@ export function UsuariosCadastroClient({
 
       {modalOpen ? (
         <ModalBackdrop onBackdropClick={closeModal}>
-          <div className="modal-dialog modal-lg modal-usuario-form" role="document">
+          <div className="modal-dialog modal-lg" role="document">
             <div className="modal-content">
               <form onSubmit={(e) => void submit(e)}>
                 <div className="modal-header">
                   <h5 className="modal-title" id={modalTitleId}>
-                    {editing ? "Editar usuário" : "Novo usuário"}
+                    {editing ? "Editar procedimento" : "Novo procedimento"}
                   </h5>
-                  <button
-                    type="button"
-                    className="close"
-                    aria-label="Fechar"
-                    onClick={closeModal}
-                  >
+                  <button type="button" className="close" onClick={closeModal}>
                     <span aria-hidden="true">&times;</span>
                   </button>
                 </div>
@@ -369,98 +398,82 @@ export function UsuariosCadastroClient({
                       {formError}
                     </div>
                   ) : null}
+
                   <div className="form-group">
-                    <label htmlFor="usuario-nome">Usuário</label>
+                    <label htmlFor="proc-nome">Nome do procedimento</label>
                     <input
-                      id="usuario-nome"
+                      id="proc-nome"
                       className="form-control"
-                      value={usuario}
-                      onChange={(e) => setUsuario(e.target.value)}
+                      value={nome}
+                      onChange={(e) => setNome(e.target.value)}
                       required
                     />
                   </div>
+
+                  <div className="form-row">
+                    <div className="form-group col-md-4">
+                      <label htmlFor="proc-custo">Custo base (R$)</label>
+                      <input
+                        id="proc-custo"
+                        type="text"
+                        inputMode="decimal"
+                        className="form-control"
+                        value={custoBase}
+                        onChange={(e) => setCustoBase(e.target.value)}
+                        placeholder="0,00"
+                        required
+                      />
+                    </div>
+                    <div className="form-group col-md-4">
+                      <label htmlFor="proc-margem">Margem de lucro (%)</label>
+                      <input
+                        id="proc-margem"
+                        type="text"
+                        inputMode="decimal"
+                        className="form-control"
+                        value={margem}
+                        onChange={(e) => setMargem(e.target.value)}
+                        placeholder="0"
+                      />
+                    </div>
+                    <div className="form-group col-md-4">
+                      <label htmlFor="proc-taxas">Taxas e impostos (%)</label>
+                      <input
+                        id="proc-taxas"
+                        type="text"
+                        inputMode="decimal"
+                        className="form-control"
+                        value={taxas}
+                        onChange={(e) => setTaxas(e.target.value)}
+                        placeholder="0"
+                      />
+                    </div>
+                  </div>
+
                   <div className="form-group">
-                    <label htmlFor="usuario-nome-completo">Nome completo</label>
-                    <input
-                      id="usuario-nome-completo"
-                      className="form-control"
-                      value={nomeCompleto}
-                      onChange={(e) => setNomeCompleto(e.target.value)}
-                      required
-                    />
+                    <div className="custom-control custom-switch">
+                      <input
+                        type="checkbox"
+                        className="custom-control-input"
+                        id="proc-ativo"
+                        checked={ativo}
+                        onChange={(e) => setAtivo(e.target.checked)}
+                      />
+                      <label className="custom-control-label" htmlFor="proc-ativo">
+                        Ativo
+                      </label>
+                    </div>
                   </div>
-                  <div className="form-group">
-                    <label htmlFor="usuario-cpf">CPF</label>
-                    <input
-                      id="usuario-cpf"
-                      className="form-control"
-                      inputMode="numeric"
-                      autoComplete="off"
-                      placeholder="Somente números"
-                      value={cpf}
-                      onChange={(e) =>
-                        setCpf(normalizeCpfDigits(e.target.value).slice(0, 11))
-                      }
-                      required
-                    />
-                  </div>
-                  <div className="form-group">
-                    <label htmlFor="usuario-email">E-mail</label>
-                    <input
-                      id="usuario-email"
-                      className="form-control"
-                      type="email"
-                      value={email}
-                      onChange={(e) => setEmail(e.target.value)}
-                    />
-                  </div>
-                  <div className="form-group">
-                    <label htmlFor="usuario-empresa">Empresa</label>
-                    <select
-                      id="usuario-empresa"
-                      className="form-control"
-                      value={idEmpresa}
-                      onChange={(e) => setIdEmpresa(e.target.value)}
-                      required
-                    >
-                      <option value="">Selecione...</option>
-                      {empresas.map((emp) => (
-                        <option key={emp.id} value={emp.id}>
-                          {emp.nome_fantasia}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                  <div className="form-group">
-                    <label htmlFor="usuario-grupo">Grupo de usuários</label>
-                    <select
-                      id="usuario-grupo"
-                      className="form-control"
-                      value={idGrupo}
-                      onChange={(e) => setIdGrupo(e.target.value)}
-                      required
-                    >
-                      <option value="">Selecione...</option>
-                      {grupos.map((g) => (
-                        <option key={g.id} value={g.id}>
-                          {g.grupo_usuarios}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                  <div className="form-group mb-0">
-                    <label htmlFor="usuario-senha">
-                      Senha {editing ? "(preencha só para alterar)" : ""}
-                    </label>
-                    <input
-                      id="usuario-senha"
-                      className="form-control"
-                      type="password"
-                      value={senha}
-                      onChange={(e) => setSenha(e.target.value)}
-                      required={!editing}
-                    />
-                  </div>
+
+                  <p className="text-muted small mb-0">
+                    Valor total (prévia):{" "}
+                    <strong>
+                      {previewTotal !== null ? moneyFmt.format(previewTotal) : "—"}
+                    </strong>
+                    <span className="d-block mt-1">
+                      Cálculo: custo base × (1 + margem/100) × (1 + taxas/100).
+                    </span>
+                  </p>
                 </div>
                 <div className="modal-footer">
                   <button type="button" className="btn btn-secondary" onClick={closeModal}>
@@ -502,8 +515,8 @@ export function UsuariosCadastroClient({
               <div className="modal-body">
                 <p className="mb-0">
                   {confirmStatus.acao === "ativar"
-                    ? `Ativar o usuário "${confirmStatus.row.usuario}"?`
-                    : `Inativar o usuário "${confirmStatus.row.usuario}"?`}
+                    ? `Ativar o procedimento "${confirmStatus.row.procedimento}"?`
+                    : `Inativar o procedimento "${confirmStatus.row.procedimento}"?`}
                 </p>
               </div>
               <div className="modal-footer">
@@ -542,12 +555,7 @@ export function UsuariosCadastroClient({
                   <i className="fas fa-check-circle mr-2" aria-hidden />
                   {feedback.title}
                 </h5>
-                <button
-                  type="button"
-                  className="close"
-                  aria-label="Fechar"
-                  onClick={() => setFeedback(null)}
-                >
+                <button type="button" className="close" onClick={() => setFeedback(null)}>
                   <span aria-hidden="true">&times;</span>
                 </button>
               </div>

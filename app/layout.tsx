@@ -12,6 +12,9 @@ const poppins = Poppins({
 export const metadata: Metadata = {
   title: "Podoquiro",
   description: "Cuidando de cada passo seu com excelência.",
+  icons: {
+    icon: [{ url: "/IconePodoquiro.png", type: "image/png" }],
+  },
 };
 
 export default function RootLayout({

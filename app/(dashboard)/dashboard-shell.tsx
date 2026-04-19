@@ -51,12 +51,12 @@ function cx(...parts: (string | false | undefined | null)[]) {
 }
 
 export function DashboardShell({
-  usuario,
-  idEmpresa,
+  nomeUsuario,
+  nomeEmpresa,
   children,
 }: {
-  usuario: string;
-  idEmpresa: string;
+  nomeUsuario: string;
+  nomeEmpresa: string;
   children: ReactNode;
 }) {
   const router = useRouter();
@@ -72,11 +72,15 @@ export function DashboardShell({
   const [openPacientes, setOpenPacientes] = useState(() =>
     pathname.startsWith("/pacientes"),
   );
+  const [openProcedimentos, setOpenProcedimentos] = useState(() =>
+    pathname.startsWith("/procedimentos"),
+  );
 
   useEffect(() => {
     setOpenUsuarios(pathname.startsWith("/usuarios"));
     setOpenEmpresas(pathname.startsWith("/empresas"));
     setOpenPacientes(pathname.startsWith("/pacientes"));
+    setOpenProcedimentos(pathname.startsWith("/procedimentos"));
   }, [pathname]);
 
   useEffect(() => {
@@ -114,6 +118,7 @@ export function DashboardShell({
   const isUsuarios = pathname.startsWith("/usuarios");
   const isEmpresas = pathname.startsWith("/empresas");
   const isPacientes = pathname.startsWith("/pacientes");
+  const isProcedimentos = pathname.startsWith("/procedimentos");
 
   return (
     <div className="wrapper">
@@ -143,12 +148,17 @@ export function DashboardShell({
               aria-expanded="false"
             >
               <i className="far fa-user mr-1" />
-              {usuario}
+              {nomeUsuario}
             </a>
             <div className="dropdown-menu dropdown-menu-right">
               <span className="dropdown-item-text text-muted small">
-                Empresa id: {idEmpresa}
+                {nomeEmpresa}
               </span>
+              <div className="dropdown-divider" />
+              <Link href="/conta/senha" className="dropdown-item">
+                <i className="fas fa-key mr-2 text-muted" aria-hidden />
+                Alterar senha
+              </Link>
               <div className="dropdown-divider" />
               <button
                 type="button"
@@ -272,6 +282,43 @@ export function DashboardShell({
                 className={cx(
                   "nav-item",
                   "has-treeview",
+                  openProcedimentos && "menu-open",
+                )}
+              >
+                <a
+                  href="#"
+                  className={cx("nav-link", isProcedimentos && "active")}
+                  onClick={(e) => {
+                    e.preventDefault();
+                    setOpenProcedimentos((v) => !v);
+                  }}
+                >
+                  <i className="nav-icon fas fa-notes-medical" />
+                  <p>
+                    Procedimentos
+                    <i className="right fas fa-angle-left" />
+                  </p>
+                </a>
+                <ul className="nav nav-treeview">
+                  <li className="nav-item">
+                    <Link
+                      href="/procedimentos/cadastro"
+                      className={cx(
+                        "nav-link",
+                        pathname === "/procedimentos/cadastro" && "active",
+                      )}
+                    >
+                      <i className="far fa-circle nav-icon" />
+                      <p>Cadastrar</p>
+                    </Link>
+                  </li>
+                </ul>
+              </li>
+
+              <li
+                className={cx(
+                  "nav-item",
+                  "has-treeview",
                   openEmpresas && "menu-open",
                 )}
               >
@@ -300,6 +347,18 @@ export function DashboardShell({
                     >
                       <i className="far fa-circle nav-icon" />
                       <p>Cadastrar empresa</p>
+                    </Link>
+                  </li>
+                  <li className="nav-item">
+                    <Link
+                      href="/empresas/salas"
+                      className={cx(
+                        "nav-link",
+                        pathname === "/empresas/salas" && "active",
+                      )}
+                    >
+                      <i className="far fa-circle nav-icon" />
+                      <p>Salas</p>
                     </Link>
                   </li>
                   <li className="nav-item">

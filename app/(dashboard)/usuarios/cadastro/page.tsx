@@ -16,6 +16,8 @@ type EmpresaOption = {
 type UsuarioRaw = {
   id: number;
   usuario: string;
+  nome_completo: string | null;
+  cpf: string | null;
   email: string | null;
   ativo: boolean;
   id_grupo_usuarios: number;
@@ -62,7 +64,7 @@ export default async function UsuariosCadastroPage() {
       supabase
         .from("usuarios")
         .select(
-          "id, usuario, email, ativo, id_grupo_usuarios, id_empresa, usuarios_grupos:usuarios_grupos!usuarios_id_grupo_usuarios_fkey(id, grupo_usuarios)",
+          "id, usuario, nome_completo, cpf, email, ativo, id_grupo_usuarios, id_empresa, usuarios_grupos:usuarios_grupos!usuarios_id_grupo_usuarios_fkey(id, grupo_usuarios)",
         )
         .eq("id_empresa", empresaId)
         .order("usuario", { ascending: true }),
@@ -85,6 +87,8 @@ export default async function UsuariosCadastroPage() {
   const usuariosView = usuarios.map((u) => ({
     id: u.id,
     usuario: u.usuario,
+    nome_completo: u.nome_completo,
+    cpf: u.cpf,
     email: u.email,
     ativo: u.ativo,
     id_grupo_usuarios: u.id_grupo_usuarios,

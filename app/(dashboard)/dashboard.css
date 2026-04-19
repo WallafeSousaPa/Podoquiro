@@ -22,3 +22,35 @@
 .main-sidebar .brand-link .brand-text {
   font-weight: 600 !important;
 }
+
+/* Modal cadastro/edição de usuário: corpo rolável; header e footer fixos (Chrome). */
+.modal-usuario-form .modal-content {
+  max-height: min(90vh, 640px);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.modal-usuario-form .modal-content > form {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.modal-usuario-form .modal-header {
+  flex-shrink: 0;
+}
+
+.modal-usuario-form .modal-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-x: hidden;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+.modal-usuario-form .modal-footer {
+  flex-shrink: 0;
+}
