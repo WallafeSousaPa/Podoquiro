@@ -75,12 +75,20 @@ export function DashboardShell({
   const [openProcedimentos, setOpenProcedimentos] = useState(() =>
     pathname.startsWith("/procedimentos"),
   );
+  const [openFinanceiro, setOpenFinanceiro] = useState(() =>
+    pathname.startsWith("/financeiro"),
+  );
+  const [openParametrizacao, setOpenParametrizacao] = useState(() =>
+    pathname.startsWith("/financeiro/parametrizacao"),
+  );
 
   useEffect(() => {
     setOpenUsuarios(pathname.startsWith("/usuarios"));
     setOpenEmpresas(pathname.startsWith("/empresas"));
     setOpenPacientes(pathname.startsWith("/pacientes"));
     setOpenProcedimentos(pathname.startsWith("/procedimentos"));
+    setOpenFinanceiro(pathname.startsWith("/financeiro"));
+    setOpenParametrizacao(pathname.startsWith("/financeiro/parametrizacao"));
   }, [pathname]);
 
   useEffect(() => {
@@ -119,6 +127,8 @@ export function DashboardShell({
   const isEmpresas = pathname.startsWith("/empresas");
   const isPacientes = pathname.startsWith("/pacientes");
   const isProcedimentos = pathname.startsWith("/procedimentos");
+  const isFinanceiro = pathname.startsWith("/financeiro");
+  const isParametrizacao = pathname.startsWith("/financeiro/parametrizacao");
 
   return (
     <div className="wrapper">
@@ -319,6 +329,81 @@ export function DashboardShell({
                 className={cx(
                   "nav-item",
                   "has-treeview",
+                  openFinanceiro && "menu-open",
+                )}
+              >
+                <a
+                  href="#"
+                  className={cx("nav-link", isFinanceiro && "active")}
+                  onClick={(e) => {
+                    e.preventDefault();
+                    setOpenFinanceiro((v) => !v);
+                  }}
+                >
+                  <i className="nav-icon fas fa-coins" />
+                  <p>
+                    Financeiro
+                    <i className="right fas fa-angle-left" />
+                  </p>
+                </a>
+                <ul className="nav nav-treeview">
+                  <li
+                    className={cx(
+                      "nav-item",
+                      "has-treeview",
+                      openParametrizacao && "menu-open",
+                    )}
+                  >
+                    <a
+                      href="#"
+                      className={cx("nav-link", isParametrizacao && "active")}
+                      onClick={(e) => {
+                        e.preventDefault();
+                        setOpenParametrizacao((v) => !v);
+                      }}
+                    >
+                      <i className="far fa-circle nav-icon" />
+                      <p>
+                        Parametrização
+                        <i className="right fas fa-angle-left" />
+                      </p>
+                    </a>
+                    <ul className="nav nav-treeview">
+                      <li className="nav-item">
+                        <Link
+                          href="/financeiro/parametrizacao/maquinetas"
+                          className={cx(
+                            "nav-link",
+                            pathname === "/financeiro/parametrizacao/maquinetas" &&
+                              "active",
+                          )}
+                        >
+                          <i className="far fa-dot-circle nav-icon" />
+                          <p>Maquinetas</p>
+                        </Link>
+                      </li>
+                      <li className="nav-item">
+                        <Link
+                          href="/financeiro/parametrizacao/tipos-pagamento"
+                          className={cx(
+                            "nav-link",
+                            pathname === "/financeiro/parametrizacao/tipos-pagamento" &&
+                              "active",
+                          )}
+                        >
+                          <i className="far fa-dot-circle nav-icon" />
+                          <p>Tipos de pagamento</p>
+                        </Link>
+                      </li>
+                    </ul>
+                  </li>
+                </ul>
+              </li>
+
+              <li
+                className={cx(
+                  "nav-item",
+                  "has-treeview",
                   openEmpresas && "menu-open",
                 )}
               >
@@ -385,7 +470,7 @@ export function DashboardShell({
       <footer className="main-footer">
         <strong>Podoquiro</strong>
         <div className="float-right d-none d-sm-inline-block">
-          <small className="text-muted">AdminLTE 3.2</small>
+          <small className="text-muted">Podoquiro 1.0</small>
         </div>
       </footer>
     </div>
