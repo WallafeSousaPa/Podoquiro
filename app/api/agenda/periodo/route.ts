@@ -1,5 +1,13 @@
 import { NextResponse } from "next/server";
 import { resolveGruposCalendario } from "@/lib/agenda/grupos-calendario";
+import {
+  getPodeVerTodosAgendamentos,
+  getUsuarioAgendaSomentePropriaColuna,
+} from "@/lib/agenda/permissoes-calendario";
+import {
+  carregarUsuariosColunasAgenda,
+  filtrarColunasAgendaSomenteUsuarioPodoquiro,
+} from "@/lib/agenda/usuarios-colunas-agenda";
 import { getSession } from "@/lib/auth/session";
 import { createAdminClient } from "@/lib/supabase/admin";
 
@@ -47,6 +55,11 @@ export async function GET(request: Request) {
   const empresaId = parseEmpresaId(session.idEmpresa);
   if (!empresaId) {
     return NextResponse.json({ error: "Empresa inválida." }, { status: 400 });
+  }
+
+  const sessionUserId = Number(session.sub);
+  if (!Number.isFinite(sessionUserId) || sessionUserId <= 0) {
+    return NextResponse.json({ error: "Sessão inválida." }, { status: 400 });
   }
 
   const url = new URL(request.url);
@@ -104,33 +117,40 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: gErr.message }, { status: 500 });
   }
 
-  let usuariosRows: {
-    id: unknown;
-    usuario: unknown;
-    nome_completo: unknown;
-    id_grupo_usuarios: unknown;
-  }[] = [];
-
-  if (grupoIds.length > 0) {
-    const uRes = await supabase
-      .from("usuarios")
-      .select("id, usuario, nome_completo, id_grupo_usuarios")
-      .eq("id_empresa", empresaId)
-      .eq("ativo", true)
-      .in("id_grupo_usuarios", grupoIds)
-      .order("nome_completo", { ascending: true })
-      .order("usuario", { ascending: true });
-    if (uRes.error) {
-      console.error(uRes.error);
-      return NextResponse.json({ error: uRes.error.message }, { status: 500 });
-    }
-    usuariosRows = uRes.data ?? [];
+  let usuariosRows: Awaited<ReturnType<typeof carregarUsuariosColunasAgenda>> = [];
+  try {
+    usuariosRows = await carregarUsuariosColunasAgenda(
+      supabase,
+      empresaId,
+      grupoIds,
+    );
+  } catch (e) {
+    console.error(e);
+    return NextResponse.json(
+      {
+        error: e instanceof Error ? e.message : "Erro ao carregar profissionais.",
+      },
+      { status: 500 },
+    );
   }
+
+  const [podeVerTodos, somentePropriaColuna] = await Promise.all([
+    getPodeVerTodosAgendamentos(supabase, sessionUserId),
+    getUsuarioAgendaSomentePropriaColuna(supabase, sessionUserId),
+  ]);
+
+  usuariosRows = await filtrarColunasAgendaSomenteUsuarioPodoquiro(
+    supabase,
+    empresaId,
+    sessionUserId,
+    usuariosRows,
+    somentePropriaColuna,
+  );
 
   const inicioPeriodo = dayStartIso(inicio);
   const fimIntervaloExclusivo = nextDayStartIso(fim);
 
-  const { data: agRows, error: aErr } = await supabase
+  let agQuery = supabase
     .from("agendamentos")
     .select(
       `
@@ -150,8 +170,16 @@ export async function GET(request: Request) {
     )
     .eq("id_empresa", empresaId)
     .gt("data_hora_fim", inicioPeriodo)
-    .lt("data_hora_inicio", fimIntervaloExclusivo)
-    .order("data_hora_inicio", { ascending: true });
+    .lt("data_hora_inicio", fimIntervaloExclusivo);
+  if (!podeVerTodos || somentePropriaColuna) {
+    agQuery = agQuery.eq("id_usuario", sessionUserId);
+  }
+  if (somentePropriaColuna) {
+    agQuery = agQuery.in("status", ["pendente", "confirmado", "em_andamento"]);
+  }
+  const { data: agRows, error: aErr } = await agQuery.order("data_hora_inicio", {
+    ascending: true,
+  });
 
   if (aErr) {
     console.error(aErr);
@@ -313,6 +341,7 @@ export async function GET(request: Request) {
       grupo_usuarios: g.grupo_usuarios as string,
     })),
     agendaGruposConfigurados: configuradoNaEmpresa,
+    ocultarSecaoPagamentosAgenda: somentePropriaColuna,
     usuarios,
     agendamentos,
   });

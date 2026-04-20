@@ -37,6 +37,7 @@ export async function PATCH(request: Request, context: RouteContext) {
     id_grupo_usuarios?: number;
     id_empresa?: number;
     ativo?: boolean;
+    exibir_na_agenda?: boolean;
   };
   try {
     body = await request.json();
@@ -83,6 +84,9 @@ export async function PATCH(request: Request, context: RouteContext) {
   }
   if (typeof body.ativo === "boolean") {
     patch.ativo = body.ativo;
+  }
+  if (typeof body.exibir_na_agenda === "boolean") {
+    patch.exibir_na_agenda = body.exibir_na_agenda;
   }
   if (typeof body.id_grupo_usuarios !== "undefined") {
     const idGrupo = Number(body.id_grupo_usuarios);
@@ -173,7 +177,7 @@ export async function PATCH(request: Request, context: RouteContext) {
     .from("usuarios")
     .update(patch)
     .eq("id", id)
-    .select("id, usuario, nome_completo, cpf, email, ativo, id_grupo_usuarios, id_empresa")
+    .select("id, usuario, nome_completo, cpf, email, ativo, id_grupo_usuarios, id_empresa, exibir_na_agenda")
     .maybeSingle();
 
   if (error) {

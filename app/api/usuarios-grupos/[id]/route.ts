@@ -16,7 +16,12 @@ export async function PATCH(request: Request, context: RouteContext) {
     return NextResponse.json({ error: "ID inválido." }, { status: 400 });
   }
 
-  let body: { grupo_usuarios?: string; ativo?: boolean };
+  let body: {
+    grupo_usuarios?: string;
+    ativo?: boolean;
+    calendario?: boolean;
+    agenda_apenas_coluna_propria?: boolean;
+  };
   try {
     body = await request.json();
   } catch {
@@ -24,6 +29,12 @@ export async function PATCH(request: Request, context: RouteContext) {
   }
 
   const patch: Record<string, string | boolean> = {};
+  if (typeof body.calendario === "boolean") {
+    patch.calendario = body.calendario;
+  }
+  if (typeof body.agenda_apenas_coluna_propria === "boolean") {
+    patch.agenda_apenas_coluna_propria = body.agenda_apenas_coluna_propria;
+  }
   if (typeof body.grupo_usuarios === "string") {
     const nome = body.grupo_usuarios.trim();
     if (!nome) {
@@ -50,7 +61,9 @@ export async function PATCH(request: Request, context: RouteContext) {
     .from("usuarios_grupos")
     .update(patch)
     .eq("id", id)
-    .select("id, grupo_usuarios, data_atualizacao, ativo")
+    .select(
+      "id, grupo_usuarios, data_atualizacao, ativo, calendario, agenda_apenas_coluna_propria",
+    )
     .maybeSingle();
 
   if (error) {

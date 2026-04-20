@@ -23,6 +23,7 @@ type UsuarioItem = {
   ativo: boolean;
   id_grupo_usuarios: number;
   id_empresa: number;
+  exibir_na_agenda: boolean;
   nome_empresa: string | null;
   grupo_usuarios: string | null;
 };
@@ -94,6 +95,7 @@ export function UsuariosCadastroClient({
   const [senha, setSenha] = useState("");
   const [idGrupo, setIdGrupo] = useState("");
   const [idEmpresa, setIdEmpresa] = useState(String(idEmpresaSessao));
+  const [exibirNaAgenda, setExibirNaAgenda] = useState(false);
   const [saving, setSaving] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
   const [listError, setListError] = useState<string | null>(null);
@@ -115,6 +117,7 @@ export function UsuariosCadastroClient({
     setSenha("");
     setIdGrupo("");
     setIdEmpresa(String(idEmpresaSessao));
+    setExibirNaAgenda(false);
     setFormError(null);
   }
 
@@ -132,6 +135,7 @@ export function UsuariosCadastroClient({
     setSenha("");
     setIdGrupo(String(row.id_grupo_usuarios));
     setIdEmpresa(String(row.id_empresa));
+    setExibirNaAgenda(Boolean(row.exibir_na_agenda));
     setFormError(null);
     setModalOpen(true);
   }
@@ -181,6 +185,7 @@ export function UsuariosCadastroClient({
         email: email.trim() || null,
         id_grupo_usuarios: Number(idGrupo),
         id_empresa: Number(idEmpresa),
+        exibir_na_agenda: exibirNaAgenda,
       };
       if (senha.trim()) payload.senha = senha.trim();
 
@@ -281,6 +286,7 @@ export function UsuariosCadastroClient({
                 <th>E-mail</th>
                 <th>Empresa</th>
                 <th>Grupo</th>
+                <th style={{ width: "100px" }}>Na agenda</th>
                 <th style={{ width: "90px" }}>Status</th>
                 <th style={{ width: "260px" }} className="text-right">
                   Ações
@@ -290,7 +296,7 @@ export function UsuariosCadastroClient({
             <tbody>
               {rows.length === 0 ? (
                 <tr>
-                  <td colSpan={9} className="text-center text-muted py-4">
+                  <td colSpan={10} className="text-center text-muted py-4">
                     Nenhum usuário cadastrado.
                   </td>
                 </tr>
@@ -304,6 +310,13 @@ export function UsuariosCadastroClient({
                     <td>{row.email || "-"}</td>
                     <td>{row.nome_empresa || "-"}</td>
                     <td>{row.grupo_usuarios || "-"}</td>
+                    <td>
+                      {row.exibir_na_agenda ? (
+                        <span className="badge badge-info">Sim</span>
+                      ) : (
+                        <span className="badge badge-light border">Não</span>
+                      )}
+                    </td>
                     <td>
                       {row.ativo ? (
                         <span className="badge badge-success">Ativo</span>
@@ -447,6 +460,19 @@ export function UsuariosCadastroClient({
                         </option>
                       ))}
                     </select>
+                  </div>
+                  <div className="form-group form-check">
+                    <input
+                      id="usuario-exibir-agenda"
+                      type="checkbox"
+                      className="form-check-input"
+                      checked={exibirNaAgenda}
+                      onChange={(e) => setExibirNaAgenda(e.target.checked)}
+                    />
+                    <label className="form-check-label" htmlFor="usuario-exibir-agenda">
+                      Exibir na agenda (coluna do profissional), mesmo fora dos grupos da
+                      parametrização
+                    </label>
                   </div>
                   <div className="form-group mb-0">
                     <label htmlFor="usuario-senha">

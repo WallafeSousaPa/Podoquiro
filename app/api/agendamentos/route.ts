@@ -2,6 +2,12 @@ import { NextResponse } from "next/server";
 import { calcularValorTotal } from "@/lib/agenda/totais";
 import { resolveGruposCalendario } from "@/lib/agenda/grupos-calendario";
 import {
+  getPodeVerTodosAgendamentos,
+  getUsuarioAgendaSomentePropriaColuna,
+  profissionalPodeNaAgenda,
+} from "@/lib/agenda/permissoes-calendario";
+import { validarProcedimentosDoColaborador } from "@/lib/colaborador-procedimentos";
+import {
   MSG_CONFLITO_PROFISSIONAL,
   MSG_HORARIO_RETROATIVO,
   MSG_PROCEDIMENTO_DUPLICADO,
@@ -18,6 +24,7 @@ function parseEmpresaId(idEmpresa: string) {
 
 const AGENDAMENTO_STATUS = [
   "pendente",
+  "confirmado",
   "em_andamento",
   "realizado",
   "cancelado",
@@ -44,6 +51,11 @@ export async function POST(request: Request) {
   const empresaId = parseEmpresaId(session.idEmpresa);
   if (!empresaId) {
     return NextResponse.json({ error: "Empresa inválida." }, { status: 400 });
+  }
+
+  const sessionUserId = Number(session.sub);
+  if (!Number.isFinite(sessionUserId) || sessionUserId <= 0) {
+    return NextResponse.json({ error: "Sessão inválida." }, { status: 400 });
   }
 
   let body: {
@@ -203,20 +215,26 @@ export async function POST(request: Request) {
 
   const supabase = createAdminClient();
 
-  const { ids: grupoIds } = await resolveGruposCalendario(supabase, empresaId);
-  if (grupoIds.length === 0) {
+  const [podeVerTodos, somentePropriaColuna] = await Promise.all([
+    getPodeVerTodosAgendamentos(supabase, sessionUserId),
+    getUsuarioAgendaSomentePropriaColuna(supabase, sessionUserId),
+  ]);
+  if ((!podeVerTodos || somentePropriaColuna) && idUsuario !== sessionUserId) {
     return NextResponse.json(
-      {
-        error:
-          "Nenhum grupo disponível para a agenda. Cadastre o grupo Podólogo ou configure Financeiro > Parametrização.",
-      },
-      { status: 400 },
+      { error: "Sem permissão para criar agendamento de outro profissional." },
+      { status: 403 },
     );
   }
 
+  if (somentePropriaColuna) {
+    pagamentos = [];
+  }
+
+  const { ids: grupoIds } = await resolveGruposCalendario(supabase, empresaId);
+
   const { data: uRow, error: uErr } = await supabase
     .from("usuarios")
-    .select("id, id_empresa, id_grupo_usuarios, ativo")
+    .select("id, id_empresa, id_grupo_usuarios, ativo, exibir_na_agenda")
     .eq("id", idUsuario)
     .maybeSingle();
 
@@ -227,11 +245,18 @@ export async function POST(request: Request) {
   if (!uRow || (uRow.id_empresa as number) !== empresaId || !uRow.ativo) {
     return NextResponse.json({ error: "Profissional inválido." }, { status: 400 });
   }
-  if (!grupoIds.includes(uRow.id_grupo_usuarios as number)) {
+  const exibirNaAgenda = Boolean(uRow.exibir_na_agenda);
+  if (
+    !profissionalPodeNaAgenda(
+      grupoIds,
+      uRow.id_grupo_usuarios as number,
+      exibirNaAgenda,
+    )
+  ) {
     return NextResponse.json(
       {
         error:
-          "O profissional não pertence aos grupos exibidos na agenda. Ajuste a parametrização ou o vínculo do usuário.",
+          "O profissional não está habilitado na agenda. Marque \"Exibir na agenda\" no usuário ou ajuste a parametrização dos grupos.",
       },
       { status: 400 },
     );
@@ -280,6 +305,24 @@ export async function POST(request: Request) {
         { status: 400 },
       );
     }
+  }
+
+  try {
+    const vCol = await validarProcedimentosDoColaborador(
+      supabase,
+      idUsuario,
+      empresaId,
+      procIds,
+    );
+    if (!vCol.ok) {
+      return NextResponse.json({ error: vCol.message }, { status: 400 });
+    }
+  } catch (e) {
+    console.error(e);
+    return NextResponse.json(
+      { error: e instanceof Error ? e.message : "Erro ao validar procedimentos." },
+      { status: 500 },
+    );
   }
 
   try {

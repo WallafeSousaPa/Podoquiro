@@ -13,6 +13,7 @@ import {
   useState,
 } from "react";
 import "./agenda.css";
+import { ModalProntuarioPodologo } from "./modal-prontuario-podologo";
 import {
   MSG_HORARIO_RETROATIVO,
   MSG_PROCEDIMENTO_DUPLICADO,
@@ -50,6 +51,65 @@ type PagLinha = {
   valor_pago: number;
   status_pagamento: "pago" | "estornado" | "pendente";
 };
+
+type PacienteListaItem = {
+  id: number;
+  nome: string;
+  telefone: string | null;
+};
+
+function apenasDigitosTel(s: string): string {
+  return s.replace(/\D/g, "");
+}
+
+function formatarTelefoneExibir(tel: string | null | undefined): string {
+  if (tel == null || !String(tel).trim()) return "";
+  const d = apenasDigitosTel(String(tel));
+  if (d.length === 11) {
+    return `(${d.slice(0, 2)}) ${d.slice(2, 7)}-${d.slice(7)}`;
+  }
+  if (d.length === 10) {
+    return `(${d.slice(0, 2)}) ${d.slice(2, 6)}-${d.slice(6)}`;
+  }
+  return String(tel).trim();
+}
+
+/** wa.me a partir do telefone do cadastro (DDD + BR 55 quando aplicável). */
+function urlWhatsAppPaciente(tel: string | null | undefined): string | null {
+  if (tel == null || !String(tel).trim()) return null;
+  const d = apenasDigitosTel(String(tel));
+  if (d.length === 0) return null;
+  if (d.startsWith("55") && d.length >= 12) return `https://wa.me/${d}`;
+  if (d.length >= 10 && d.length <= 11) return `https://wa.me/55${d}`;
+  if (d.length >= 8) return `https://wa.me/${d}`;
+  return null;
+}
+
+/** Mensagem padrão para confirmar horário (data do início + hora de término). */
+function montarMensagemWhatsappConfirmacaoHorario(args: {
+  nomePaciente: string;
+  nomeEmpresa: string;
+  inicioLocal: string;
+  horaFimLocal: string;
+}): string {
+  const nomeP = args.nomePaciente.trim() || "paciente";
+  const emp = args.nomeEmpresa.trim() || "nossa clínica";
+  let dataFmt = "";
+  if (args.inicioLocal.trim()) {
+    const d = new Date(args.inicioLocal);
+    if (!Number.isNaN(d.getTime())) {
+      const raw = d.toLocaleDateString("pt-BR", {
+        weekday: "long",
+        day: "numeric",
+        month: "long",
+        year: "numeric",
+      });
+      dataFmt = raw ? raw.charAt(0).toUpperCase() + raw.slice(1) : "";
+    }
+  }
+  const horaFim = args.horaFimLocal.trim() || "—";
+  return `Olá, Sr(a) ${nomeP}, aqui é da ${emp}, gostaria de confirmar seu horário de ${dataFmt || "—"} às ${horaFim}.`;
+}
 
 type AgendamentoDia = {
   id: number;
@@ -241,24 +301,59 @@ function classeStatus(status: string): string {
   if (status === "cancelado") return "busy";
   if (status === "realizado") return "done";
   if (status === "adiado") return "warn";
+  if (status === "confirmado") return "confirmed";
   return "";
+}
+
+function rotuloStatusAgendamento(status: string): string {
+  switch (status) {
+    case "pendente":
+      return "Pendente";
+    case "confirmado":
+      return "Confirmado";
+    case "em_andamento":
+      return "Em andamento";
+    case "realizado":
+      return "Realizado";
+    case "cancelado":
+      return "Cancelado";
+    case "adiado":
+      return "Adiado";
+    default:
+      return status;
+  }
 }
 
 type Props = {
   idEmpresa: string;
+  /** Nome fantasia da empresa (mensagem WhatsApp). */
+  nomeEmpresa: string;
+  /** Perfil Podólogo: oculta Agendar + e Parametrização na toolbar. */
+  somenteMenuInicio?: boolean;
 };
 
-export function AgendaCalendario({ idEmpresa }: Props) {
+export function AgendaCalendario({
+  idEmpresa,
+  nomeEmpresa,
+  somenteMenuInicio = false,
+}: Props) {
   const router = useRouter();
   const modalId = useId();
   const modalParametrizacaoTitleId = useId();
   const modalAtalhoMoverTitleId = useId();
+  const modalPodologoAtendimentoTitleId = useId();
 
   const [dataDia, setDataDia] = useState(() => toYmd(new Date()));
   const [visualizacao, setVisualizacao] = useState<VisualizacaoAgenda>("dia");
   const [usuarios, setUsuarios] = useState<UsuarioCol[]>([]);
   const [agendamentos, setAgendamentos] = useState<AgendamentoDia[]>([]);
   const [agendaGruposConfigurados, setAgendaGruposConfigurados] = useState(false);
+  const [ocultarSecaoPagamentosAgenda, setOcultarSecaoPagamentosAgenda] =
+    useState(false);
+  const [modalAtendimentoPodologo, setModalAtendimentoPodologo] =
+    useState<AgendamentoDia | null>(null);
+  const [iniciandoAtendimentoPodologo, setIniciandoAtendimentoPodologo] =
+    useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
 
@@ -269,7 +364,7 @@ export function AgendaCalendario({ idEmpresa }: Props) {
 
   const [modalOpen, setModalOpen] = useState(false);
   const [editingId, setEditingId] = useState<number | null>(null);
-  const [pacientes, setPacientes] = useState<{ id: number; nome: string }[]>([]);
+  const [pacientes, setPacientes] = useState<PacienteListaItem[]>([]);
   const [salas, setSalas] = useState<{ id: number; nome: string }[]>([]);
   const [procedimentosCat, setProcedimentosCat] = useState<
     { id: number; procedimento: string; valor_total: number }[]
@@ -359,6 +454,25 @@ export function AgendaCalendario({ idEmpresa }: Props) {
     return pacientes.filter((p) => p.nome.toLowerCase().includes(q)).slice(0, 60);
   }, [pacientes, pacienteBusca]);
 
+  const pacienteSelecionado = useMemo(() => {
+    if (!idPaciente) return null;
+    const id = Number(idPaciente);
+    if (!Number.isFinite(id) || id <= 0) return null;
+    return pacientes.find((p) => p.id === id) ?? null;
+  }, [idPaciente, pacientes]);
+
+  const urlWhatsPacienteSelecionado = useMemo(() => {
+    const base = urlWhatsAppPaciente(pacienteSelecionado?.telefone ?? null);
+    if (!base || !pacienteSelecionado) return null;
+    const texto = montarMensagemWhatsappConfirmacaoHorario({
+      nomePaciente: pacienteSelecionado.nome,
+      nomeEmpresa,
+      inicioLocal,
+      horaFimLocal,
+    });
+    return `${base}?text=${encodeURIComponent(texto)}`;
+  }, [pacienteSelecionado, nomeEmpresa, inicioLocal, horaFimLocal]);
+
   const loadAgenda = useCallback(async () => {
     setLoading(true);
     setLoadError(null);
@@ -379,11 +493,13 @@ export function AgendaCalendario({ idEmpresa }: Props) {
         usuarios?: UsuarioCol[];
         agendamentos?: AgendamentoDia[];
         agendaGruposConfigurados?: boolean;
+        ocultarSecaoPagamentosAgenda?: boolean;
       };
       if (!res.ok) throw new Error(json.error ?? "Erro ao carregar agenda.");
       setUsuarios(json.usuarios ?? []);
       setAgendamentos(json.agendamentos ?? []);
       setAgendaGruposConfigurados(!!json.agendaGruposConfigurados);
+      setOcultarSecaoPagamentosAgenda(!!json.ocultarSecaoPagamentosAgenda);
     } catch (e) {
       setLoadError(e instanceof Error ? e.message : "Erro ao carregar.");
     } finally {
@@ -449,10 +565,9 @@ export function AgendaCalendario({ idEmpresa }: Props) {
   }
 
   async function carregarListasAuxiliares() {
-    const [pr, sa, proc, fp, mq] = await Promise.all([
+    const [pr, sa, fp, mq] = await Promise.all([
       fetch("/api/pacientes"),
       fetch("/api/salas"),
-      fetch("/api/procedimentos"),
       fetch("/api/formas-pagamento"),
       fetch("/api/maquinetas"),
     ]);
@@ -461,41 +576,57 @@ export function AgendaCalendario({ idEmpresa }: Props) {
         id: number;
         nome_completo: string | null;
         nome_social: string | null;
+        telefone: string | null;
       }[];
     };
     const sj = (await sa.json()) as {
       data?: { id: number; id_empresa: number; nome_sala: string }[];
-    };
-    const procj = (await proc.json()) as {
-      data?: { id: number; procedimento: string; valor_total: number }[];
     };
     const fpj = (await fp.json()) as { data?: { id: number; nome: string }[] };
     const mqj = (await mq.json()) as { data?: { id: number; nome: string }[] };
 
     const emp = Number(idEmpresa);
     setPacientes(
-      (pj.data ?? []).map((p) => ({
-        id: p.id,
-        nome:
-          (p.nome_completo && p.nome_completo.trim()) ||
-          (p.nome_social && p.nome_social.trim()) ||
-          `Paciente #${p.id}`,
-      })),
+      (pj.data ?? []).map((p) => {
+        const tel = p.telefone != null ? String(p.telefone).trim() : "";
+        return {
+          id: p.id,
+          nome:
+            (p.nome_completo && p.nome_completo.trim()) ||
+            (p.nome_social && p.nome_social.trim()) ||
+            `Paciente #${p.id}`,
+          telefone: tel === "" ? null : tel,
+        };
+      }),
     );
     setSalas(
       (sj.data ?? [])
         .filter((s) => s.id_empresa === emp)
         .map((s) => ({ id: s.id, nome: s.nome_sala })),
     );
-    setProcedimentosCat(
-      (procj.data ?? []).map((p) => ({
-        id: p.id,
-        procedimento: p.procedimento,
-        valor_total: Number(p.valor_total),
-      })),
-    );
     setFormasPg((fpj.data ?? []).map((f) => ({ id: f.id, nome: f.nome })));
     setMaquinetas((mqj.data ?? []).map((m) => ({ id: m.id, nome: m.nome })));
+  }
+
+  /** Procedimentos liberados para o profissional (Usuários → Colaboradores). */
+  async function carregarProcedimentosPorProfissional(idUsu: number) {
+    const proc = await fetch(
+      `/api/procedimentos?id_usuario=${encodeURIComponent(String(idUsu))}`,
+    );
+    const procj = (await proc.json()) as {
+      error?: string;
+      data?: { id: number; procedimento: string; valor_total: number }[];
+    };
+    if (!proc.ok) {
+      throw new Error(procj.error ?? "Erro ao carregar procedimentos.");
+    }
+    const list = (procj.data ?? []).map((p) => ({
+      id: p.id,
+      procedimento: p.procedimento,
+      valor_total: Number(p.valor_total),
+    }));
+    setProcedimentosCat(list);
+    return list;
   }
 
   async function abrirNovo(preUsuarioId?: number) {
@@ -507,6 +638,7 @@ export function AgendaCalendario({ idEmpresa }: Props) {
     setObservacoes("");
     setPagamentos([]);
     setProcedimentos([]);
+    setProcedimentosCat([]);
 
     try {
       await carregarListasAuxiliares();
@@ -534,10 +666,26 @@ export function AgendaCalendario({ idEmpresa }: Props) {
     setInicioLocal(toDatetimeLocalValue(base));
     setHoraFimLocal(formatHoraLocal(adicionarMinutos(base, 30)));
 
+    try {
+      if (defUser) {
+        const cat = await carregarProcedimentosPorProfissional(Number(defUser));
+        if (cat.length > 0) {
+          setProcedimentos([
+            {
+              id_procedimento: cat[0].id,
+              valor_aplicado: cat[0].valor_total,
+            },
+          ]);
+        }
+      }
+    } catch {
+      setFormError("Não foi possível carregar procedimentos do profissional.");
+    }
+
     setModalOpen(true);
   }
 
-  function selecionarPaciente(p: { id: number; nome: string }) {
+  function selecionarPaciente(p: PacienteListaItem) {
     setIdPaciente(String(p.id));
     setPacienteBusca(p.nome);
     setPacienteListaAberta(false);
@@ -590,11 +738,19 @@ export function AgendaCalendario({ idEmpresa }: Props) {
       setStatusAg(d.status);
       setDesconto(String(d.desconto));
       setObservacoes(d.observacoes ?? "");
+
+      const cat = await carregarProcedimentosPorProfissional(d.id_usuario);
+      const permitidos = new Set(cat.map((c) => c.id));
       setProcedimentos(
-        d.procedimentos.map((p) => ({
-          id_procedimento: p.id_procedimento,
-          valor_aplicado: p.valor_aplicado,
-        })),
+        d.procedimentos
+          .filter((p) => permitidos.has(p.id_procedimento))
+          .map((p) => {
+            const c = cat.find((x) => x.id === p.id_procedimento);
+            return {
+              id_procedimento: p.id_procedimento,
+              valor_aplicado: c ? c.valor_total : p.valor_aplicado,
+            };
+          }),
       );
       setPagamentos(
         d.pagamentos.map((p) => ({
@@ -606,6 +762,43 @@ export function AgendaCalendario({ idEmpresa }: Props) {
       );
     } catch (e) {
       setFormError(e instanceof Error ? e.message : "Erro.");
+    }
+  }
+
+  function aoClicarCalendarioAgendamento(ag: AgendamentoDia) {
+    setMenuCardAbertoId(null);
+    if (ocultarSecaoPagamentosAgenda) {
+      setModalAtendimentoPodologo(ag);
+      return;
+    }
+    void abrirEditar(ag);
+  }
+
+  async function executarIniciarAtendimentoPodologo() {
+    if (
+      !modalAtendimentoPodologo ||
+      (modalAtendimentoPodologo.status !== "pendente" &&
+        modalAtendimentoPodologo.status !== "confirmado")
+    ) {
+      return;
+    }
+    setIniciandoAtendimentoPodologo(true);
+    setErroModal(null);
+    try {
+      const res = await fetch(`/api/agendamentos/${modalAtendimentoPodologo.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status: "em_andamento" }),
+      });
+      const j = (await res.json()) as { error?: string };
+      if (!res.ok) throw new Error(j.error ?? "Erro ao iniciar atendimento.");
+      setModalAtendimentoPodologo(null);
+      router.refresh();
+      void loadAgenda();
+    } catch (e) {
+      setErroModal(e instanceof Error ? e.message : "Erro ao iniciar atendimento.");
+    } finally {
+      setIniciandoAtendimentoPodologo(false);
     }
   }
 
@@ -693,13 +886,15 @@ export function AgendaCalendario({ idEmpresa }: Props) {
           id_procedimento: p.id_procedimento,
           valor_aplicado: p.valor_aplicado,
         })),
-        pagamentos: pagamentos.map((p) => ({
+      };
+      if (!ocultarSecaoPagamentosAgenda) {
+        body.pagamentos = pagamentos.map((p) => ({
           id_forma_pagamento: p.id_forma_pagamento,
           id_maquineta: p.id_maquineta,
           valor_pago: p.valor_pago,
           status_pagamento: p.status_pagamento,
-        })),
-      };
+        }));
+      }
 
       const url = editingId ? `/api/agendamentos/${editingId}` : "/api/agendamentos";
       const method = editingId ? "PATCH" : "POST";
@@ -974,23 +1169,25 @@ export function AgendaCalendario({ idEmpresa }: Props) {
               ) : null}
             </div>
           </div>
-          <div className="agenda-cal-actions">
-            <button
-              type="button"
-              className="btn btn-outline-secondary btn-sm"
-              onClick={() => setModalParametrizacaoOpen(true)}
-            >
-              Parametrização
-            </button>
-            <button
-              type="button"
-              className="agenda-btn-add"
-              disabled={loading || usuarios.length === 0}
-              onClick={() => void abrirNovo()}
-            >
-              {loading ? "Carregando…" : "Agendar +"}
-            </button>
-          </div>
+          {!somenteMenuInicio ? (
+            <div className="agenda-cal-actions">
+              <button
+                type="button"
+                className="btn btn-outline-secondary btn-sm"
+                onClick={() => setModalParametrizacaoOpen(true)}
+              >
+                Parametrização
+              </button>
+              <button
+                type="button"
+                className="agenda-btn-add"
+                disabled={loading || usuarios.length === 0}
+                onClick={() => void abrirNovo()}
+              >
+                {loading ? "Carregando…" : "Agendar +"}
+              </button>
+            </div>
+          ) : null}
         </div>
 
         {usuarios.length === 0 && !loading ? (
@@ -1089,8 +1286,12 @@ export function AgendaCalendario({ idEmpresa }: Props) {
                             key={a.id}
                             role="button"
                             tabIndex={0}
-                            draggable
-                            title={`${a.paciente_nome} — ${a.status} — arraste para outro horário ou profissional, ou use o menu ⋮`}
+                            draggable={!ocultarSecaoPagamentosAgenda}
+                            title={
+                              ocultarSecaoPagamentosAgenda
+                                ? `${a.paciente_nome} — ${rotuloStatusAgendamento(a.status)}`
+                                : `${a.paciente_nome} — ${a.status} — arraste para outro horário ou profissional, ou use o menu ⋮`
+                            }
                             className={`agenda-appointment text-left ${classeStatus(a.status)}`}
                             style={{
                               top: st.top,
@@ -1120,7 +1321,7 @@ export function AgendaCalendario({ idEmpresa }: Props) {
                                 ) {
                                   return;
                                 }
-                                void abrirEditar(a);
+                                void aoClicarCalendarioAgendamento(a);
                               }
                             }}
                             onClick={() => {
@@ -1132,28 +1333,30 @@ export function AgendaCalendario({ idEmpresa }: Props) {
                                 return;
                               }
                               dragAgRef.current = { id: null, moveu: false };
-                              void abrirEditar(a);
+                              void aoClicarCalendarioAgendamento(a);
                             }}
                           >
                             <div
                               className="agenda-appointment-menu-wrap"
                               onClick={(ev) => ev.stopPropagation()}
                             >
-                              <button
-                                type="button"
-                                className="agenda-appointment-kebab"
-                                title="Opções (mover sem arrastar)"
-                                aria-haspopup="true"
-                                aria-expanded={menuCardAbertoId === a.id}
-                                aria-label="Opções do agendamento"
-                                onClick={(ev) => {
-                                  ev.stopPropagation();
-                                  setMenuCardAbertoId((id) => (id === a.id ? null : a.id));
-                                }}
-                              >
-                                ⋮
-                              </button>
-                              {menuCardAbertoId === a.id ? (
+                              {!ocultarSecaoPagamentosAgenda ? (
+                                <button
+                                  type="button"
+                                  className="agenda-appointment-kebab"
+                                  title="Opções (mover sem arrastar)"
+                                  aria-haspopup="true"
+                                  aria-expanded={menuCardAbertoId === a.id}
+                                  aria-label="Opções do agendamento"
+                                  onClick={(ev) => {
+                                    ev.stopPropagation();
+                                    setMenuCardAbertoId((id) => (id === a.id ? null : a.id));
+                                  }}
+                                >
+                                  ⋮
+                                </button>
+                              ) : null}
+                              {menuCardAbertoId === a.id && !ocultarSecaoPagamentosAgenda ? (
                                 <ul className="agenda-appointment-menu" role="menu">
                                   <li role="none">
                                     <button
@@ -1162,7 +1365,7 @@ export function AgendaCalendario({ idEmpresa }: Props) {
                                       className="dropdown-item"
                                       onClick={() => {
                                         setMenuCardAbertoId(null);
-                                        void abrirEditar(a);
+                                        void aoClicarCalendarioAgendamento(a);
                                       }}
                                     >
                                       Editar
@@ -1271,7 +1474,7 @@ export function AgendaCalendario({ idEmpresa }: Props) {
                               right: 4,
                             }}
                             title={a.paciente_nome}
-                            onClick={() => void abrirEditar(a)}
+                            onClick={() => void aoClicarCalendarioAgendamento(a)}
                           >
                             <span className="d-block text-truncate small">
                               {formatHoraLocal(new Date(a.data_hora_inicio))} — {a.paciente_nome}
@@ -1340,7 +1543,7 @@ export function AgendaCalendario({ idEmpresa }: Props) {
                                     key={a.id}
                                     type="button"
                                     className={`agenda-cal-month-chip w-100 text-left ${classeStatus(a.status)}`}
-                                    onClick={() => void abrirEditar(a)}
+                                    onClick={() => void aoClicarCalendarioAgendamento(a)}
                                   >
                                     <span className="text-truncate d-block small">
                                       {formatHoraLocal(new Date(a.data_hora_inicio))}{" "}
@@ -1642,6 +1845,92 @@ export function AgendaCalendario({ idEmpresa }: Props) {
         </ModalBackdrop>
       ) : null}
 
+      {modalAtendimentoPodologo &&
+      modalAtendimentoPodologo.status === "em_andamento" ? (
+        <ModalProntuarioPodologo
+          ag={modalAtendimentoPodologo}
+          onClose={() => setModalAtendimentoPodologo(null)}
+          onSalvo={() => {
+            setModalAtendimentoPodologo(null);
+            router.refresh();
+            void loadAgenda();
+          }}
+        />
+      ) : modalAtendimentoPodologo ? (
+        <ModalBackdrop
+          zIndex={1072}
+          onBackdropClick={() => {
+            if (!iniciandoAtendimentoPodologo) setModalAtendimentoPodologo(null);
+          }}
+        >
+          <div className="modal-dialog modal-dialog-centered" role="document">
+            <div className="modal-content">
+              <div className="modal-header">
+                <h5 className="modal-title" id={modalPodologoAtendimentoTitleId}>
+                  Atendimento
+                </h5>
+                <button
+                  type="button"
+                  className="close"
+                  disabled={iniciandoAtendimentoPodologo}
+                  onClick={() => setModalAtendimentoPodologo(null)}
+                  aria-label="Fechar"
+                >
+                  <span aria-hidden="true">&times;</span>
+                </button>
+              </div>
+              <div className="modal-body">
+                <p className="mb-2">
+                  <strong>{modalAtendimentoPodologo.paciente_nome}</strong>
+                </p>
+                <ul className="mb-0 pl-3 small text-muted">
+                  <li>
+                    Início:{" "}
+                    <strong>
+                      {fmtDataHoraPt(new Date(modalAtendimentoPodologo.data_hora_inicio))}
+                    </strong>
+                  </li>
+                  <li>
+                    Término:{" "}
+                    <strong>
+                      {fmtDataHoraPt(new Date(modalAtendimentoPodologo.data_hora_fim))}
+                    </strong>
+                  </li>
+                  <li>
+                    Sala: <strong>{modalAtendimentoPodologo.nome_sala}</strong>
+                  </li>
+                  <li>
+                    Status:{" "}
+                    <strong>{rotuloStatusAgendamento(modalAtendimentoPodologo.status)}</strong>
+                  </li>
+                </ul>
+              </div>
+              <div className="modal-footer">
+                <button
+                  type="button"
+                  className="btn btn-secondary"
+                  disabled={iniciandoAtendimentoPodologo}
+                  onClick={() => setModalAtendimentoPodologo(null)}
+                >
+                  Fechar
+                </button>
+                {modalAtendimentoPodologo.status === "pendente" ||
+                modalAtendimentoPodologo.status === "confirmado" ? (
+                  <button
+                    type="button"
+                    className="btn btn-primary"
+                    disabled={iniciandoAtendimentoPodologo}
+                    onClick={() => void executarIniciarAtendimentoPodologo()}
+                  >
+                    {iniciandoAtendimentoPodologo ? "Salvando…" : "Iniciar atendimento"}
+                  </button>
+                ) : null}
+              </div>
+            </div>
+          </div>
+        </ModalBackdrop>
+      ) : null}
+
       {modalOpen ? (
         <ModalBackdrop onBackdropClick={() => setModalOpen(false)}>
           <div className="modal-dialog modal-lg modal-agenda-form" role="document">
@@ -1672,7 +1961,51 @@ export function AgendaCalendario({ idEmpresa }: Props) {
                       <select
                         className="form-control"
                         value={idUsuario}
-                        onChange={(e) => setIdUsuario(e.target.value)}
+                        onChange={(e) => {
+                          const v = e.target.value;
+                          setIdUsuario(v);
+                          const idU = Number(v);
+                          if (!Number.isFinite(idU) || idU <= 0) {
+                            setProcedimentosCat([]);
+                            setProcedimentos([]);
+                            return;
+                          }
+                          void (async () => {
+                            try {
+                              const cat = await carregarProcedimentosPorProfissional(idU);
+                              setProcedimentos((prev) => {
+                                const allowed = new Set(cat.map((c) => c.id));
+                                const kept = prev.filter((l) =>
+                                  allowed.has(l.id_procedimento),
+                                );
+                                if (kept.length > 0) {
+                                  return kept.map((l) => {
+                                    const c = cat.find((x) => x.id === l.id_procedimento);
+                                    return c
+                                      ? {
+                                          ...l,
+                                          valor_aplicado: c.valor_total,
+                                        }
+                                      : l;
+                                  });
+                                }
+                                if (cat.length > 0) {
+                                  return [
+                                    {
+                                      id_procedimento: cat[0].id,
+                                      valor_aplicado: cat[0].valor_total,
+                                    },
+                                  ];
+                                }
+                                return [];
+                              });
+                            } catch {
+                              setErroModal(
+                                "Não foi possível carregar procedimentos do profissional.",
+                              );
+                            }
+                          })();
+                        }}
                         required
                       >
                         <option value="">Selecione...</option>
@@ -1738,6 +2071,59 @@ export function AgendaCalendario({ idEmpresa }: Props) {
                           Escolha um nome na lista ao buscar.
                         </small>
                       )}
+                      <label
+                        className="small font-weight-bold text-muted d-block mt-2 mb-1"
+                        htmlFor="agenda-paciente-whatsapp-tel"
+                      >
+                        WhatsApp
+                      </label>
+                      <div className="input-group input-group-sm">
+                        <div className="input-group-prepend">
+                          {pacienteSelecionado && urlWhatsPacienteSelecionado ? (
+                            <a
+                              className="btn btn-success"
+                              href={urlWhatsPacienteSelecionado}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              title="Conversar no WhatsApp"
+                              aria-label="Abrir WhatsApp do paciente"
+                            >
+                              <i className="fab fa-whatsapp" aria-hidden />
+                            </a>
+                          ) : (
+                            <button
+                              type="button"
+                              className="btn btn-outline-secondary"
+                              disabled
+                              title={
+                                idPaciente
+                                  ? "Cadastre o telefone do paciente em Pacientes"
+                                  : "Selecione um paciente"
+                              }
+                              aria-label="WhatsApp indisponível"
+                            >
+                              <i className="fab fa-whatsapp text-muted" aria-hidden />
+                            </button>
+                          )}
+                        </div>
+                        <input
+                          id="agenda-paciente-whatsapp-tel"
+                          type="text"
+                          className="form-control bg-light"
+                          readOnly
+                          tabIndex={-1}
+                          value={
+                            pacienteSelecionado
+                              ? formatarTelefoneExibir(pacienteSelecionado.telefone)
+                              : ""
+                          }
+                          placeholder={
+                            idPaciente
+                              ? "Sem telefone cadastrado"
+                              : "Selecione um paciente para ver o número"
+                          }
+                        />
+                      </div>
                     </div>
                   </div>
 
@@ -1818,6 +2204,7 @@ export function AgendaCalendario({ idEmpresa }: Props) {
                         onChange={(e) => setStatusAg(e.target.value)}
                       >
                         <option value="pendente">Pendente</option>
+                        <option value="confirmado">Confirmado</option>
                         <option value="em_andamento">Em andamento</option>
                         <option value="realizado">Realizado</option>
                         <option value="cancelado">Cancelado</option>
@@ -1918,111 +2305,121 @@ export function AgendaCalendario({ idEmpresa }: Props) {
                     </div>
                   ))}
 
-                  <hr />
-                  <div className="d-flex justify-content-between align-items-center mb-2">
-                    <strong>Pagamentos</strong>
-                    <button
-                      type="button"
-                      className="btn btn-sm btn-outline-primary"
-                      onClick={addPagLinha}
-                    >
-                      + Pagamento
-                    </button>
-                  </div>
-                  {pagamentos.map((linha, idx) => (
-                    <div key={idx} className="form-row align-items-end mb-2">
-                      <div className="form-group col-md-3">
-                        <label className="small">Forma</label>
-                        <select
-                          className="form-control form-control-sm"
-                          value={linha.id_forma_pagamento || ""}
-                          onChange={(e) => {
-                            const v = Number(e.target.value);
-                            setPagamentos((prev) =>
-                              prev.map((p, i) => (i === idx ? { ...p, id_forma_pagamento: v } : p)),
-                            );
-                          }}
-                        >
-                          {formasPg.map((f) => (
-                            <option key={f.id} value={f.id}>
-                              {f.nome}
-                            </option>
-                          ))}
-                        </select>
-                      </div>
-                      <div className="form-group col-md-3">
-                        <label className="small">Maquineta</label>
-                        <select
-                          className="form-control form-control-sm"
-                          value={linha.id_maquineta ?? ""}
-                          onChange={(e) => {
-                            const v = e.target.value;
-                            setPagamentos((prev) =>
-                              prev.map((p, i) =>
-                                i === idx
-                                  ? {
-                                      ...p,
-                                      id_maquineta: v === "" ? null : Number(v),
-                                    }
-                                  : p,
-                              ),
-                            );
-                          }}
-                        >
-                          <option value="">—</option>
-                          {maquinetas.map((m) => (
-                            <option key={m.id} value={m.id}>
-                              {m.nome}
-                            </option>
-                          ))}
-                        </select>
-                      </div>
-                      <div className="form-group col-md-2">
-                        <label className="small">Valor</label>
-                        <input
-                          type="number"
-                          step="0.01"
-                          min="0"
-                          className="form-control form-control-sm"
-                          value={linha.valor_pago}
-                          onChange={(e) => {
-                            const v = Number(e.target.value);
-                            setPagamentos((prev) =>
-                              prev.map((p, i) => (i === idx ? { ...p, valor_pago: v } : p)),
-                            );
-                          }}
-                        />
-                      </div>
-                      <div className="form-group col-md-3">
-                        <label className="small">Status</label>
-                        <select
-                          className="form-control form-control-sm"
-                          value={linha.status_pagamento}
-                          onChange={(e) => {
-                            const v = e.target.value as PagLinha["status_pagamento"];
-                            setPagamentos((prev) =>
-                              prev.map((p, i) => (i === idx ? { ...p, status_pagamento: v } : p)),
-                            );
-                          }}
-                        >
-                          <option value="pendente">Pendente</option>
-                          <option value="pago">Pago</option>
-                          <option value="estornado">Estornado</option>
-                        </select>
-                      </div>
-                      <div className="form-group col-md-1">
+                  {!ocultarSecaoPagamentosAgenda ? (
+                    <>
+                      <hr />
+                      <div className="d-flex justify-content-between align-items-center mb-2">
+                        <strong>Pagamentos</strong>
                         <button
                           type="button"
-                          className="btn btn-sm btn-outline-danger"
-                          onClick={() =>
-                            setPagamentos((prev) => prev.filter((_, i) => i !== idx))
-                          }
+                          className="btn btn-sm btn-outline-primary"
+                          onClick={addPagLinha}
                         >
-                          ×
+                          + Pagamento
                         </button>
                       </div>
-                    </div>
-                  ))}
+                      {pagamentos.map((linha, idx) => (
+                        <div key={idx} className="form-row align-items-end mb-2">
+                          <div className="form-group col-md-3">
+                            <label className="small">Forma</label>
+                            <select
+                              className="form-control form-control-sm"
+                              value={linha.id_forma_pagamento || ""}
+                              onChange={(e) => {
+                                const v = Number(e.target.value);
+                                setPagamentos((prev) =>
+                                  prev.map((p, i) =>
+                                    i === idx ? { ...p, id_forma_pagamento: v } : p,
+                                  ),
+                                );
+                              }}
+                            >
+                              {formasPg.map((f) => (
+                                <option key={f.id} value={f.id}>
+                                  {f.nome}
+                                </option>
+                              ))}
+                            </select>
+                          </div>
+                          <div className="form-group col-md-3">
+                            <label className="small">Maquineta</label>
+                            <select
+                              className="form-control form-control-sm"
+                              value={linha.id_maquineta ?? ""}
+                              onChange={(e) => {
+                                const v = e.target.value;
+                                setPagamentos((prev) =>
+                                  prev.map((p, i) =>
+                                    i === idx
+                                      ? {
+                                          ...p,
+                                          id_maquineta: v === "" ? null : Number(v),
+                                        }
+                                      : p,
+                                  ),
+                                );
+                              }}
+                            >
+                              <option value="">—</option>
+                              {maquinetas.map((m) => (
+                                <option key={m.id} value={m.id}>
+                                  {m.nome}
+                                </option>
+                              ))}
+                            </select>
+                          </div>
+                          <div className="form-group col-md-2">
+                            <label className="small">Valor</label>
+                            <input
+                              type="number"
+                              step="0.01"
+                              min="0"
+                              className="form-control form-control-sm"
+                              value={linha.valor_pago}
+                              onChange={(e) => {
+                                const v = Number(e.target.value);
+                                setPagamentos((prev) =>
+                                  prev.map((p, i) =>
+                                    i === idx ? { ...p, valor_pago: v } : p,
+                                  ),
+                                );
+                              }}
+                            />
+                          </div>
+                          <div className="form-group col-md-3">
+                            <label className="small">Status</label>
+                            <select
+                              className="form-control form-control-sm"
+                              value={linha.status_pagamento}
+                              onChange={(e) => {
+                                const v = e.target.value as PagLinha["status_pagamento"];
+                                setPagamentos((prev) =>
+                                  prev.map((p, i) =>
+                                    i === idx ? { ...p, status_pagamento: v } : p,
+                                  ),
+                                );
+                              }}
+                            >
+                              <option value="pendente">Pendente</option>
+                              <option value="pago">Pago</option>
+                              <option value="estornado">Estornado</option>
+                            </select>
+                          </div>
+                          <div className="form-group col-md-1">
+                            <button
+                              type="button"
+                              className="btn btn-sm btn-outline-danger"
+                              onClick={() =>
+                                setPagamentos((prev) => prev.filter((_, i) => i !== idx))
+                              }
+                            >
+                              ×
+                            </button>
+                          </div>
+                        </div>
+                      ))}
+                    </>
+                  ) : null}
                 </div>
                 <div className="modal-footer">
                   <button

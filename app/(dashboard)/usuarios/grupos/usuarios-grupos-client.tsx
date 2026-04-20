@@ -68,6 +68,9 @@ export function UsuariosGruposClient({ initialRows, loadError }: Props) {
   const [formModalOpen, setFormModalOpen] = useState(false);
   const [editing, setEditing] = useState<UsuarioGrupo | null>(null);
   const [nome, setNome] = useState("");
+  const [calendario, setCalendario] = useState(false);
+  const [agendaApenasColunaPropria, setAgendaApenasColunaPropria] =
+    useState(false);
   const [saving, setSaving] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
 
@@ -87,6 +90,8 @@ export function UsuariosGruposClient({ initialRows, loadError }: Props) {
   const openCreate = useCallback(() => {
     setEditing(null);
     setNome("");
+    setCalendario(false);
+    setAgendaApenasColunaPropria(false);
     setFormError(null);
     setFormModalOpen(true);
   }, []);
@@ -94,6 +99,8 @@ export function UsuariosGruposClient({ initialRows, loadError }: Props) {
   const openEdit = useCallback((row: UsuarioGrupo) => {
     setEditing(row);
     setNome(row.grupo_usuarios);
+    setCalendario(Boolean(row.calendario));
+    setAgendaApenasColunaPropria(Boolean(row.agenda_apenas_coluna_propria));
     setFormError(null);
     setFormModalOpen(true);
   }, []);
@@ -102,6 +109,8 @@ export function UsuariosGruposClient({ initialRows, loadError }: Props) {
     setFormModalOpen(false);
     setEditing(null);
     setNome("");
+    setCalendario(false);
+    setAgendaApenasColunaPropria(false);
     setFormError(null);
   }, []);
 
@@ -124,7 +133,11 @@ export function UsuariosGruposClient({ initialRows, loadError }: Props) {
         const res = await fetch(`/api/usuarios-grupos/${editing.id}`, {
           method: "PATCH",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ grupo_usuarios: trimmed }),
+          body: JSON.stringify({
+            grupo_usuarios: trimmed,
+            calendario,
+            agenda_apenas_coluna_propria: agendaApenasColunaPropria,
+          }),
         });
         const j = (await res.json().catch(() => ({}))) as { error?: string };
         if (!res.ok) throw new Error(j.error ?? "Erro ao atualizar.");
@@ -137,7 +150,11 @@ export function UsuariosGruposClient({ initialRows, loadError }: Props) {
         const res = await fetch("/api/usuarios-grupos", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ grupo_usuarios: trimmed }),
+          body: JSON.stringify({
+            grupo_usuarios: trimmed,
+            calendario,
+            agenda_apenas_coluna_propria: agendaApenasColunaPropria,
+          }),
         });
         const j = (await res.json().catch(() => ({}))) as { error?: string };
         if (!res.ok) throw new Error(j.error ?? "Erro ao cadastrar.");
@@ -240,6 +257,8 @@ export function UsuariosGruposClient({ initialRows, loadError }: Props) {
                 <th style={{ width: "72px" }}>ID</th>
                 <th>Nome do grupo</th>
                 <th style={{ width: "180px" }}>Atualizado em</th>
+                <th style={{ width: "120px" }}>Agenda completa</th>
+                <th style={{ width: "140px" }}>Só sua coluna</th>
                 <th style={{ width: "100px" }}>Status</th>
                 <th style={{ width: "260px" }} className="text-right">
                   Ações
@@ -249,7 +268,7 @@ export function UsuariosGruposClient({ initialRows, loadError }: Props) {
             <tbody>
               {rows.length === 0 ? (
                 <tr>
-                  <td colSpan={5} className="text-center text-muted py-4">
+                  <td colSpan={7} className="text-center text-muted py-4">
                     Nenhum grupo cadastrado.
                   </td>
                 </tr>
@@ -259,6 +278,20 @@ export function UsuariosGruposClient({ initialRows, loadError }: Props) {
                     <td>{row.id}</td>
                     <td>{row.grupo_usuarios}</td>
                     <td>{formatarData(row.data_atualizacao)}</td>
+                    <td>
+                      {row.calendario ? (
+                        <span className="badge badge-info">Sim</span>
+                      ) : (
+                        <span className="badge badge-light border">Não</span>
+                      )}
+                    </td>
+                    <td>
+                      {row.agenda_apenas_coluna_propria ? (
+                        <span className="badge badge-warning">Sim</span>
+                      ) : (
+                        <span className="badge badge-light border">Não</span>
+                      )}
+                    </td>
                     <td>
                       {row.ativo ? (
                         <span className="badge badge-success">Ativo</span>
@@ -346,6 +379,39 @@ export function UsuariosGruposClient({ initialRows, loadError }: Props) {
                       autoComplete="off"
                       required
                     />
+                  </div>
+                  <div className="form-group form-check">
+                    <input
+                      id="grupo-calendario-completo"
+                      type="checkbox"
+                      className="form-check-input"
+                      checked={calendario}
+                      onChange={(e) => setCalendario(e.target.checked)}
+                    />
+                    <label
+                      className="form-check-label"
+                      htmlFor="grupo-calendario-completo"
+                    >
+                      Ver todos os agendamentos da empresa (calendário completo)
+                    </label>
+                  </div>
+                  <div className="form-group form-check mb-0">
+                    <input
+                      id="grupo-agenda-so-coluna"
+                      type="checkbox"
+                      className="form-check-input"
+                      checked={agendaApenasColunaPropria}
+                      onChange={(e) =>
+                        setAgendaApenasColunaPropria(e.target.checked)
+                      }
+                    />
+                    <label
+                      className="form-check-label"
+                      htmlFor="grupo-agenda-so-coluna"
+                    >
+                      Na agenda, mostrar apenas a coluna do próprio usuário (e só
+                      seus agendamentos)
+                    </label>
                   </div>
                 </div>
                 <div className="modal-footer">

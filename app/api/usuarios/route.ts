@@ -24,7 +24,7 @@ export async function GET() {
   const { data, error } = await supabase
     .from("usuarios")
     .select(
-      "id, usuario, nome_completo, cpf, email, ativo, id_grupo_usuarios, usuarios_grupos:usuarios_grupos!usuarios_id_grupo_usuarios_fkey(id, grupo_usuarios)",
+      "id, usuario, nome_completo, cpf, email, ativo, id_grupo_usuarios, exibir_na_agenda, usuarios_grupos:usuarios_grupos!usuarios_id_grupo_usuarios_fkey(id, grupo_usuarios)",
     )
     .eq("id_empresa", empresaId)
     .order("usuario", { ascending: true });
@@ -56,6 +56,7 @@ export async function POST(request: Request) {
     email?: string | null;
     id_grupo_usuarios?: number;
     id_empresa?: number;
+    exibir_na_agenda?: boolean;
   };
   try {
     body = await request.json();
@@ -138,6 +139,9 @@ export async function POST(request: Request) {
     );
   }
 
+  const exibirNaAgenda =
+    typeof body.exibir_na_agenda === "boolean" ? body.exibir_na_agenda : false;
+
   const senhaHash = await bcrypt.hash(senha, 10);
   const { data, error } = await supabase
     .from("usuarios")
@@ -150,8 +154,9 @@ export async function POST(request: Request) {
       id_empresa: idEmpresaAlvo,
       id_grupo_usuarios: idGrupo,
       ativo: true,
+      exibir_na_agenda: exibirNaAgenda,
     })
-    .select("id, usuario, nome_completo, cpf, email, ativo, id_grupo_usuarios")
+    .select("id, usuario, nome_completo, cpf, email, ativo, id_grupo_usuarios, exibir_na_agenda")
     .single();
 
   if (error) {

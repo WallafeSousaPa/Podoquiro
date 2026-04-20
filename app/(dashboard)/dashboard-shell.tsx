@@ -50,13 +50,38 @@ function cx(...parts: (string | false | undefined | null)[]) {
   return parts.filter(Boolean).join(" ");
 }
 
+const ROTAS_LIBERADAS_SOMENTE_INICIO = ["/inicio", "/conta/senha"] as const;
+
+function rotaLiberadaParaGrupoSomenteInicio(pathname: string): boolean {
+  return ROTAS_LIBERADAS_SOMENTE_INICIO.some(
+    (r) => pathname === r || pathname.startsWith(`${r}/`),
+  );
+}
+
+/** Início, cadastro de pacientes, caixa e alterar senha. */
+function rotaLiberadaRecepcao(pathname: string): boolean {
+  if (pathname === "/inicio") return true;
+  if (pathname === "/conta/senha" || pathname.startsWith("/conta/senha/")) return true;
+  if (pathname === "/pacientes/cadastro" || pathname.startsWith("/pacientes/cadastro/"))
+    return true;
+  if (pathname === "/financeiro/caixa" || pathname.startsWith("/financeiro/caixa/"))
+    return true;
+  return false;
+}
+
 export function DashboardShell({
   nomeUsuario,
   nomeEmpresa,
+  somenteMenuInicio = false,
+  menuRecepcao = false,
   children,
 }: {
   nomeUsuario: string;
   nomeEmpresa: string;
+  /** Só exibe Início (calendário) — usuários do grupo Podólogo. */
+  somenteMenuInicio?: boolean;
+  /** Início, Pacientes › Cadastrar, Financeiro › Caixa — grupo Recepção. */
+  menuRecepcao?: boolean;
   children: ReactNode;
 }) {
   const router = useRouter();
@@ -97,6 +122,18 @@ export function DashboardShell({
       BODY_CLASSES.forEach((c) => document.body.classList.remove(c));
     };
   }, []);
+
+  useEffect(() => {
+    if (somenteMenuInicio) {
+      if (rotaLiberadaParaGrupoSomenteInicio(pathname)) return;
+      router.replace("/inicio");
+      return;
+    }
+    if (menuRecepcao) {
+      if (rotaLiberadaRecepcao(pathname)) return;
+      router.replace("/inicio");
+    }
+  }, [somenteMenuInicio, menuRecepcao, pathname, router]);
 
   useEffect(() => {
     if (loadingScripts.current) return;
@@ -202,6 +239,84 @@ export function DashboardShell({
                 </Link>
               </li>
 
+              {somenteMenuInicio ? null : menuRecepcao ? (
+                <>
+                  <li
+                    className={cx(
+                      "nav-item",
+                      "has-treeview",
+                      openPacientes && "menu-open",
+                    )}
+                  >
+                    <a
+                      href="#"
+                      className={cx("nav-link", isPacientes && "active")}
+                      onClick={(e) => {
+                        e.preventDefault();
+                        setOpenPacientes((v) => !v);
+                      }}
+                    >
+                      <i className="nav-icon fas fa-user-injured" />
+                      <p>
+                        Pacientes
+                        <i className="right fas fa-angle-left" />
+                      </p>
+                    </a>
+                    <ul className="nav nav-treeview">
+                      <li className="nav-item">
+                        <Link
+                          href="/pacientes/cadastro"
+                          className={cx(
+                            "nav-link",
+                            pathname === "/pacientes/cadastro" && "active",
+                          )}
+                        >
+                          <i className="far fa-circle nav-icon" />
+                          <p>Cadastrar</p>
+                        </Link>
+                      </li>
+                    </ul>
+                  </li>
+
+                  <li
+                    className={cx(
+                      "nav-item",
+                      "has-treeview",
+                      openFinanceiro && "menu-open",
+                    )}
+                  >
+                    <a
+                      href="#"
+                      className={cx("nav-link", isFinanceiro && "active")}
+                      onClick={(e) => {
+                        e.preventDefault();
+                        setOpenFinanceiro((v) => !v);
+                      }}
+                    >
+                      <i className="nav-icon fas fa-coins" />
+                      <p>
+                        Financeiro
+                        <i className="right fas fa-angle-left" />
+                      </p>
+                    </a>
+                    <ul className="nav nav-treeview">
+                      <li className="nav-item">
+                        <Link
+                          href="/financeiro/caixa"
+                          className={cx(
+                            "nav-link",
+                            pathname === "/financeiro/caixa" && "active",
+                          )}
+                        >
+                          <i className="far fa-circle nav-icon" />
+                          <p>Caixa</p>
+                        </Link>
+                      </li>
+                    </ul>
+                  </li>
+                </>
+              ) : (
+                <>
               <li
                 className={cx(
                   "nav-item",
@@ -246,6 +361,18 @@ export function DashboardShell({
                     >
                       <i className="far fa-circle nav-icon" />
                       <p>Grupo de usuários</p>
+                    </Link>
+                  </li>
+                  <li className="nav-item">
+                    <Link
+                      href="/usuarios/colaboradores"
+                      className={cx(
+                        "nav-link",
+                        pathname === "/usuarios/colaboradores" && "active",
+                      )}
+                    >
+                      <i className="far fa-circle nav-icon" />
+                      <p>Colaboradores</p>
                     </Link>
                   </li>
                 </ul>
@@ -347,6 +474,18 @@ export function DashboardShell({
                   </p>
                 </a>
                 <ul className="nav nav-treeview">
+                  <li className="nav-item">
+                    <Link
+                      href="/financeiro/caixa"
+                      className={cx(
+                        "nav-link",
+                        pathname === "/financeiro/caixa" && "active",
+                      )}
+                    >
+                      <i className="far fa-circle nav-icon" />
+                      <p>Caixa</p>
+                    </Link>
+                  </li>
                   <li
                     className={cx(
                       "nav-item",
@@ -460,6 +599,8 @@ export function DashboardShell({
                   </li>
                 </ul>
               </li>
+                </>
+              )}
             </ul>
           </nav>
         </div>

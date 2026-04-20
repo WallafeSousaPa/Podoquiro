@@ -1,0 +1,13 @@
+.caixa-paciente-link {
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.caixa-paciente-link:hover {
+  text-decoration: underline;
+}
+
+.modal-caixa-ag .modal-body {
+  max-height: min(70vh, 640px);
+  overflow-y: auto;
+}

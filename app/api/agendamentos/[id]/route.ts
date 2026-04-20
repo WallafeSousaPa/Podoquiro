@@ -2,12 +2,20 @@ import { NextResponse } from "next/server";
 import { calcularValorTotal } from "@/lib/agenda/totais";
 import { resolveGruposCalendario } from "@/lib/agenda/grupos-calendario";
 import {
+  getPodeVerTodosAgendamentos,
+  getUsuarioAgendaSomentePropriaColuna,
+  profissionalPodeNaAgenda,
+} from "@/lib/agenda/permissoes-calendario";
+import { validarProcedimentosDoColaborador } from "@/lib/colaborador-procedimentos";
+import {
   MSG_CONFLITO_PROFISSIONAL,
   MSG_HORARIO_RETROATIVO,
   MSG_PROCEDIMENTO_DUPLICADO,
   haConflitoAgendaProfissional,
   inicioEhRetroativo,
 } from "@/lib/agenda/validacao-agendamento";
+import { dataReferenciaBrasilia } from "@/lib/financeiro/data-referencia-brasilia";
+import { obterSituacaoCaixaDia } from "@/lib/financeiro/caixa-situacao-dia";
 import { getSession } from "@/lib/auth/session";
 import { createAdminClient } from "@/lib/supabase/admin";
 
@@ -18,6 +26,7 @@ function parseEmpresaId(idEmpresa: string) {
 
 const AGENDAMENTO_STATUS = [
   "pendente",
+  "confirmado",
   "em_andamento",
   "realizado",
   "cancelado",
@@ -48,6 +57,11 @@ export async function GET(_request: Request, context: RouteContext) {
     return NextResponse.json({ error: "Empresa inválida." }, { status: 400 });
   }
 
+  const sessionUserId = Number(session.sub);
+  if (!Number.isFinite(sessionUserId) || sessionUserId <= 0) {
+    return NextResponse.json({ error: "Sessão inválida." }, { status: 400 });
+  }
+
   const { id: idParam } = await context.params;
   const id = Number(idParam);
   if (!Number.isFinite(id) || id <= 0) {
@@ -55,6 +69,10 @@ export async function GET(_request: Request, context: RouteContext) {
   }
 
   const supabase = createAdminClient();
+  const [podeVerTodosGet, somentePropriaColunaGet] = await Promise.all([
+    getPodeVerTodosAgendamentos(supabase, sessionUserId),
+    getUsuarioAgendaSomentePropriaColuna(supabase, sessionUserId),
+  ]);
   const { data: row, error } = await supabase
     .from("agendamentos")
     .select(
@@ -71,18 +89,46 @@ export async function GET(_request: Request, context: RouteContext) {
   if (!row) {
     return NextResponse.json({ error: "Agendamento não encontrado." }, { status: 404 });
   }
+  if (
+    (!podeVerTodosGet || somentePropriaColunaGet) &&
+    (row.id_usuario as number) !== sessionUserId
+  ) {
+    return NextResponse.json({ error: "Não autorizado." }, { status: 403 });
+  }
 
   const { data: procs } = await supabase
     .from("agendamento_procedimentos")
     .select("id, id_procedimento, valor_aplicado")
     .eq("id_agendamento", id);
 
-  const { data: pags } = await supabase
-    .from("pagamentos")
-    .select(
-      "id, id_forma_pagamento, id_maquineta, valor_pago, status_pagamento",
-    )
-    .eq("id_agendamento", id);
+  let pagamentosRes: {
+    id: number;
+    id_forma_pagamento: number;
+    id_maquineta: number | null;
+    valor_pago: number;
+    status_pagamento: string;
+  }[] = [];
+
+  if (!somentePropriaColunaGet) {
+    const { data: pags } = await supabase
+      .from("pagamentos")
+      .select(
+        "id, id_forma_pagamento, id_maquineta, valor_pago, status_pagamento",
+      )
+      .eq("id_agendamento", id);
+    pagamentosRes = (pags ?? []).map((p) => ({
+      id: p.id as number,
+      id_forma_pagamento: p.id_forma_pagamento as number,
+      id_maquineta: p.id_maquineta as number | null,
+      valor_pago: Number(p.valor_pago),
+      status_pagamento: p.status_pagamento as string,
+    }));
+  }
+
+  const idUsuarioAg = row.id_usuario as number;
+  const podeEditarProcPag =
+    !somentePropriaColunaGet &&
+    (podeVerTodosGet || idUsuarioAg === sessionUserId);
 
   return NextResponse.json({
     data: {
@@ -95,13 +141,9 @@ export async function GET(_request: Request, context: RouteContext) {
         id_procedimento: p.id_procedimento,
         valor_aplicado: Number(p.valor_aplicado),
       })),
-      pagamentos: (pags ?? []).map((p) => ({
-        id: p.id,
-        id_forma_pagamento: p.id_forma_pagamento,
-        id_maquineta: p.id_maquineta,
-        valor_pago: Number(p.valor_pago),
-        status_pagamento: p.status_pagamento,
-      })),
+      pagamentos: pagamentosRes,
+      permite_editar_procedimentos_e_pagamentos: podeEditarProcPag,
+      pagamentos_nao_carregados_por_perfil: somentePropriaColunaGet,
     },
   });
 }
@@ -115,6 +157,11 @@ export async function PATCH(request: Request, context: RouteContext) {
   const empresaId = parseEmpresaId(session.idEmpresa);
   if (!empresaId) {
     return NextResponse.json({ error: "Empresa inválida." }, { status: 400 });
+  }
+
+  const sessionUserId = Number(session.sub);
+  if (!Number.isFinite(sessionUserId) || sessionUserId <= 0) {
+    return NextResponse.json({ error: "Sessão inválida." }, { status: 400 });
   }
 
   const { id: idParam } = await context.params;
@@ -149,6 +196,53 @@ export async function PATCH(request: Request, context: RouteContext) {
     return NextResponse.json({ error: "Agendamento não encontrado." }, { status: 404 });
   }
 
+  const [podeVerTodos, somentePropriaColuna] = await Promise.all([
+    getPodeVerTodosAgendamentos(supabase, sessionUserId),
+    getUsuarioAgendaSomentePropriaColuna(supabase, sessionUserId),
+  ]);
+  if (
+    (!podeVerTodos || somentePropriaColuna) &&
+    (existente.id_usuario as number) !== sessionUserId
+  ) {
+    return NextResponse.json(
+      { error: "Sem permissão para alterar este agendamento." },
+      { status: 403 },
+    );
+  }
+
+  if (somentePropriaColuna) {
+    const chaves = Object.keys(body);
+    const soStatus =
+      chaves.length === 0 ||
+      (chaves.length === 1 && chaves[0] === "status");
+    if (!soStatus) {
+      return NextResponse.json(
+        {
+          error:
+            "Seu perfil só pode alterar o status (ex.: Pendente ou Confirmado → Em andamento).",
+        },
+        { status: 403 },
+      );
+    }
+    if (typeof body.status === "string") {
+      const atual = String(existente.status);
+      const novo = body.status;
+      const transicaoPermitidaPodologo =
+        (atual === "pendente" && novo === "em_andamento") ||
+        (atual === "pendente" && novo === "confirmado") ||
+        (atual === "confirmado" && novo === "em_andamento");
+      if (novo !== atual && !transicaoPermitidaPodologo) {
+        return NextResponse.json(
+          {
+            error:
+              "Apenas é permitido: Pendente → Confirmado, Pendente → Em andamento ou Confirmado → Em andamento.",
+          },
+          { status: 403 },
+        );
+      }
+    }
+  }
+
   const patch: Record<string, unknown> = {};
 
   if (typeof body.id_usuario !== "undefined") {
@@ -156,16 +250,16 @@ export async function PATCH(request: Request, context: RouteContext) {
     if (!Number.isFinite(idUsuario) || idUsuario <= 0) {
       return NextResponse.json({ error: "Profissional inválido." }, { status: 400 });
     }
-    const { ids: grupoIds } = await resolveGruposCalendario(supabase, empresaId);
-    if (grupoIds.length === 0) {
+    if ((!podeVerTodos || somentePropriaColuna) && idUsuario !== sessionUserId) {
       return NextResponse.json(
-        { error: "Nenhum grupo disponível para a agenda." },
-        { status: 400 },
+        { error: "Sem permissão para transferir o agendamento a outro profissional." },
+        { status: 403 },
       );
     }
+    const { ids: grupoIds } = await resolveGruposCalendario(supabase, empresaId);
     const { data: uRow, error: uErr } = await supabase
       .from("usuarios")
-      .select("id_empresa, id_grupo_usuarios, ativo")
+      .select("id_empresa, id_grupo_usuarios, ativo, exibir_na_agenda")
       .eq("id", idUsuario)
       .maybeSingle();
     if (uErr) {
@@ -175,11 +269,17 @@ export async function PATCH(request: Request, context: RouteContext) {
     if (!uRow || (uRow.id_empresa as number) !== empresaId || !uRow.ativo) {
       return NextResponse.json({ error: "Profissional inválido." }, { status: 400 });
     }
-    if (!grupoIds.includes(uRow.id_grupo_usuarios as number)) {
+    if (
+      !profissionalPodeNaAgenda(
+        grupoIds,
+        uRow.id_grupo_usuarios as number,
+        Boolean(uRow.exibir_na_agenda),
+      )
+    ) {
       return NextResponse.json(
         {
           error:
-            "O profissional não pertence aos grupos exibidos na agenda.",
+            "O profissional não está habilitado na agenda. Marque \"Exibir na agenda\" no usuário ou ajuste a parametrização dos grupos.",
         },
         { status: 400 },
       );
@@ -256,6 +356,52 @@ export async function PATCH(request: Request, context: RouteContext) {
   const idUsuarioFinal = (typeof patch.id_usuario !== "undefined"
     ? patch.id_usuario
     : existente.id_usuario) as number;
+
+  let idsProcColaborador: number[] = [];
+  if (Object.prototype.hasOwnProperty.call(body, "procedimentos")) {
+    const arr = body.procedimentos;
+    if (Array.isArray(arr) && arr.length > 0) {
+      for (const p of arr) {
+        if (!p || typeof p !== "object") continue;
+        const ip = Number((p as { id_procedimento?: unknown }).id_procedimento);
+        if (Number.isFinite(ip) && ip > 0) idsProcColaborador.push(ip);
+      }
+      idsProcColaborador = [...new Set(idsProcColaborador)];
+    }
+  } else {
+    const { data: apRows, error: apErr } = await supabase
+      .from("agendamento_procedimentos")
+      .select("id_procedimento")
+      .eq("id_agendamento", id);
+    if (apErr) {
+      console.error(apErr);
+      return NextResponse.json({ error: apErr.message }, { status: 500 });
+    }
+    idsProcColaborador = (apRows ?? []).map((r) => r.id_procedimento as number);
+  }
+
+  if (idsProcColaborador.length > 0) {
+    try {
+      const vCol = await validarProcedimentosDoColaborador(
+        supabase,
+        idUsuarioFinal,
+        empresaId,
+        idsProcColaborador,
+      );
+      if (!vCol.ok) {
+        return NextResponse.json({ error: vCol.message }, { status: 400 });
+      }
+    } catch (e) {
+      console.error(e);
+      return NextResponse.json(
+        {
+          error:
+            e instanceof Error ? e.message : "Erro ao validar procedimentos.",
+        },
+        { status: 500 },
+      );
+    }
+  }
 
   try {
     const conflito = await haConflitoAgendaProfissional(supabase, {
@@ -388,8 +534,59 @@ export async function PATCH(request: Request, context: RouteContext) {
     patch.valor_total = calcularValorTotal(valorBruto, desconto);
   }
 
-  const trocaPagamentos = Object.prototype.hasOwnProperty.call(body, "pagamentos");
+  const trocaPagamentos =
+    Object.prototype.hasOwnProperty.call(body, "pagamentos") &&
+    !somentePropriaColuna;
   if (trocaPagamentos) {
+    if (String(existente.status) !== "realizado") {
+      return NextResponse.json(
+        {
+          error:
+            "Só é possível alterar pagamentos com o agendamento concluído (status Realizado).",
+        },
+        { status: 400 },
+      );
+    }
+
+    const dataRefCaixa = dataReferenciaBrasilia(String(existente.data_hora_inicio));
+    if (!dataRefCaixa) {
+      return NextResponse.json(
+        { error: "Data de início do agendamento inválida." },
+        { status: 400 },
+      );
+    }
+    let situacaoCaixa;
+    try {
+      situacaoCaixa = await obterSituacaoCaixaDia(supabase, empresaId, dataRefCaixa);
+    } catch (e) {
+      return NextResponse.json(
+        {
+          error: e instanceof Error ? e.message : "Erro ao verificar o caixa.",
+        },
+        { status: 500 },
+      );
+    }
+    if (situacaoCaixa.tem_fechamento) {
+      const resp = situacaoCaixa.nome_responsavel_fechamento;
+      return NextResponse.json(
+        {
+          error: resp
+            ? `O caixa do dia já está fechado. Não é possível registrar pagamentos. Contate ${resp} ou o responsável pelo caixa.`
+            : "O caixa do dia já está fechado. Não é possível registrar pagamentos. Contate o responsável pelo caixa.",
+        },
+        { status: 400 },
+      );
+    }
+    if (!situacaoCaixa.tem_abertura) {
+      return NextResponse.json(
+        {
+          error:
+            "Abra o caixa do dia em Financeiro → Caixa antes de registrar pagamentos.",
+        },
+        { status: 400 },
+      );
+    }
+
     const arr = body.pagamentos;
     if (!Array.isArray(arr)) {
       return NextResponse.json({ error: "pagamentos deve ser um array." }, { status: 400 });
@@ -437,6 +634,18 @@ export async function PATCH(request: Request, context: RouteContext) {
         valor_pago: Math.round(vp * 100) / 100,
         status_pagamento: st,
       });
+    }
+
+    const valorTotalEsperado = calcularValorTotal(valorBruto, desconto);
+    const somaPagamentos =
+      Math.round(pagamentos.reduce((s, p) => s + p.valor_pago, 0) * 100) / 100;
+    if (Math.abs(somaPagamentos - valorTotalEsperado) > 0.02) {
+      return NextResponse.json(
+        {
+          error: `A soma dos pagamentos (${somaPagamentos.toFixed(2).replace(".", ",")}) deve ser igual ao total do agendamento (${valorTotalEsperado.toFixed(2).replace(".", ",")}), com base na soma dos procedimentos${desconto > 0 ? ` e no desconto de ${desconto}%` : ""}.`,
+        },
+        { status: 400 },
+      );
     }
 
     if (pagamentos.length > 0) {

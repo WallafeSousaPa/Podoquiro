@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { idsProcedimentosLiberadosColaborador } from "@/lib/colaborador-procedimentos";
 import { getSession } from "@/lib/auth/session";
 import { createAdminClient } from "@/lib/supabase/admin";
 
@@ -35,7 +36,7 @@ function parsePercent(v: unknown): number | null {
   return null;
 }
 
-export async function GET() {
+export async function GET(request: Request) {
   const session = await getSession();
   if (!session) {
     return NextResponse.json({ error: "Não autorizado." }, { status: 401 });
@@ -46,7 +47,62 @@ export async function GET() {
     return NextResponse.json({ error: "Empresa inválida." }, { status: 400 });
   }
 
+  const idUsuarioParam = new URL(request.url).searchParams.get("id_usuario");
   const supabase = createAdminClient();
+
+  if (idUsuarioParam != null && idUsuarioParam.trim() !== "") {
+    const idUsuario = Number(idUsuarioParam);
+    if (!Number.isFinite(idUsuario) || idUsuario <= 0) {
+      return NextResponse.json({ error: "id_usuario inválido." }, { status: 400 });
+    }
+    const { data: uRow, error: uErr } = await supabase
+      .from("usuarios")
+      .select("id, id_empresa")
+      .eq("id", idUsuario)
+      .maybeSingle();
+    if (uErr) {
+      console.error(uErr);
+      return NextResponse.json({ error: uErr.message }, { status: 500 });
+    }
+    if (!uRow || (uRow.id_empresa as number) !== empresaId) {
+      return NextResponse.json({ error: "Usuário inválido." }, { status: 400 });
+    }
+
+    let permitidos: Set<number>;
+    try {
+      permitidos = await idsProcedimentosLiberadosColaborador(
+        supabase,
+        idUsuario,
+        empresaId,
+      );
+    } catch (e) {
+      console.error(e);
+      return NextResponse.json(
+        { error: e instanceof Error ? e.message : "Erro ao carregar vínculos." },
+        { status: 500 },
+      );
+    }
+    if (permitidos.size === 0) {
+      return NextResponse.json({ data: [] });
+    }
+
+    const { data, error } = await supabase
+      .from("procedimentos")
+      .select(
+        "id, procedimento, custo_base, margem_lucro, taxas_impostos, valor_total, ativo, ultima_atualizacao",
+      )
+      .eq("id_empresa", empresaId)
+      .eq("ativo", true)
+      .in("id", [...permitidos])
+      .order("procedimento", { ascending: true });
+
+    if (error) {
+      console.error(error);
+      return NextResponse.json({ error: error.message }, { status: 500 });
+    }
+    return NextResponse.json({ data: data ?? [] });
+  }
+
   const { data, error } = await supabase
     .from("procedimentos")
     .select(

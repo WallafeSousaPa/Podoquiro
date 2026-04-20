@@ -9,11 +9,8 @@ export default async function InicioPage() {
     redirect("/login");
   }
 
-  const { nomeCompleto, nomeEmpresaComId } = await getNomesSaudacao(
-    session.sub,
-    session.usuario,
-    session.idEmpresa,
-  );
+  const { nomeCompleto, nomeEmpresaComId, nomeEmpresaCurto, somenteMenuInicio } =
+    await getNomesSaudacao(session.sub, session.usuario, session.idEmpresa);
 
   return (
     <>
@@ -42,7 +39,11 @@ export default async function InicioPage() {
               <p className="text-muted small mb-3">
                 Olá, <strong>{nomeCompleto}</strong> — <strong>{nomeEmpresaComId}</strong>.
               </p>
-              <AgendaCalendario idEmpresa={session.idEmpresa} />
+              <AgendaCalendario
+                idEmpresa={session.idEmpresa}
+                nomeEmpresa={nomeEmpresaCurto}
+                somenteMenuInicio={somenteMenuInicio}
+              />
             </div>
           </div>
         </div>

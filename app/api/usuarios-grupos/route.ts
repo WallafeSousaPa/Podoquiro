@@ -11,7 +11,9 @@ export async function GET() {
   const supabase = createAdminClient();
   const { data, error } = await supabase
     .from("usuarios_grupos")
-    .select("id, grupo_usuarios, data_atualizacao, ativo")
+    .select(
+      "id, grupo_usuarios, data_atualizacao, ativo, calendario, agenda_apenas_coluna_propria",
+    )
     .order("grupo_usuarios", { ascending: true });
 
   if (error) {
@@ -28,7 +30,11 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Não autorizado." }, { status: 401 });
   }
 
-  let body: { grupo_usuarios?: string };
+  let body: {
+    grupo_usuarios?: string;
+    calendario?: boolean;
+    agenda_apenas_coluna_propria?: boolean;
+  };
   try {
     body = await request.json();
   } catch {
@@ -42,12 +48,24 @@ export async function POST(request: Request) {
       { status: 400 },
     );
   }
+  const calendario =
+    typeof body.calendario === "boolean" ? body.calendario : false;
+  const agendaApenasColunaPropria =
+    typeof body.agenda_apenas_coluna_propria === "boolean"
+      ? body.agenda_apenas_coluna_propria
+      : false;
 
   const supabase = createAdminClient();
   const { data, error } = await supabase
     .from("usuarios_grupos")
-    .insert({ grupo_usuarios: nome })
-    .select("id, grupo_usuarios, data_atualizacao, ativo")
+    .insert({
+      grupo_usuarios: nome,
+      calendario,
+      agenda_apenas_coluna_propria: agendaApenasColunaPropria,
+    })
+    .select(
+      "id, grupo_usuarios, data_atualizacao, ativo, calendario, agenda_apenas_coluna_propria",
+    )
     .single();
 
   if (error) {
