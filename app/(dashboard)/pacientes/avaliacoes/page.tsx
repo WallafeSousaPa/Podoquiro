@@ -61,7 +61,6 @@ export default async function PacientesAvaliacoesPage() {
       nome: nomeExibicaoPaciente({
         nome_completo: p.nome_completo as string | null,
         nome_social: p.nome_social as string | null,
-        telefone: p.telefone as string | null,
       }),
     }));
     responsaveis = (usuariosRes.data ?? []).map((u) => ({
