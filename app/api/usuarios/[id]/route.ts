@@ -4,6 +4,8 @@ import { getSession } from "@/lib/auth/session";
 import { isCpfLengthOk, normalizeCpfDigits } from "@/lib/pacientes";
 import { createAdminClient } from "@/lib/supabase/admin";
 
+const HEX_COR_RE = /^#[0-9A-Fa-f]{6}$/;
+
 type RouteContext = { params: Promise<{ id: string }> };
 
 function parseEmpresaId(idEmpresa: string) {
@@ -38,6 +40,7 @@ export async function PATCH(request: Request, context: RouteContext) {
     id_empresa?: number;
     ativo?: boolean;
     exibir_na_agenda?: boolean;
+    card_cor?: string | null;
   };
   try {
     body = await request.json();
@@ -87,6 +90,22 @@ export async function PATCH(request: Request, context: RouteContext) {
   }
   if (typeof body.exibir_na_agenda === "boolean") {
     patch.exibir_na_agenda = body.exibir_na_agenda;
+  }
+  if (typeof body.card_cor !== "undefined") {
+    if (body.card_cor === null) {
+      patch.card_cor = null;
+    } else if (typeof body.card_cor === "string") {
+      const cardCor = body.card_cor.trim().toUpperCase();
+      if (cardCor !== "" && !HEX_COR_RE.test(cardCor)) {
+        return NextResponse.json(
+          { error: "A cor do card deve estar no formato HEX #RRGGBB." },
+          { status: 400 },
+        );
+      }
+      patch.card_cor = cardCor === "" ? null : cardCor;
+    } else {
+      return NextResponse.json({ error: "Cor do card inválida." }, { status: 400 });
+    }
   }
   if (typeof body.id_grupo_usuarios !== "undefined") {
     const idGrupo = Number(body.id_grupo_usuarios);
@@ -177,7 +196,9 @@ export async function PATCH(request: Request, context: RouteContext) {
     .from("usuarios")
     .update(patch)
     .eq("id", id)
-    .select("id, usuario, nome_completo, cpf, email, ativo, id_grupo_usuarios, id_empresa, exibir_na_agenda")
+    .select(
+      "id, usuario, nome_completo, cpf, email, ativo, id_grupo_usuarios, id_empresa, exibir_na_agenda, card_cor",
+    )
     .maybeSingle();
 
   if (error) {

@@ -64,6 +64,8 @@ function rotaLiberadaRecepcao(pathname: string): boolean {
   if (pathname === "/conta/senha" || pathname.startsWith("/conta/senha/")) return true;
   if (pathname === "/pacientes/cadastro" || pathname.startsWith("/pacientes/cadastro/"))
     return true;
+  if (pathname === "/pacientes/avaliacoes" || pathname.startsWith("/pacientes/avaliacoes/"))
+    return true;
   if (pathname === "/financeiro/caixa" || pathname.startsWith("/financeiro/caixa/"))
     return true;
   return false;
@@ -275,6 +277,18 @@ export function DashboardShell({
                           <p>Cadastrar</p>
                         </Link>
                       </li>
+                      <li className="nav-item">
+                        <Link
+                          href="/pacientes/avaliacoes"
+                          className={cx(
+                            "nav-link",
+                            pathname === "/pacientes/avaliacoes" && "active",
+                          )}
+                        >
+                          <i className="far fa-circle nav-icon" />
+                          <p>Avaliações</p>
+                        </Link>
+                      </li>
                     </ul>
                   </li>
 
@@ -410,6 +424,18 @@ export function DashboardShell({
                     >
                       <i className="far fa-circle nav-icon" />
                       <p>Cadastrar</p>
+                    </Link>
+                  </li>
+                  <li className="nav-item">
+                    <Link
+                      href="/pacientes/avaliacoes"
+                      className={cx(
+                        "nav-link",
+                        pathname === "/pacientes/avaliacoes" && "active",
+                      )}
+                    >
+                      <i className="far fa-circle nav-icon" />
+                      <p>Avaliações</p>
                     </Link>
                   </li>
                 </ul>

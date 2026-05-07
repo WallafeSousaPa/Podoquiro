@@ -23,6 +23,7 @@ type UsuarioRaw = {
   id_grupo_usuarios: number;
   id_empresa: number;
   exibir_na_agenda: boolean;
+  card_cor: string | null;
   usuarios_grupos:
     | { id: number; grupo_usuarios: string }
     | { id: number; grupo_usuarios: string }[]
@@ -65,7 +66,7 @@ export default async function UsuariosCadastroPage() {
       supabase
         .from("usuarios")
         .select(
-          "id, usuario, nome_completo, cpf, email, ativo, id_grupo_usuarios, id_empresa, exibir_na_agenda, usuarios_grupos:usuarios_grupos!usuarios_id_grupo_usuarios_fkey(id, grupo_usuarios)",
+          "id, usuario, nome_completo, cpf, email, ativo, id_grupo_usuarios, id_empresa, exibir_na_agenda, card_cor, usuarios_grupos:usuarios_grupos!usuarios_id_grupo_usuarios_fkey(id, grupo_usuarios)",
         )
         .eq("id_empresa", empresaId)
         .order("usuario", { ascending: true }),
@@ -95,6 +96,7 @@ export default async function UsuariosCadastroPage() {
     id_grupo_usuarios: u.id_grupo_usuarios,
     id_empresa: u.id_empresa,
     exibir_na_agenda: Boolean(u.exibir_na_agenda),
+    card_cor: u.card_cor,
     nome_empresa: nomeEmpresaPorId.get(u.id_empresa) ?? null,
     grupo_usuarios: Array.isArray(u.usuarios_grupos)
       ? (u.usuarios_grupos[0]?.grupo_usuarios ?? null)

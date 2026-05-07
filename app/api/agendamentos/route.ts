@@ -132,31 +132,32 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: MSG_HORARIO_RETROATIVO }, { status: 400 });
   }
 
-  if (!Array.isArray(body.procedimentos) || body.procedimentos.length === 0) {
-    return NextResponse.json(
-      { error: "Informe ao menos um procedimento." },
-      { status: 400 },
-    );
-  }
-
   const procedimentos: { id_procedimento: number; valor_aplicado: number }[] = [];
-  for (const p of body.procedimentos) {
-    if (!p || typeof p !== "object") {
-      return NextResponse.json({ error: "Procedimento inválido." }, { status: 400 });
-    }
-    const o = p as { id_procedimento?: unknown; valor_aplicado?: unknown };
-    const ip = Number(o.id_procedimento);
-    const va = Number(o.valor_aplicado);
-    if (!Number.isFinite(ip) || ip <= 0) {
-      return NextResponse.json({ error: "Procedimento inválido." }, { status: 400 });
-    }
-    if (!Number.isFinite(va) || va < 0) {
+  if (body.procedimentos !== undefined && body.procedimentos !== null) {
+    if (!Array.isArray(body.procedimentos)) {
       return NextResponse.json(
-        { error: "Valor aplicado inválido." },
+        { error: "procedimentos deve ser um array." },
         { status: 400 },
       );
     }
-    procedimentos.push({ id_procedimento: ip, valor_aplicado: Math.round(va * 100) / 100 });
+    for (const p of body.procedimentos) {
+      if (!p || typeof p !== "object") {
+        return NextResponse.json({ error: "Procedimento inválido." }, { status: 400 });
+      }
+      const o = p as { id_procedimento?: unknown; valor_aplicado?: unknown };
+      const ip = Number(o.id_procedimento);
+      const va = Number(o.valor_aplicado);
+      if (!Number.isFinite(ip) || ip <= 0) {
+        return NextResponse.json({ error: "Procedimento inválido." }, { status: 400 });
+      }
+      if (!Number.isFinite(va) || va < 0) {
+        return NextResponse.json(
+          { error: "Valor aplicado inválido." },
+          { status: 400 },
+        );
+      }
+      procedimentos.push({ id_procedimento: ip, valor_aplicado: Math.round(va * 100) / 100 });
+    }
   }
 
   if (new Set(procedimentos.map((p) => p.id_procedimento)).size !== procedimentos.length) {
@@ -289,40 +290,42 @@ export async function POST(request: Request) {
   }
 
   const procIds = [...new Set(procedimentos.map((p) => p.id_procedimento))];
-  const { data: procRows, error: procErr } = await supabase
-    .from("procedimentos")
-    .select("id, id_empresa")
-    .in("id", procIds);
-  if (procErr) {
-    console.error(procErr);
-    return NextResponse.json({ error: procErr.message }, { status: 500 });
-  }
-  const procOk = new Map((procRows ?? []).map((r) => [r.id as number, r.id_empresa as number]));
-  for (const pid of procIds) {
-    if (procOk.get(pid) !== empresaId) {
+  if (procIds.length > 0) {
+    const { data: procRows, error: procErr } = await supabase
+      .from("procedimentos")
+      .select("id, id_empresa")
+      .in("id", procIds);
+    if (procErr) {
+      console.error(procErr);
+      return NextResponse.json({ error: procErr.message }, { status: 500 });
+    }
+    const procOk = new Map((procRows ?? []).map((r) => [r.id as number, r.id_empresa as number]));
+    for (const pid of procIds) {
+      if (procOk.get(pid) !== empresaId) {
+        return NextResponse.json(
+          { error: "Procedimento inválido para esta empresa." },
+          { status: 400 },
+        );
+      }
+    }
+
+    try {
+      const vCol = await validarProcedimentosDoColaborador(
+        supabase,
+        idUsuario,
+        empresaId,
+        procIds,
+      );
+      if (!vCol.ok) {
+        return NextResponse.json({ error: vCol.message }, { status: 400 });
+      }
+    } catch (e) {
+      console.error(e);
       return NextResponse.json(
-        { error: "Procedimento inválido para esta empresa." },
-        { status: 400 },
+        { error: e instanceof Error ? e.message : "Erro ao validar procedimentos." },
+        { status: 500 },
       );
     }
-  }
-
-  try {
-    const vCol = await validarProcedimentosDoColaborador(
-      supabase,
-      idUsuario,
-      empresaId,
-      procIds,
-    );
-    if (!vCol.ok) {
-      return NextResponse.json({ error: vCol.message }, { status: 400 });
-    }
-  } catch (e) {
-    console.error(e);
-    return NextResponse.json(
-      { error: e instanceof Error ? e.message : "Erro ao validar procedimentos." },
-      { status: 500 },
-    );
   }
 
   try {
@@ -410,21 +413,23 @@ export async function POST(request: Request) {
 
   const idAgendamento = insAg.id as number;
 
-  const { error: apErr } = await supabase.from("agendamento_procedimentos").insert(
-    procedimentos.map((p) => ({
-      id_agendamento: idAgendamento,
-      id_procedimento: p.id_procedimento,
-      valor_aplicado: p.valor_aplicado,
-    })),
-  );
+  if (procedimentos.length > 0) {
+    const { error: apErr } = await supabase.from("agendamento_procedimentos").insert(
+      procedimentos.map((p) => ({
+        id_agendamento: idAgendamento,
+        id_procedimento: p.id_procedimento,
+        valor_aplicado: p.valor_aplicado,
+      })),
+    );
 
-  if (apErr) {
-    console.error(apErr);
-    await supabase.from("agendamentos").delete().eq("id", idAgendamento);
-    if (apErr.code === "23505") {
-      return NextResponse.json({ error: MSG_PROCEDIMENTO_DUPLICADO }, { status: 400 });
+    if (apErr) {
+      console.error(apErr);
+      await supabase.from("agendamentos").delete().eq("id", idAgendamento);
+      if (apErr.code === "23505") {
+        return NextResponse.json({ error: MSG_PROCEDIMENTO_DUPLICADO }, { status: 400 });
+      }
+      return NextResponse.json({ error: apErr.message }, { status: 500 });
     }
-    return NextResponse.json({ error: apErr.message }, { status: 500 });
   }
 
   if (pagamentos.length > 0) {

@@ -4,6 +4,8 @@ import { getSession } from "@/lib/auth/session";
 import { isCpfLengthOk, normalizeCpfDigits } from "@/lib/pacientes";
 import { createAdminClient } from "@/lib/supabase/admin";
 
+const HEX_COR_RE = /^#[0-9A-Fa-f]{6}$/;
+
 function parseEmpresaId(idEmpresa: string) {
   const n = Number(idEmpresa);
   return Number.isFinite(n) && n > 0 ? n : null;
@@ -24,7 +26,7 @@ export async function GET() {
   const { data, error } = await supabase
     .from("usuarios")
     .select(
-      "id, usuario, nome_completo, cpf, email, ativo, id_grupo_usuarios, exibir_na_agenda, usuarios_grupos:usuarios_grupos!usuarios_id_grupo_usuarios_fkey(id, grupo_usuarios)",
+      "id, usuario, nome_completo, cpf, email, ativo, id_grupo_usuarios, exibir_na_agenda, card_cor, usuarios_grupos:usuarios_grupos!usuarios_id_grupo_usuarios_fkey(id, grupo_usuarios)",
     )
     .eq("id_empresa", empresaId)
     .order("usuario", { ascending: true });
@@ -57,6 +59,7 @@ export async function POST(request: Request) {
     id_grupo_usuarios?: number;
     id_empresa?: number;
     exibir_na_agenda?: boolean;
+    card_cor?: string | null;
   };
   try {
     body = await request.json();
@@ -141,6 +144,14 @@ export async function POST(request: Request) {
 
   const exibirNaAgenda =
     typeof body.exibir_na_agenda === "boolean" ? body.exibir_na_agenda : false;
+  const cardCorRaw = typeof body.card_cor === "string" ? body.card_cor.trim() : "";
+  const cardCor = cardCorRaw === "" ? null : cardCorRaw.toUpperCase();
+  if (cardCor !== null && !HEX_COR_RE.test(cardCor)) {
+    return NextResponse.json(
+      { error: "A cor do card deve estar no formato HEX #RRGGBB." },
+      { status: 400 },
+    );
+  }
 
   const senhaHash = await bcrypt.hash(senha, 10);
   const { data, error } = await supabase
@@ -155,8 +166,11 @@ export async function POST(request: Request) {
       id_grupo_usuarios: idGrupo,
       ativo: true,
       exibir_na_agenda: exibirNaAgenda,
+      card_cor: cardCor,
     })
-    .select("id, usuario, nome_completo, cpf, email, ativo, id_grupo_usuarios, exibir_na_agenda")
+    .select(
+      "id, usuario, nome_completo, cpf, email, ativo, id_grupo_usuarios, exibir_na_agenda, card_cor",
+    )
     .single();
 
   if (error) {

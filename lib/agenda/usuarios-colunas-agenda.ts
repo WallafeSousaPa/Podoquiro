@@ -7,6 +7,7 @@ export type UsuarioColunaAgendaRow = {
   usuario: string;
   nome_completo: string | null;
   id_grupo_usuarios: number;
+  card_cor: string | null;
 };
 
 /**
@@ -20,7 +21,7 @@ export async function carregarUsuariosColunasAgenda(
 ): Promise<UsuarioColunaAgendaRow[]> {
   let q = supabase
     .from("usuarios")
-    .select("id, usuario, nome_completo, id_grupo_usuarios")
+    .select("id, usuario, nome_completo, id_grupo_usuarios, card_cor")
     .eq("id_empresa", idEmpresa)
     .eq("ativo", true);
 
@@ -43,6 +44,7 @@ export async function carregarUsuariosColunasAgenda(
     usuario: u.usuario as string,
     nome_completo: (u.nome_completo as string | null) ?? null,
     id_grupo_usuarios: u.id_grupo_usuarios as number,
+    card_cor: (u.card_cor as string | null) ?? null,
   }));
 }
 
@@ -68,7 +70,7 @@ export async function filtrarColunasAgendaSomenteUsuarioPodoquiro(
 
   const { data: u, error } = await supabase
     .from("usuarios")
-    .select("id, usuario, nome_completo, id_grupo_usuarios")
+    .select("id, usuario, nome_completo, id_grupo_usuarios, card_cor")
     .eq("id", idUsuarioSessao)
     .eq("id_empresa", idEmpresa)
     .eq("ativo", true)
@@ -81,6 +83,7 @@ export async function filtrarColunasAgendaSomenteUsuarioPodoquiro(
       usuario: u.usuario as string,
       nome_completo: (u.nome_completo as string | null) ?? null,
       id_grupo_usuarios: u.id_grupo_usuarios as number,
+      card_cor: (u.card_cor as string | null) ?? null,
     },
   ];
 }

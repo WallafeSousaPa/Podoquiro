@@ -16,7 +16,6 @@ import "./agenda.css";
 import { ModalProntuarioPodologo } from "./modal-prontuario-podologo";
 import {
   MSG_HORARIO_RETROATIVO,
-  MSG_PROCEDIMENTO_DUPLICADO,
 } from "@/lib/agenda/validacao-agendamento";
 import {
   type VisualizacaoAgenda,
@@ -31,12 +30,14 @@ import {
 
 const HORA_INICIO = 8;
 const HORA_FIM = 20;
-const ALTURA_HORA_PX = 48;
+const ALTURA_HORA_PX = 42;
+const MINUTOS_POR_LINHA = 30;
 
 type UsuarioCol = {
   id: number;
   nome: string;
   id_grupo_usuarios: number;
+  card_cor?: string | null;
 };
 
 type ProcLinha = {
@@ -57,6 +58,21 @@ type PacienteListaItem = {
   nome: string;
   telefone: string | null;
 };
+
+type AvaliacaoOptionItem = {
+  id: number;
+  tipo?: string | null;
+  condicao?: string | null;
+  ativo: boolean;
+};
+
+const FORMAS_CONTATO_PACIENTE = [
+  "Instagram",
+  "Google",
+  "Tik Tok",
+  "Facebook",
+  "Indicação",
+] as const;
 
 function apenasDigitosTel(s: string): string {
   return s.replace(/\D/g, "");
@@ -257,6 +273,10 @@ function formatHoraLocal(d: Date): string {
   return `${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
 
+function hexCorValida(v: string | null | undefined): v is string {
+  return typeof v === "string" && /^#[0-9A-Fa-f]{6}$/.test(v.trim());
+}
+
 function adicionarMinutos(d: Date, minutos: number): Date {
   return new Date(d.getTime() + minutos * 60 * 1000);
 }
@@ -293,8 +313,16 @@ function estiloEvento(inicioIso: string, fimIso: string): { top: string; height:
   em = Math.max(0, Math.min(span, em));
   if (em <= sm) em = sm + 15;
   const top = (sm / span) * 100;
-  const h = Math.max(1.2, ((em - sm) / span) * 100);
+  const h = Math.max(16.8, ((em - sm) / span) * 100);
   return { top: `${top}%`, height: `${h}%` };
+}
+
+type DensidadeCardAgenda = "compact" | "medium" | "full";
+
+function densidadeCardPorAlturaPercent(alturaPercent: number): DensidadeCardAgenda {
+  if (alturaPercent < 13.5) return "compact";
+  if (alturaPercent < 18.5) return "medium";
+  return "full";
 }
 
 function classeStatus(status: string): string {
@@ -321,6 +349,57 @@ function rotuloStatusAgendamento(status: string): string {
       return "Adiado";
     default:
       return status;
+  }
+}
+
+function iconeStatusAgendamento(status: string): {
+  iconClass: string;
+  badgeClass: string;
+  label: string;
+} {
+  switch (status) {
+    case "pendente":
+      return {
+        iconClass: "far fa-clock",
+        badgeClass: "agenda-status-badge--pendente",
+        label: "Pendente",
+      };
+    case "confirmado":
+      return {
+        iconClass: "fas fa-check-circle",
+        badgeClass: "agenda-status-badge--confirmado",
+        label: "Confirmado",
+      };
+    case "em_andamento":
+      return {
+        iconClass: "fas fa-play-circle",
+        badgeClass: "agenda-status-badge--andamento",
+        label: "Em andamento",
+      };
+    case "realizado":
+      return {
+        iconClass: "fas fa-check-double",
+        badgeClass: "agenda-status-badge--realizado",
+        label: "Realizado",
+      };
+    case "cancelado":
+      return {
+        iconClass: "fas fa-times-circle",
+        badgeClass: "agenda-status-badge--cancelado",
+        label: "Cancelado",
+      };
+    case "adiado":
+      return {
+        iconClass: "fas fa-exclamation-circle",
+        badgeClass: "agenda-status-badge--adiado",
+        label: "Adiado",
+      };
+    default:
+      return {
+        iconClass: "far fa-circle",
+        badgeClass: "agenda-status-badge--pendente",
+        label: status,
+      };
   }
 }
 
@@ -413,6 +492,44 @@ export function AgendaCalendario({
     idUsuario: string;
     horaInicio: string;
   } | null>(null);
+  const [anamneseOpen, setAnamneseOpen] = useState(false);
+  const [anamneseAg, setAnamneseAg] = useState<AgendamentoDia | null>(null);
+  const [anamneseSaving, setAnamneseSaving] = useState(false);
+  const [anamneseError, setAnamneseError] = useState<string | null>(null);
+  const [anamneseIdCondicao, setAnamneseIdCondicao] = useState("");
+  const [anamnesePressaoArterial, setAnamnesePressaoArterial] = useState("");
+  const [anamneseGlicemia, setAnamneseGlicemia] = useState("");
+  const [anamneseAtividadeFisica, setAnamneseAtividadeFisica] = useState("");
+  const [anamneseTipoCalcado, setAnamneseTipoCalcado] = useState("");
+  const [anamneseAlergias, setAnamneseAlergias] = useState("");
+  const [anamneseIdTipoUnha, setAnamneseIdTipoUnha] = useState("");
+  const [anamneseIdPeEsquerdo, setAnamneseIdPeEsquerdo] = useState("");
+  const [anamneseIdPeDireito, setAnamneseIdPeDireito] = useState("");
+  const [anamneseIdHidrose, setAnamneseIdHidrose] = useState("");
+  const [anamneseIdLesoes, setAnamneseIdLesoes] = useState("");
+  const [anamneseDigitoPressao, setAnamneseDigitoPressao] = useState("");
+  const [anamneseVarizes, setAnamneseVarizes] = useState("");
+  const [anamneseClaudicacao, setAnamneseClaudicacao] = useState("");
+  const [anamneseTemperatura, setAnamneseTemperatura] = useState("");
+  const [anamneseOleo, setAnamneseOleo] = useState("");
+  const [anamneseAgua, setAnamneseAgua] = useState("");
+  const [anamneseObservacao, setAnamneseObservacao] = useState("");
+  const [anamneseIdFormatoDedos, setAnamneseIdFormatoDedos] = useState("");
+  const [anamneseIdFormatoPe, setAnamneseIdFormatoPe] = useState("");
+  const [anamneseFormaContato, setAnamneseFormaContato] = useState("");
+  const [anamneseTratamento, setAnamneseTratamento] = useState("");
+  const [anamneseFotoPlantarDireito, setAnamneseFotoPlantarDireito] = useState<File | null>(null);
+  const [anamneseFotoPlantarEsquerdo, setAnamneseFotoPlantarEsquerdo] = useState<File | null>(null);
+  const [anamneseFotoDorsoDireito, setAnamneseFotoDorsoDireito] = useState<File | null>(null);
+  const [anamneseFotoDorsoEsquerdo, setAnamneseFotoDorsoEsquerdo] = useState<File | null>(null);
+  const [anamneseFotoTermo, setAnamneseFotoTermo] = useState<File | null>(null);
+  const [anamneseCondicoes, setAnamneseCondicoes] = useState<AvaliacaoOptionItem[]>([]);
+  const [anamneseTiposUnhas, setAnamneseTiposUnhas] = useState<AvaliacaoOptionItem[]>([]);
+  const [anamneseTiposPe, setAnamneseTiposPe] = useState<AvaliacaoOptionItem[]>([]);
+  const [anamneseHidroses, setAnamneseHidroses] = useState<AvaliacaoOptionItem[]>([]);
+  const [anamneseLesoes, setAnamneseLesoes] = useState<AvaliacaoOptionItem[]>([]);
+  const [anamneseFormatosDedos, setAnamneseFormatosDedos] = useState<AvaliacaoOptionItem[]>([]);
+  const [anamneseFormatosPe, setAnamneseFormatosPe] = useState<AvaliacaoOptionItem[]>([]);
 
   useEffect(() => {
     if (menuCardAbertoId == null) return;
@@ -425,13 +542,20 @@ export function AgendaCalendario({
     return () => window.removeEventListener("click", fechar, true);
   }, [menuCardAbertoId]);
 
-  const horasVisiveis = useMemo(() => {
-    const h: number[] = [];
-    for (let x = HORA_INICIO; x < HORA_FIM; x++) h.push(x);
-    return h;
+  const linhasVisiveis = useMemo(() => {
+    const linhas: { totalMinutos: number; label: string }[] = [];
+    const totalMinutos = (HORA_FIM - HORA_INICIO) * 60;
+    for (let m = 0; m < totalMinutos; m += MINUTOS_POR_LINHA) {
+      const abs = HORA_INICIO * 60 + m;
+      const hh = String(Math.floor(abs / 60)).padStart(2, "0");
+      const mm = String(abs % 60).padStart(2, "0");
+      linhas.push({ totalMinutos: abs, label: `${hh}:${mm}` });
+    }
+    return linhas;
   }, []);
 
-  const alturaColunaPx = (HORA_FIM - HORA_INICIO) * ALTURA_HORA_PX;
+  const alturaLinhaPx = (ALTURA_HORA_PX * MINUTOS_POR_LINHA) / 60;
+  const alturaColunaPx = linhasVisiveis.length * alturaLinhaPx;
 
   const limitesSem = useMemo(() => limitesSemanaInclusive(dataDia), [dataDia]);
   const diasSemanaYmd = useMemo(
@@ -445,6 +569,13 @@ export function AgendaCalendario({
   );
   const nomeUsuario = useMemo(
     () => Object.fromEntries(usuarios.map((u) => [u.id, u.nome])) as Record<number, string>,
+    [usuarios],
+  );
+  const corCardUsuario = useMemo(
+    () =>
+      Object.fromEntries(
+        usuarios.map((u) => [u.id, hexCorValida(u.card_cor) ? u.card_cor : null]),
+      ) as Record<number, string | null>,
     [usuarios],
   );
 
@@ -472,6 +603,19 @@ export function AgendaCalendario({
     });
     return `${base}?text=${encodeURIComponent(texto)}`;
   }, [pacienteSelecionado, nomeEmpresa, inicioLocal, horaFimLocal]);
+
+  const erroFimMenorQueInicio = useMemo(() => {
+    if (!inicioLocal.trim() || !horaFimLocal.trim()) return false;
+    const inicio = new Date(inicioLocal);
+    if (Number.isNaN(inicio.getTime())) return false;
+    const partesFim = horaFimLocal.split(":");
+    const hFim = Number(partesFim[0]);
+    const mFim = Number(partesFim[1]);
+    if (!Number.isFinite(hFim) || !Number.isFinite(mFim)) return false;
+    const inicioMin = inicio.getHours() * 60 + inicio.getMinutes();
+    const fimMin = hFim * 60 + mFim;
+    return fimMin <= inicioMin;
+  }, [inicioLocal, horaFimLocal]);
 
   const loadAgenda = useCallback(async () => {
     setLoading(true);
@@ -845,26 +989,25 @@ export function AgendaCalendario({
         setErroModal("Busque e selecione um paciente na lista.");
         return;
       }
-      if (procedimentos.length === 0) {
-        setErroModal("Informe ao menos um procedimento.");
-        return;
-      }
-      const procIds = procedimentos.map((p) => p.id_procedimento);
-      if (new Set(procIds).size !== procIds.length) {
-        setErroModal(MSG_PROCEDIMENTO_DUPLICADO);
-        return;
-      }
       const inicioD = new Date(inicioLocal);
       const fimD = fimAPartirDeInicioEHora(inicioLocal, horaFimLocal);
       const tInicio = inicioD.getTime();
       const tFim = fimD.getTime();
+      const fimPartes = horaFimLocal.trim().split(":");
+      const hFim = Number(fimPartes[0]);
+      const mFim = Number(fimPartes[1]);
+      const inicioMin = inicioD.getHours() * 60 + inicioD.getMinutes();
+      const fimMin = hFim * 60 + mFim;
       if (
         Number.isNaN(tInicio) ||
         Number.isNaN(tFim) ||
+        !Number.isFinite(hFim) ||
+        !Number.isFinite(mFim) ||
+        fimMin <= inicioMin ||
         tFim <= tInicio ||
         !horaFimLocal.trim()
       ) {
-        setErroModal("Informe um horário de término válido após o início.");
+        setErroModal("O horário de fim deve ser maior que o horário de início.");
         return;
       }
       if (!editingId && tInicio < Date.now()) {
@@ -882,19 +1025,7 @@ export function AgendaCalendario({
         status: statusAg,
         desconto: Number(desconto.replace(",", ".")) || 0,
         observacoes: observacoes.trim() || null,
-        procedimentos: procedimentos.map((p) => ({
-          id_procedimento: p.id_procedimento,
-          valor_aplicado: p.valor_aplicado,
-        })),
       };
-      if (!ocultarSecaoPagamentosAgenda) {
-        body.pagamentos = pagamentos.map((p) => ({
-          id_forma_pagamento: p.id_forma_pagamento,
-          id_maquineta: p.id_maquineta,
-          valor_pago: p.valor_pago,
-          status_pagamento: p.status_pagamento,
-        }));
-      }
 
       const url = editingId ? `/api/agendamentos/${editingId}` : "/api/agendamentos";
       const method = editingId ? "PATCH" : "POST";
@@ -991,6 +1122,123 @@ export function AgendaCalendario({
       idUsuario: String(ag.id_usuario),
       horaInicio: formatHoraLocal(new Date(ag.data_hora_inicio)),
     });
+  }
+
+  function resetAnamneseForm() {
+    setAnamneseError(null);
+    setAnamneseIdCondicao("");
+    setAnamnesePressaoArterial("");
+    setAnamneseGlicemia("");
+    setAnamneseAtividadeFisica("");
+    setAnamneseTipoCalcado("");
+    setAnamneseAlergias("");
+    setAnamneseIdTipoUnha("");
+    setAnamneseIdPeEsquerdo("");
+    setAnamneseIdPeDireito("");
+    setAnamneseIdHidrose("");
+    setAnamneseIdLesoes("");
+    setAnamneseDigitoPressao("");
+    setAnamneseVarizes("");
+    setAnamneseClaudicacao("");
+    setAnamneseTemperatura("");
+    setAnamneseOleo("");
+    setAnamneseAgua("");
+    setAnamneseObservacao("");
+    setAnamneseIdFormatoDedos("");
+    setAnamneseIdFormatoPe("");
+    setAnamneseFormaContato("");
+    setAnamneseTratamento("");
+    setAnamneseFotoPlantarDireito(null);
+    setAnamneseFotoPlantarEsquerdo(null);
+    setAnamneseFotoDorsoDireito(null);
+    setAnamneseFotoDorsoEsquerdo(null);
+    setAnamneseFotoTermo(null);
+  }
+
+  async function carregarCatalogosAnamnese() {
+    const endpoints = [
+      "/api/condicoes-saude",
+      "/api/tipos-unhas",
+      "/api/tipo-pe",
+      "/api/hidroses",
+      "/api/lesoes-mecanicas",
+      "/api/formato-dedos",
+      "/api/formato-pe",
+    ] as const;
+    const responses = await Promise.all(endpoints.map((u) => fetch(u)));
+    const jsons = await Promise.all(
+      responses.map((r) => r.json() as Promise<{ error?: string; data?: AvaliacaoOptionItem[] }>),
+    );
+    for (let i = 0; i < responses.length; i++) {
+      if (!responses[i].ok) throw new Error(jsons[i].error ?? "Erro ao carregar cadastros auxiliares.");
+    }
+    setAnamneseCondicoes(jsons[0].data ?? []);
+    setAnamneseTiposUnhas(jsons[1].data ?? []);
+    setAnamneseTiposPe(jsons[2].data ?? []);
+    setAnamneseHidroses(jsons[3].data ?? []);
+    setAnamneseLesoes(jsons[4].data ?? []);
+    setAnamneseFormatosDedos(jsons[5].data ?? []);
+    setAnamneseFormatosPe(jsons[6].data ?? []);
+  }
+
+  async function abrirAnamnese(ag: AgendamentoDia) {
+    setMenuCardAbertoId(null);
+    setAnamneseAg(ag);
+    resetAnamneseForm();
+    setAnamneseOpen(true);
+    try {
+      await carregarCatalogosAnamnese();
+    } catch (e) {
+      setAnamneseError(e instanceof Error ? e.message : "Erro ao carregar dados da anamnese.");
+    }
+  }
+
+  async function salvarAnamnese() {
+    if (!anamneseAg || anamneseSaving) return;
+    setAnamneseSaving(true);
+    setAnamneseError(null);
+    try {
+      const fd = new FormData();
+      fd.append("id_paciente", String(anamneseAg.id_paciente));
+      fd.append("id_condicao", anamneseIdCondicao);
+      fd.append("pressao_arterial", anamnesePressaoArterial);
+      fd.append("glicemia", anamneseGlicemia);
+      fd.append("atividade_fisica", anamneseAtividadeFisica);
+      fd.append("tipo_calcado", anamneseTipoCalcado);
+      fd.append("alergias", anamneseAlergias);
+      fd.append("id_tipo_unha", anamneseIdTipoUnha);
+      fd.append("id_pe_esquerdo", anamneseIdPeEsquerdo);
+      fd.append("id_pe_direito", anamneseIdPeDireito);
+      fd.append("id_hidrose", anamneseIdHidrose);
+      fd.append("id_lesoes_mecanicas", anamneseIdLesoes);
+      fd.append("digito_pressao", anamneseDigitoPressao);
+      fd.append("varizes", anamneseVarizes);
+      fd.append("claudicacao", anamneseClaudicacao);
+      fd.append("temperatura", anamneseTemperatura);
+      fd.append("oleo", anamneseOleo);
+      fd.append("agua", anamneseAgua);
+      fd.append("observacao", anamneseObservacao);
+      fd.append("id_formato_dedos", anamneseIdFormatoDedos);
+      fd.append("id_formato_pe", anamneseIdFormatoPe);
+      fd.append("forma_contato", anamneseFormaContato);
+      fd.append("tratamento_sugerido", anamneseTratamento);
+      if (anamneseFotoPlantarDireito) fd.append("foto_plantar_direito", anamneseFotoPlantarDireito);
+      if (anamneseFotoPlantarEsquerdo) fd.append("foto_plantar_esquerdo", anamneseFotoPlantarEsquerdo);
+      if (anamneseFotoDorsoDireito) fd.append("foto_dorso_direito", anamneseFotoDorsoDireito);
+      if (anamneseFotoDorsoEsquerdo) fd.append("foto_dorso_esquerdo", anamneseFotoDorsoEsquerdo);
+      if (anamneseFotoTermo) fd.append("foto_doc_termo_consentimento", anamneseFotoTermo);
+
+      const res = await fetch("/api/pacientes-evolucao", { method: "POST", body: fd });
+      const json = (await res.json().catch(() => ({}))) as { error?: string };
+      if (!res.ok) throw new Error(json.error ?? "Erro ao salvar anamnese.");
+      setAnamneseOpen(false);
+      setAnamneseAg(null);
+      router.refresh();
+    } catch (e) {
+      setAnamneseError(e instanceof Error ? e.message : "Erro ao salvar anamnese.");
+    } finally {
+      setAnamneseSaving(false);
+    }
   }
 
   function confirmarAtalhoMoverForm() {
@@ -1218,13 +1466,13 @@ export function AgendaCalendario({
             </div>
             <div className="d-flex flex-nowrap" style={{ minHeight: alturaColunaPx }}>
               <div className="flex-shrink-0 border-right" style={{ width: 72 }}>
-                {horasVisiveis.map((h) => (
+                {linhasVisiveis.map((linha) => (
                   <div
-                    key={h}
-                    style={{ height: ALTURA_HORA_PX }}
+                    key={linha.totalMinutos}
+                    style={{ height: alturaLinhaPx }}
                     className="text-center pt-1 small text-muted border-bottom"
                   >
-                    {String(h).padStart(2, "0")}:00
+                    {linha.label}
                   </div>
                 ))}
               </div>
@@ -1237,7 +1485,7 @@ export function AgendaCalendario({
                   style={{
                     minWidth: 120,
                     height: alturaColunaPx,
-                    backgroundImage: `repeating-linear-gradient(to bottom, #fff 0, #fff ${ALTURA_HORA_PX - 1}px, #e2e8f0 ${ALTURA_HORA_PX}px)`,
+                    backgroundImage: `repeating-linear-gradient(to bottom, #fff 0, #fff ${alturaLinhaPx - 1}px, #e2e8f0 ${alturaLinhaPx}px)`,
                   }}
                   onDragOver={(e) => {
                     e.preventDefault();
@@ -1281,6 +1529,11 @@ export function AgendaCalendario({
                       .filter((a) => a.id_usuario === u.id)
                       .map((a) => {
                         const st = estiloEvento(a.data_hora_inicio, a.data_hora_fim);
+                        const statusInfo = iconeStatusAgendamento(a.status);
+                        const alturaPct = Number.parseFloat(st.height);
+                        const densidade = densidadeCardPorAlturaPercent(
+                          Number.isFinite(alturaPct) ? alturaPct : 11,
+                        );
                         return (
                           <div
                             key={a.id}
@@ -1292,11 +1545,14 @@ export function AgendaCalendario({
                                 ? `${a.paciente_nome} — ${rotuloStatusAgendamento(a.status)}`
                                 : `${a.paciente_nome} — ${a.status} — arraste para outro horário ou profissional, ou use o menu ⋮`
                             }
-                            className={`agenda-appointment text-left ${classeStatus(a.status)}`}
+                            className={`agenda-appointment agenda-appointment--${densidade} ${
+                              menuCardAbertoId === a.id ? "agenda-appointment--menu-open" : ""
+                            } text-left ${classeStatus(a.status)}`}
                             style={{
                               top: st.top,
                               height: st.height,
                               pointerEvents: "auto",
+                              ["--card-destaque" as string]: corCardUsuario[a.id_usuario] ?? undefined,
                             }}
                             onDragStart={(ev) => {
                               ev.dataTransfer.setData(
@@ -1340,7 +1596,7 @@ export function AgendaCalendario({
                               className="agenda-appointment-menu-wrap"
                               onClick={(ev) => ev.stopPropagation()}
                             >
-                              {!ocultarSecaoPagamentosAgenda ? (
+                              {!ocultarSecaoPagamentosAgenda && densidade !== "compact" ? (
                                 <button
                                   type="button"
                                   className="agenda-appointment-kebab"
@@ -1356,7 +1612,9 @@ export function AgendaCalendario({
                                   ⋮
                                 </button>
                               ) : null}
-                              {menuCardAbertoId === a.id && !ocultarSecaoPagamentosAgenda ? (
+                              {menuCardAbertoId === a.id &&
+                              !ocultarSecaoPagamentosAgenda &&
+                              densidade !== "compact" ? (
                                 <ul className="agenda-appointment-menu" role="menu">
                                   <li role="none">
                                     <button
@@ -1384,13 +1642,39 @@ export function AgendaCalendario({
                                       Mover horário e responsável…
                                     </button>
                                   </li>
+                                  <li role="none">
+                                    <button
+                                      type="button"
+                                      role="menuitem"
+                                      className="dropdown-item"
+                                      onClick={() => {
+                                        void abrirAnamnese(a);
+                                      }}
+                                    >
+                                      Anamnese
+                                    </button>
+                                  </li>
                                 </ul>
                               ) : null}
                             </div>
                             <strong className="d-block text-truncate pr-4" title={a.paciente_nome}>
+                              {densidade !== "compact" ? (
+                                <span
+                                  className={`agenda-status-badge ${statusInfo.badgeClass}`}
+                                  title={`Status: ${statusInfo.label}`}
+                                >
+                                  <i className={statusInfo.iconClass} aria-hidden />
+                                </span>
+                              ) : null}{" "}
                               {a.paciente_nome}
                             </strong>
-                            <span className="d-block small text-muted text-truncate">{a.nome_sala}</span>
+                            <span className="agenda-appointment-time d-block text-truncate">
+                              {formatHoraLocal(new Date(a.data_hora_inicio))} às{" "}
+                              {formatHoraLocal(new Date(a.data_hora_fim))}
+                            </span>
+                            <span className="agenda-appointment-room-tag d-inline-block text-truncate">
+                              {a.nome_sala}
+                            </span>
                           </div>
                         );
                       })}
@@ -1440,13 +1724,13 @@ export function AgendaCalendario({
                 </div>
                 <div className="d-flex flex-nowrap">
                   <div className="flex-shrink-0 border-right" style={{ width: 56 }}>
-                    {horasVisiveis.map((h) => (
+                    {linhasVisiveis.map((linha) => (
                       <div
-                        key={h}
-                        style={{ height: ALTURA_HORA_PX }}
+                        key={linha.totalMinutos}
+                        style={{ height: alturaLinhaPx }}
                         className="text-center pt-1 small text-muted border-bottom"
                       >
-                        {String(h).padStart(2, "0")}:00
+                        {linha.label}
                       </div>
                     ))}
                   </div>
@@ -1457,33 +1741,48 @@ export function AgendaCalendario({
                       style={{
                         minWidth: 100,
                         height: alturaColunaPx,
-                        backgroundImage: `repeating-linear-gradient(to bottom, #fff 0, #fff ${ALTURA_HORA_PX - 1}px, #e2e8f0 ${ALTURA_HORA_PX}px)`,
+                        backgroundImage: `repeating-linear-gradient(to bottom, #fff 0, #fff ${alturaLinhaPx - 1}px, #e2e8f0 ${alturaLinhaPx}px)`,
                       }}
                     >
                       {agFiltradosDia(ymd).map((a) => {
                         const st = estiloEvento(a.data_hora_inicio, a.data_hora_fim);
+                        const statusInfo = iconeStatusAgendamento(a.status);
+                        const alturaPct = Number.parseFloat(st.height);
+                        const densidade = densidadeCardPorAlturaPercent(
+                          Number.isFinite(alturaPct) ? alturaPct : 11,
+                        );
                         return (
                           <button
                             key={a.id}
                             type="button"
-                            className={`agenda-appointment agenda-appointment--compact text-left ${classeStatus(a.status)}`}
+                            className={`agenda-appointment agenda-appointment--compact agenda-appointment--${densidade} text-left ${classeStatus(a.status)}`}
                             style={{
                               top: st.top,
                               height: st.height,
                               left: 2,
                               right: 4,
+                              ["--card-destaque" as string]: corCardUsuario[a.id_usuario] ?? undefined,
                             }}
                             title={a.paciente_nome}
                             onClick={() => void aoClicarCalendarioAgendamento(a)}
                           >
-                            <span className="d-block text-truncate small">
-                              {formatHoraLocal(new Date(a.data_hora_inicio))} — {a.paciente_nome}
+                            <span className="d-block text-truncate small font-weight-bold">
+                              {densidade !== "compact" ? (
+                                <span
+                                  className={`agenda-status-badge ${statusInfo.badgeClass}`}
+                                  title={`Status: ${statusInfo.label}`}
+                                >
+                                  <i className={statusInfo.iconClass} aria-hidden />
+                                </span>
+                              ) : null}{" "}
+                              {a.paciente_nome}
                             </span>
-                            <span
-                              className="d-block text-truncate text-muted"
-                              style={{ fontSize: "0.65rem" }}
-                            >
-                              {nomeUsuario[a.id_usuario] ?? "—"}
+                            <span className="agenda-appointment-time d-block text-truncate">
+                              {formatHoraLocal(new Date(a.data_hora_inicio))} às{" "}
+                              {formatHoraLocal(new Date(a.data_hora_fim))}
+                            </span>
+                            <span className="agenda-appointment-room-tag d-inline-block text-truncate">
+                              {a.nome_sala}
                             </span>
                           </button>
                         );
@@ -1538,19 +1837,41 @@ export function AgendaCalendario({
                                 </button>
                               </div>
                               <div className="agenda-cal-month-events">
-                                {list.slice(0, 4).map((a) => (
+                                {list.slice(0, 4).map((a) => {
+                                  const statusInfo = iconeStatusAgendamento(a.status);
+                                  const densidade: DensidadeCardAgenda = "compact";
+                                  return (
                                   <button
                                     key={a.id}
                                     type="button"
-                                    className={`agenda-cal-month-chip w-100 text-left ${classeStatus(a.status)}`}
+                                    className={`agenda-cal-month-chip agenda-cal-month-chip--${densidade} w-100 text-left ${classeStatus(a.status)}`}
+                                    style={{
+                                      ["--card-destaque" as string]:
+                                        corCardUsuario[a.id_usuario] ?? undefined,
+                                    }}
                                     onClick={() => void aoClicarCalendarioAgendamento(a)}
                                   >
-                                    <span className="text-truncate d-block small">
-                                      {formatHoraLocal(new Date(a.data_hora_inicio))}{" "}
+                                    <span className="d-block text-truncate small font-weight-bold">
+                                      {densidade !== "compact" ? (
+                                        <span
+                                          className={`agenda-status-badge ${statusInfo.badgeClass}`}
+                                          title={`Status: ${statusInfo.label}`}
+                                        >
+                                          <i className={statusInfo.iconClass} aria-hidden />
+                                        </span>
+                                      ) : null}{" "}
                                       {a.paciente_nome}
                                     </span>
+                                    <span className="agenda-cal-month-chip-time d-block text-truncate">
+                                      {formatHoraLocal(new Date(a.data_hora_inicio))} às{" "}
+                                      {formatHoraLocal(new Date(a.data_hora_fim))}
+                                    </span>
+                                    <span className="agenda-cal-month-chip-room d-inline-block text-truncate">
+                                      {a.nome_sala}
+                                    </span>
                                   </button>
-                                ))}
+                                  );
+                                })}
                                 {list.length > 4 ? (
                                   <div className="small text-muted pl-1">
                                     +{list.length - 4} outros
@@ -1737,6 +2058,104 @@ export function AgendaCalendario({
                   {salvandoMover ? "Salvando…" : "Confirmar"}
                 </button>
               </div>
+            </div>
+          </div>
+        </ModalBackdrop>
+      ) : null}
+
+      {anamneseOpen ? (
+        <ModalBackdrop onBackdropClick={() => !anamneseSaving && setAnamneseOpen(false)}>
+          <div
+            className="modal-dialog modal-xl modal-dialog-centered"
+            role="document"
+            style={{ width: "calc(100% - 1rem)", maxWidth: "min(1140px, calc(100vw - 1rem))", margin: "0.5rem auto" }}
+          >
+            <div className="modal-content">
+              <form
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  void salvarAnamnese();
+                }}
+              >
+                <div className="modal-header">
+                  <h5 className="modal-title">Anamnese</h5>
+                  <button type="button" className="close" disabled={anamneseSaving} onClick={() => setAnamneseOpen(false)}>
+                    <span aria-hidden="true">&times;</span>
+                  </button>
+                </div>
+                <div className="modal-body" style={{ maxHeight: "70vh", overflowY: "auto" }}>
+                  {anamneseError ? <div className="alert alert-danger py-2 small">{anamneseError}</div> : null}
+                  <div className="form-row">
+                    <div className="form-group col-md-12">
+                      <label>Paciente</label>
+                      <input className="form-control" value={anamneseAg?.paciente_nome ?? ""} readOnly />
+                    </div>
+                  </div>
+                  <div className="border rounded p-3 mb-3">
+                    <h6 className="text-primary mb-3">Informações de saúde do paciente</h6>
+                    <div className="form-row">
+                      <div className="form-group col-md-4"><label>Condição de saúde</label><select className="form-control" value={anamneseIdCondicao} onChange={(e) => setAnamneseIdCondicao(e.target.value)}><option value="">—</option>{anamneseCondicoes.filter((x) => x.ativo).map((x) => <option key={x.id} value={x.id}>{x.condicao}</option>)}</select></div>
+                      <div className="form-group col-md-4"><label>Pressão arterial</label><input className="form-control" value={anamnesePressaoArterial} onChange={(e) => setAnamnesePressaoArterial(e.target.value)} /></div>
+                      <div className="form-group col-md-4"><label>Glicemia</label><input className="form-control" value={anamneseGlicemia} onChange={(e) => setAnamneseGlicemia(e.target.value)} /></div>
+                    </div>
+                    <div className="form-row">
+                      <div className="form-group col-md-6"><label>Atividade física</label><input className="form-control" value={anamneseAtividadeFisica} onChange={(e) => setAnamneseAtividadeFisica(e.target.value)} /></div>
+                      <div className="form-group col-md-6"><label>Tipo de calçado</label><input className="form-control" value={anamneseTipoCalcado} onChange={(e) => setAnamneseTipoCalcado(e.target.value)} /></div>
+                    </div>
+                    <div className="form-row">
+                      <div className="form-group col-md-4"><label>Varizes</label><input className="form-control" value={anamneseVarizes} onChange={(e) => setAnamneseVarizes(e.target.value)} /></div>
+                      <div className="form-group col-md-4"><label>Claudicação</label><input className="form-control" value={anamneseClaudicacao} onChange={(e) => setAnamneseClaudicacao(e.target.value)} /></div>
+                      <div className="form-group col-md-4"><label>Alergias</label><input className="form-control" value={anamneseAlergias} onChange={(e) => setAnamneseAlergias(e.target.value)} /></div>
+                    </div>
+                  </div>
+                  <div className="border rounded p-3 mb-3">
+                    <h6 className="text-primary mb-3">Tipos de unhas</h6>
+                    <div className="form-row">
+                      <div className="form-group col-md-4"><label>Tipo de unha</label><select className="form-control" value={anamneseIdTipoUnha} onChange={(e) => setAnamneseIdTipoUnha(e.target.value)}><option value="">—</option>{anamneseTiposUnhas.filter((x) => x.ativo).map((x) => <option key={x.id} value={x.id}>{x.tipo}</option>)}</select></div>
+                      <div className="form-group col-md-4"><label>Pé esquerdo</label><select className="form-control" value={anamneseIdPeEsquerdo} onChange={(e) => setAnamneseIdPeEsquerdo(e.target.value)}><option value="">—</option>{anamneseTiposPe.filter((x) => x.ativo).map((x) => <option key={x.id} value={x.id}>{x.tipo}</option>)}</select></div>
+                      <div className="form-group col-md-4"><label>Pé direito</label><select className="form-control" value={anamneseIdPeDireito} onChange={(e) => setAnamneseIdPeDireito(e.target.value)}><option value="">—</option>{anamneseTiposPe.filter((x) => x.ativo).map((x) => <option key={x.id} value={x.id}>{x.tipo}</option>)}</select></div>
+                    </div>
+                  </div>
+                  <div className="border rounded p-3 mb-3">
+                    <h6 className="text-primary mb-3">Analise Clinica</h6>
+                    <div className="form-row">
+                      <div className="form-group col-md-6"><label>Hidrose</label><select className="form-control" value={anamneseIdHidrose} onChange={(e) => setAnamneseIdHidrose(e.target.value)}><option value="">—</option>{anamneseHidroses.filter((x) => x.ativo).map((x) => <option key={x.id} value={x.id}>{x.tipo}</option>)}</select></div>
+                      <div className="form-group col-md-6"><label>Lesões mecânicas</label><select className="form-control" value={anamneseIdLesoes} onChange={(e) => setAnamneseIdLesoes(e.target.value)}><option value="">—</option>{anamneseLesoes.filter((x) => x.ativo).map((x) => <option key={x.id} value={x.id}>{x.tipo}</option>)}</select></div>
+                    </div>
+                    <div className="form-row">
+                      <div className="form-group col-md-4"><label>Dígito pressão</label><input className="form-control" value={anamneseDigitoPressao} onChange={(e) => setAnamneseDigitoPressao(e.target.value)} /></div>
+                      <div className="form-group col-md-4"><label>Temperatura</label><input className="form-control" value={anamneseTemperatura} onChange={(e) => setAnamneseTemperatura(e.target.value)} /></div>
+                      <div className="form-group col-md-4"><label>Óleo</label><input className="form-control" value={anamneseOleo} onChange={(e) => setAnamneseOleo(e.target.value)} /></div>
+                    </div>
+                    <div className="form-row">
+                      <div className="form-group col-md-4"><label>Água</label><input className="form-control" value={anamneseAgua} onChange={(e) => setAnamneseAgua(e.target.value)} /></div>
+                      <div className="form-group col-md-4"><label>Formato dos dedos</label><select className="form-control" value={anamneseIdFormatoDedos} onChange={(e) => setAnamneseIdFormatoDedos(e.target.value)}><option value="">—</option>{anamneseFormatosDedos.filter((x) => x.ativo).map((x) => <option key={x.id} value={x.id}>{x.tipo}</option>)}</select></div>
+                      <div className="form-group col-md-4"><label>Formato do pé</label><select className="form-control" value={anamneseIdFormatoPe} onChange={(e) => setAnamneseIdFormatoPe(e.target.value)}><option value="">—</option>{anamneseFormatosPe.filter((x) => x.ativo).map((x) => <option key={x.id} value={x.id}>{x.tipo}</option>)}</select></div>
+                    </div>
+                    <div className="form-row">
+                      <div className="form-group col-md-6"><label>Forma de contato</label><select className="form-control" value={anamneseFormaContato} onChange={(e) => setAnamneseFormaContato(e.target.value)}><option value="">—</option>{FORMAS_CONTATO_PACIENTE.map((f) => <option key={f} value={f}>{f}</option>)}</select></div>
+                      <div className="form-group col-md-6"><label>Tratamento sugerido</label><input className="form-control" value={anamneseTratamento} onChange={(e) => setAnamneseTratamento(e.target.value)} /></div>
+                    </div>
+                    <div className="form-group mb-0"><label>Observação</label><textarea className="form-control" rows={3} value={anamneseObservacao} onChange={(e) => setAnamneseObservacao(e.target.value)} /></div>
+                  </div>
+                  <div className="border rounded p-3">
+                    <h6 className="text-primary mb-3">Analise visual</h6>
+                    <div className="form-row">
+                      <div className="form-group col-md-6"><label>Plantar direito</label><input type="file" className="form-control-file" accept="image/*" onChange={(e) => setAnamneseFotoPlantarDireito(e.target.files?.[0] ?? null)} /></div>
+                      <div className="form-group col-md-6"><label>Plantar esquerdo</label><input type="file" className="form-control-file" accept="image/*" onChange={(e) => setAnamneseFotoPlantarEsquerdo(e.target.files?.[0] ?? null)} /></div>
+                    </div>
+                    <div className="form-row">
+                      <div className="form-group col-md-6"><label>Dorso direito</label><input type="file" className="form-control-file" accept="image/*" onChange={(e) => setAnamneseFotoDorsoDireito(e.target.files?.[0] ?? null)} /></div>
+                      <div className="form-group col-md-6"><label>Dorso esquerdo</label><input type="file" className="form-control-file" accept="image/*" onChange={(e) => setAnamneseFotoDorsoEsquerdo(e.target.files?.[0] ?? null)} /></div>
+                    </div>
+                    <div className="form-group mb-0"><label>Doc. termo consentimento</label><input type="file" className="form-control-file" accept="image/*" onChange={(e) => setAnamneseFotoTermo(e.target.files?.[0] ?? null)} /></div>
+                  </div>
+                </div>
+                <div className="modal-footer">
+                  <button type="button" className="btn btn-secondary" onClick={() => setAnamneseOpen(false)} disabled={anamneseSaving}>Cancelar</button>
+                  <button type="submit" className="btn btn-primary" disabled={anamneseSaving}>{anamneseSaving ? "Salvando..." : "Salvar anamnese"}</button>
+                </div>
+              </form>
             </div>
           </div>
         </ModalBackdrop>
@@ -2154,23 +2573,10 @@ export function AgendaCalendario({
                         step={60}
                         value={inicioLocal}
                         onChange={(e) => {
-                          let v = e.target.value;
-                          if (!editingId && v) {
-                            const escolha = new Date(v);
-                            const lim = instanteMinimoInicio();
-                            if (
-                              !Number.isNaN(escolha.getTime()) &&
-                              escolha.getTime() < lim.getTime()
-                            ) {
-                              v = toDatetimeLocalValue(lim);
-                            }
-                          }
+                          const v = e.target.value;
                           setInicioLocal(v);
                           const si = new Date(v);
-                          if (
-                            !editingId &&
-                            !Number.isNaN(si.getTime())
-                          ) {
+                          if (!Number.isNaN(si.getTime())) {
                             setHoraFimLocal(formatHoraLocal(adicionarMinutos(si, 30)));
                           }
                         }}
@@ -2181,16 +2587,19 @@ export function AgendaCalendario({
                       <label>Fim (hora)</label>
                       <input
                         type="time"
-                        className="form-control"
+                        className={`form-control ${erroFimMenorQueInicio ? "is-invalid" : ""}`}
                         value={horaFimLocal}
                         onChange={(e) => setHoraFimLocal(e.target.value)}
                         required
                         title="A data do término é a mesma do início (ajuste o início para mudar o dia)."
                       />
+                      {erroFimMenorQueInicio ? (
+                        <div className="invalid-feedback d-block">
+                          O horário de fim deve ser maior que a data/hora de início.
+                        </div>
+                      ) : null}
                       <small className="form-text text-muted">
-                        {editingId
-                          ? "A data do término é a mesma do início (altere o início para mudar o dia)."
-                          : "Mesma data do início. Ao alterar data/hora de início, a hora de fim é ajustada para 30 minutos depois."}
+                        A data do término é a mesma do início (altere o início para mudar o dia).
                       </small>
                     </div>
                   </div>
@@ -2233,193 +2642,6 @@ export function AgendaCalendario({
                     />
                   </div>
 
-                  <hr />
-                  <div className="d-flex justify-content-between align-items-center mb-2">
-                    <strong>Procedimentos</strong>
-                    <button
-                      type="button"
-                      className="btn btn-sm btn-outline-primary"
-                      onClick={addProcLinha}
-                    >
-                      + Procedimento
-                    </button>
-                  </div>
-                  {procedimentos.map((linha, idx) => (
-                    <div key={idx} className="form-row align-items-end mb-2">
-                      <div className="form-group col-md-7">
-                        <label className="small">Procedimento</label>
-                        <select
-                          className="form-control form-control-sm"
-                          value={linha.id_procedimento || ""}
-                          onChange={(e) => {
-                            const id = Number(e.target.value);
-                            const pr = procedimentosCat.find((p) => p.id === id);
-                            setProcedimentos((prev) =>
-                              prev.map((p, i) =>
-                                i === idx
-                                  ? {
-                                      ...p,
-                                      id_procedimento: id,
-                                      valor_aplicado: pr?.valor_total ?? p.valor_aplicado,
-                                    }
-                                  : p,
-                              ),
-                            );
-                          }}
-                        >
-                          {procedimentosCat.map((p) => (
-                            <option key={p.id} value={p.id}>
-                              {p.procedimento}
-                            </option>
-                          ))}
-                        </select>
-                      </div>
-                      <div className="form-group col-md-4">
-                        <label className="small">Valor aplicado</label>
-                        <input
-                          type="text"
-                          readOnly
-                          className="form-control form-control-sm bg-light"
-                          value={
-                            Number.isFinite(linha.valor_aplicado)
-                              ? linha.valor_aplicado.toLocaleString("pt-BR", {
-                                  minimumFractionDigits: 2,
-                                  maximumFractionDigits: 2,
-                                })
-                              : ""
-                          }
-                          title="Valor definido pelo cadastro do procedimento."
-                        />
-                      </div>
-                      <div className="form-group col-md-1">
-                        <button
-                          type="button"
-                          className="btn btn-sm btn-outline-danger"
-                          onClick={() =>
-                            setProcedimentos((prev) => prev.filter((_, i) => i !== idx))
-                          }
-                        >
-                          ×
-                        </button>
-                      </div>
-                    </div>
-                  ))}
-
-                  {!ocultarSecaoPagamentosAgenda ? (
-                    <>
-                      <hr />
-                      <div className="d-flex justify-content-between align-items-center mb-2">
-                        <strong>Pagamentos</strong>
-                        <button
-                          type="button"
-                          className="btn btn-sm btn-outline-primary"
-                          onClick={addPagLinha}
-                        >
-                          + Pagamento
-                        </button>
-                      </div>
-                      {pagamentos.map((linha, idx) => (
-                        <div key={idx} className="form-row align-items-end mb-2">
-                          <div className="form-group col-md-3">
-                            <label className="small">Forma</label>
-                            <select
-                              className="form-control form-control-sm"
-                              value={linha.id_forma_pagamento || ""}
-                              onChange={(e) => {
-                                const v = Number(e.target.value);
-                                setPagamentos((prev) =>
-                                  prev.map((p, i) =>
-                                    i === idx ? { ...p, id_forma_pagamento: v } : p,
-                                  ),
-                                );
-                              }}
-                            >
-                              {formasPg.map((f) => (
-                                <option key={f.id} value={f.id}>
-                                  {f.nome}
-                                </option>
-                              ))}
-                            </select>
-                          </div>
-                          <div className="form-group col-md-3">
-                            <label className="small">Maquineta</label>
-                            <select
-                              className="form-control form-control-sm"
-                              value={linha.id_maquineta ?? ""}
-                              onChange={(e) => {
-                                const v = e.target.value;
-                                setPagamentos((prev) =>
-                                  prev.map((p, i) =>
-                                    i === idx
-                                      ? {
-                                          ...p,
-                                          id_maquineta: v === "" ? null : Number(v),
-                                        }
-                                      : p,
-                                  ),
-                                );
-                              }}
-                            >
-                              <option value="">—</option>
-                              {maquinetas.map((m) => (
-                                <option key={m.id} value={m.id}>
-                                  {m.nome}
-                                </option>
-                              ))}
-                            </select>
-                          </div>
-                          <div className="form-group col-md-2">
-                            <label className="small">Valor</label>
-                            <input
-                              type="number"
-                              step="0.01"
-                              min="0"
-                              className="form-control form-control-sm"
-                              value={linha.valor_pago}
-                              onChange={(e) => {
-                                const v = Number(e.target.value);
-                                setPagamentos((prev) =>
-                                  prev.map((p, i) =>
-                                    i === idx ? { ...p, valor_pago: v } : p,
-                                  ),
-                                );
-                              }}
-                            />
-                          </div>
-                          <div className="form-group col-md-3">
-                            <label className="small">Status</label>
-                            <select
-                              className="form-control form-control-sm"
-                              value={linha.status_pagamento}
-                              onChange={(e) => {
-                                const v = e.target.value as PagLinha["status_pagamento"];
-                                setPagamentos((prev) =>
-                                  prev.map((p, i) =>
-                                    i === idx ? { ...p, status_pagamento: v } : p,
-                                  ),
-                                );
-                              }}
-                            >
-                              <option value="pendente">Pendente</option>
-                              <option value="pago">Pago</option>
-                              <option value="estornado">Estornado</option>
-                            </select>
-                          </div>
-                          <div className="form-group col-md-1">
-                            <button
-                              type="button"
-                              className="btn btn-sm btn-outline-danger"
-                              onClick={() =>
-                                setPagamentos((prev) => prev.filter((_, i) => i !== idx))
-                              }
-                            >
-                              ×
-                            </button>
-                          </div>
-                        </div>
-                      ))}
-                    </>
-                  ) : null}
                 </div>
                 <div className="modal-footer">
                   <button

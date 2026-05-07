@@ -136,16 +136,130 @@
   position: absolute;
   left: 4px;
   right: 8px;
-  background-color: #dbeafe;
-  color: #1e40af;
-  border-left: 4px solid var(--agenda-primary);
+  --card-destaque: var(--agenda-primary);
+  background-color: #f8fafc;
+  color: #1e293b;
+  border-left: 5px solid var(--card-destaque);
   font-size: 0.75rem;
-  padding: 4px 6px;
-  border-radius: 4px;
-  overflow: visible;
+  padding: 8px 10px;
+  border-radius: 6px;
+  border-top: 1px solid rgb(0 0 0 / 0.03);
+  border-right: 1px solid rgb(0 0 0 / 0.03);
+  border-bottom: 1px solid rgb(0 0 0 / 0.03);
+  overflow: hidden;
   pointer-events: auto;
   cursor: pointer;
-  box-shadow: 0 1px 2px rgb(0 0 0 / 0.06);
+  box-shadow: 0 2px 4px rgb(0 0 0 / 0.1);
+  transition: all 0.2s ease-in-out;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-start;
+}
+
+.agenda-appointment--menu-open {
+  overflow: visible;
+  z-index: 8;
+}
+
+.agenda-appointment--full {
+  padding: 8px 10px;
+}
+
+.agenda-appointment--medium {
+  padding: 6px 8px;
+}
+
+.agenda-appointment--medium .agenda-appointment-time {
+  font-size: 11px;
+  margin-bottom: 0;
+}
+
+.agenda-appointment--compact {
+  padding: 3px 6px;
+  min-height: 30px;
+}
+
+.agenda-appointment--compact .agenda-appointment-time {
+  font-size: 10px;
+  line-height: 1.15;
+  margin-bottom: 2px;
+}
+
+.agenda-appointment--compact strong {
+  font-size: 10px;
+  line-height: 1.1;
+  margin-bottom: 1px;
+}
+
+.agenda-appointment--compact .agenda-appointment-room-tag {
+  font-size: 9px;
+  padding: 1px 6px;
+  letter-spacing: 0.3px;
+}
+
+.agenda-appointment--compact .agenda-status-badge {
+  display: none;
+}
+
+.agenda-appointment:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 5px 10px rgb(0 0 0 / 0.1);
+  filter: brightness(0.98);
+}
+
+.agenda-appointment-time {
+  font-size: 12px;
+  color: #64748b;
+  margin-bottom: 6px;
+  font-weight: 500;
+}
+
+.agenda-appointment-room-tag {
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  background-color: var(--card-destaque);
+  color: #fff;
+  padding: 2px 8px;
+  border-radius: 4px;
+  letter-spacing: 0.5px;
+  max-width: 100%;
+}
+
+.agenda-status-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  border-radius: 999px;
+  color: #fff;
+  font-size: 10px;
+  vertical-align: text-bottom;
+}
+
+.agenda-status-badge--pendente {
+  background: #64748b;
+}
+
+.agenda-status-badge--confirmado {
+  background: #0ea5e9;
+}
+
+.agenda-status-badge--andamento {
+  background: #2563eb;
+}
+
+.agenda-status-badge--realizado {
+  background: #22c55e;
+}
+
+.agenda-status-badge--cancelado {
+  background: #ef4444;
+}
+
+.agenda-status-badge--adiado {
+  background: #f59e0b;
 }
 
 .agenda-appointment-menu-wrap {
@@ -166,7 +280,7 @@
   border: none;
   border-radius: 4px;
   background: rgba(255, 255, 255, 0.85);
-  color: #1e40af;
+  color: #1e293b;
   font-size: 1rem;
   line-height: 1;
   cursor: pointer;
@@ -199,9 +313,9 @@
   text-align: left;
   padding: 8px 14px;
   border: none;
-  background: transparent;
+  background: #fff;
   font-size: 0.875rem;
-  color: #1e293b;
+  color: #1e293b !important;
   cursor: pointer;
 }
 
@@ -218,27 +332,31 @@
 }
 
 .agenda-appointment.busy {
-  background-color: #fee2e2;
+  background-color: #fef2f2;
   color: #991b1b;
   border-left-color: #ef4444;
+  --card-destaque: #ef4444;
 }
 
 .agenda-appointment.done {
-  background-color: #dcfce7;
+  background-color: #f0fdf4;
   color: #166534;
   border-left-color: #22c55e;
+  --card-destaque: #22c55e;
 }
 
 .agenda-appointment.confirmed {
-  background-color: #e0f2fe;
+  background-color: #f0f9ff;
   color: #0369a1;
   border-left-color: #0ea5e9;
+  --card-destaque: #0ea5e9;
 }
 
 .agenda-appointment.warn {
-  background-color: #fef3c7;
+  background-color: #fffbeb;
   color: #92400e;
   border-left-color: #f59e0b;
+  --card-destaque: #f59e0b;
 }
 
 /* Modal agendamento: corpo rolável; cabeçalho e rodapé fixos */
@@ -327,9 +445,8 @@
 .agenda-appointment--compact {
   position: absolute;
   font-size: 0.68rem;
-  padding: 2px 4px;
-  line-height: 1.15;
-  border-left-width: 3px;
+  line-height: 1.2;
+  border-left-width: 4px;
 }
 
 /* Vista mês */
@@ -350,39 +467,83 @@
   display: block;
   width: 100%;
   border: none;
-  border-radius: 4px;
-  padding: 2px 4px;
+  border-radius: 6px;
+  padding: 6px 8px;
   margin-bottom: 3px;
   font-size: 0.68rem;
   line-height: 1.2;
-  background: #dbeafe;
-  color: #1e40af;
-  border-left: 3px solid var(--agenda-primary);
+  --card-destaque: var(--agenda-primary);
+  background: #f8fafc;
+  color: #1e293b;
+  border-left: 4px solid var(--card-destaque);
+  border-top: 1px solid rgb(0 0 0 / 0.03);
+  border-right: 1px solid rgb(0 0 0 / 0.03);
+  border-bottom: 1px solid rgb(0 0 0 / 0.03);
   cursor: pointer;
+  box-shadow: 0 2px 4px rgb(0 0 0 / 0.1);
+  transition: all 0.2s ease-in-out;
+}
+
+.agenda-cal-month-chip:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 5px 10px rgb(0 0 0 / 0.1);
+  filter: brightness(0.98);
+}
+
+.agenda-cal-month-chip-time {
+  font-size: 12px;
+  color: #64748b;
+  margin-bottom: 6px;
+  font-weight: 500;
+}
+
+.agenda-cal-month-chip--compact {
+  padding: 4px 6px;
+}
+
+.agenda-cal-month-chip--compact .agenda-cal-month-chip-time {
+  margin-bottom: 0;
+  font-size: 10px;
+}
+
+.agenda-cal-month-chip-room {
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  background-color: var(--card-destaque);
+  color: #fff;
+  padding: 2px 8px;
+  border-radius: 4px;
+  letter-spacing: 0.5px;
+  max-width: 100%;
 }
 
 .agenda-cal-month-chip.busy {
-  background-color: #fee2e2;
+  background-color: #fef2f2;
   color: #991b1b;
   border-left-color: #ef4444;
+  --card-destaque: #ef4444;
 }
 
 .agenda-cal-month-chip.done {
-  background-color: #dcfce7;
+  background-color: #f0fdf4;
   color: #166534;
   border-left-color: #22c55e;
+  --card-destaque: #22c55e;
 }
 
 .agenda-cal-month-chip.confirmed {
-  background-color: #e0f2fe;
+  background-color: #f0f9ff;
   color: #0369a1;
   border-left-color: #0ea5e9;
+  --card-destaque: #0ea5e9;
 }
 
 .agenda-cal-month-chip.warn {
-  background-color: #fef3c7;
+  background-color: #fffbeb;
   color: #92400e;
   border-left-color: #f59e0b;
+  --card-destaque: #f59e0b;
 }
 
 /* Modal prontuário (podólogo): rodapé sempre visível, corpo com scroll; mobile em tela cheia */

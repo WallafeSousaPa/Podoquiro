@@ -309,6 +309,7 @@ export async function GET(request: Request) {
       (u.nome_completo && String(u.nome_completo).trim()) ||
       (u.usuario as string),
     id_grupo_usuarios: u.id_grupo_usuarios as number,
+    card_cor: u.card_cor,
   }));
 
   return NextResponse.json({

@@ -24,6 +24,7 @@ type UsuarioItem = {
   id_grupo_usuarios: number;
   id_empresa: number;
   exibir_na_agenda: boolean;
+  card_cor: string | null;
   nome_empresa: string | null;
   grupo_usuarios: string | null;
 };
@@ -77,6 +78,7 @@ export function UsuariosCadastroClient({
   usuarios,
   loadError,
 }: Props) {
+  const isHexCorValida = (value: string) => /^#[0-9A-Fa-f]{6}$/.test(value);
   const router = useRouter();
   const modalTitleId = useId();
   const confirmTitleId = useId();
@@ -96,6 +98,7 @@ export function UsuariosCadastroClient({
   const [idGrupo, setIdGrupo] = useState("");
   const [idEmpresa, setIdEmpresa] = useState(String(idEmpresaSessao));
   const [exibirNaAgenda, setExibirNaAgenda] = useState(false);
+  const [cardCor, setCardCor] = useState("#2563EB");
   const [saving, setSaving] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
   const [listError, setListError] = useState<string | null>(null);
@@ -107,6 +110,7 @@ export function UsuariosCadastroClient({
   const [feedback, setFeedback] = useState<{ title: string; message: string } | null>(
     null,
   );
+  const cardCorPickerValue = isHexCorValida(cardCor) ? cardCor : "#2563EB";
 
   function resetForm() {
     setEditing(null);
@@ -118,6 +122,7 @@ export function UsuariosCadastroClient({
     setIdGrupo("");
     setIdEmpresa(String(idEmpresaSessao));
     setExibirNaAgenda(false);
+    setCardCor("#2563EB");
     setFormError(null);
   }
 
@@ -136,6 +141,7 @@ export function UsuariosCadastroClient({
     setIdGrupo(String(row.id_grupo_usuarios));
     setIdEmpresa(String(row.id_empresa));
     setExibirNaAgenda(Boolean(row.exibir_na_agenda));
+    setCardCor(row.card_cor ?? "#2563EB");
     setFormError(null);
     setModalOpen(true);
   }
@@ -174,6 +180,10 @@ export function UsuariosCadastroClient({
       setFormError("Informe a senha.");
       return;
     }
+    if (!isHexCorValida(cardCor)) {
+      setFormError("Informe uma cor válida no formato #RRGGBB.");
+      return;
+    }
 
     setSaving(true);
     setFormError(null);
@@ -186,6 +196,7 @@ export function UsuariosCadastroClient({
         id_grupo_usuarios: Number(idGrupo),
         id_empresa: Number(idEmpresa),
         exibir_na_agenda: exibirNaAgenda,
+        card_cor: cardCor,
       };
       if (senha.trim()) payload.senha = senha.trim();
 
@@ -473,6 +484,30 @@ export function UsuariosCadastroClient({
                       Exibir na agenda (coluna do profissional), mesmo fora dos grupos da
                       parametrização
                     </label>
+                  </div>
+                  <div className="form-group">
+                    <label htmlFor="usuario-card-cor">Cor do card</label>
+                    <div className="d-flex align-items-center" style={{ gap: 8 }}>
+                      <input
+                        id="usuario-card-cor"
+                        type="color"
+                        className="form-control p-1"
+                        style={{ maxWidth: 56 }}
+                        value={cardCorPickerValue}
+                        onChange={(e) => setCardCor(e.target.value.toUpperCase())}
+                      />
+                      <input
+                        className="form-control text-uppercase"
+                        value={cardCor}
+                        onChange={(e) => setCardCor(e.target.value.toUpperCase())}
+                        placeholder="#RRGGBB"
+                        pattern="^#[0-9A-Fa-f]{6}$"
+                        maxLength={7}
+                      />
+                    </div>
+                    <small className="form-text text-muted">
+                      Formato esperado: #RRGGBB
+                    </small>
                   </div>
                   <div className="form-group mb-0">
                     <label htmlFor="usuario-senha">
