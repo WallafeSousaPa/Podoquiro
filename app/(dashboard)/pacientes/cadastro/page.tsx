@@ -51,7 +51,7 @@ export default async function PacientesCadastroPage() {
     pacientes = (data ?? []) as PacienteRaw[];
   } catch (e) {
     loadError =
-      e instanceof Error ? e.message : "Não foi possível carregar os pacientes.";
+      e instanceof Error ? e.message : "Não foi possível carregar os pacientes@.";
   }
 
   const sorted = [...pacientes].sort((a, b) =>
