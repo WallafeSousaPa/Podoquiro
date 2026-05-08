@@ -44,8 +44,29 @@ export async function GET(request: Request) {
   }
 
   const rows = lancs ?? [];
-  const abertura = rows.find((r) => r.tipo === "abertura");
-  const fechamento = rows.find((r) => r.tipo === "fechamento");
+  const aberturasPorNumero = new Map<string, (typeof rows)[number]>();
+  const fechamentosPorNumero = new Map<string, (typeof rows)[number]>();
+  for (const r of rows) {
+    const numero = String(r.numero_caixa ?? "").trim();
+    if (!numero) continue;
+    if (r.tipo === "abertura") {
+      aberturasPorNumero.set(numero, r);
+    } else if (r.tipo === "fechamento") {
+      fechamentosPorNumero.set(numero, r);
+    }
+  }
+
+  const numerosAbertos = [...aberturasPorNumero.keys()].filter(
+    (n) => !fechamentosPorNumero.has(n),
+  );
+  const numeroAbertoAtual =
+    numerosAbertos.sort((a, b) => Number(b) - Number(a))[0] ?? null;
+  const aberturaAtual = numeroAbertoAtual ? aberturasPorNumero.get(numeroAbertoAtual) ?? null : null;
+
+  const fechamentos = [...fechamentosPorNumero.values()].sort((a, b) =>
+    String(b.data_lancamento).localeCompare(String(a.data_lancamento)),
+  );
+  const fechamentoMaisRecente = fechamentos[0] ?? null;
 
   const idsResp = [
     ...new Set(rows.map((r) => r.id_responsavel as number)),
@@ -77,13 +98,13 @@ export async function GET(request: Request) {
     criado_em: string;
   } | null = null;
 
-  if (fechamento) {
+  if (fechamentoMaisRecente) {
     const { data: rel, error: rErr } = await supabase
       .from("caixa_relatorios")
       .select(
         "id, valor_dinheiro, valor_cartao_credito, valor_cartao_debito, valor_pix, criado_em",
       )
-      .eq("id_lancamento_fechamento", fechamento.id as number)
+      .eq("id_lancamento_fechamento", fechamentoMaisRecente.id as number)
       .maybeSingle();
     if (!rErr && rel) {
       relatorio = {
@@ -99,26 +120,26 @@ export async function GET(request: Request) {
 
   return NextResponse.json({
     data_referencia: dataRef,
-    tem_abertura: Boolean(abertura),
-    tem_fechamento: Boolean(fechamento),
-    abertura: abertura
+    tem_abertura: Boolean(aberturaAtual),
+    tem_fechamento: !aberturaAtual && Boolean(fechamentoMaisRecente),
+    abertura: aberturaAtual
       ? {
-          id: abertura.id,
-          numero_caixa: abertura.numero_caixa as string,
-          data_lancamento: abertura.data_lancamento as string,
-          id_responsavel: abertura.id_responsavel as number,
+          id: aberturaAtual.id,
+          numero_caixa: aberturaAtual.numero_caixa as string,
+          data_lancamento: aberturaAtual.data_lancamento as string,
+          id_responsavel: aberturaAtual.id_responsavel as number,
           responsavel_nome:
-            nomesPorId[abertura.id_responsavel as number] ?? "—",
+            nomesPorId[aberturaAtual.id_responsavel as number] ?? "—",
         }
       : null,
-    fechamento: fechamento
+    fechamento: fechamentoMaisRecente
       ? {
-          id: fechamento.id,
-          numero_caixa: fechamento.numero_caixa as string,
-          data_lancamento: fechamento.data_lancamento as string,
-          id_responsavel: fechamento.id_responsavel as number,
+          id: fechamentoMaisRecente.id,
+          numero_caixa: fechamentoMaisRecente.numero_caixa as string,
+          data_lancamento: fechamentoMaisRecente.data_lancamento as string,
+          id_responsavel: fechamentoMaisRecente.id_responsavel as number,
           responsavel_nome:
-            nomesPorId[fechamento.id_responsavel as number] ?? "—",
+            nomesPorId[fechamentoMaisRecente.id_responsavel as number] ?? "—",
         }
       : null,
     relatorio,

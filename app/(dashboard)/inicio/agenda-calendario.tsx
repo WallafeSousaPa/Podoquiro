@@ -1507,21 +1507,23 @@ export function AgendaCalendario({
                   }}
                   onDrop={(e) => processarSoltarNaColuna(u, e)}
                 >
-                  <button
-                    type="button"
-                    className="btn btn-sm btn-outline-primary position-absolute"
-                    style={{ right: 6, top: 6, zIndex: 3, padding: "0 6px", lineHeight: 1.2 }}
-                    title="Novo agendamento nesta coluna"
-                    onClick={() => void abrirNovo(u.id)}
-                    onDragOver={(e) => {
-                      e.preventDefault();
-                      e.dataTransfer.dropEffect = "move";
-                      setColunaDropHoverId(u.id);
-                    }}
-                    onDrop={(e) => processarSoltarNaColuna(u, e)}
-                  >
-                    +
-                  </button>
+                  {!somenteMenuInicio ? (
+                    <button
+                      type="button"
+                      className="btn btn-sm btn-outline-primary position-absolute"
+                      style={{ right: 6, top: 6, zIndex: 3, padding: "0 6px", lineHeight: 1.2 }}
+                      title="Novo agendamento nesta coluna"
+                      onClick={() => void abrirNovo(u.id)}
+                      onDragOver={(e) => {
+                        e.preventDefault();
+                        e.dataTransfer.dropEffect = "move";
+                        setColunaDropHoverId(u.id);
+                      }}
+                      onDrop={(e) => processarSoltarNaColuna(u, e)}
+                    >
+                      +
+                    </button>
+                  ) : null}
                   <div
                     className="position-absolute w-100"
                     style={{
@@ -1603,7 +1605,8 @@ export function AgendaCalendario({
                               className="agenda-appointment-menu-wrap"
                               onClick={(ev) => ev.stopPropagation()}
                             >
-                              {!ocultarSecaoPagamentosAgenda && densidade !== "compact" ? (
+                              {(!ocultarSecaoPagamentosAgenda || somenteMenuInicio) &&
+                              densidade !== "compact" ? (
                                 <button
                                   type="button"
                                   className="agenda-appointment-kebab"
@@ -1620,9 +1623,39 @@ export function AgendaCalendario({
                                 </button>
                               ) : null}
                               {menuCardAbertoId === a.id &&
-                              !ocultarSecaoPagamentosAgenda &&
+                              (!ocultarSecaoPagamentosAgenda || somenteMenuInicio) &&
                               densidade !== "compact" ? (
                                 <ul className="agenda-appointment-menu" role="menu">
+                                  {!ocultarSecaoPagamentosAgenda ? (
+                                    <>
+                                      <li role="none">
+                                        <button
+                                          type="button"
+                                          role="menuitem"
+                                          className="dropdown-item"
+                                          onClick={() => {
+                                            setMenuCardAbertoId(null);
+                                            void aoClicarCalendarioAgendamento(a);
+                                          }}
+                                        >
+                                          Editar
+                                        </button>
+                                      </li>
+                                      <li role="none">
+                                        <button
+                                          type="button"
+                                          role="menuitem"
+                                          className="dropdown-item"
+                                          onClick={() => {
+                                            setMenuCardAbertoId(null);
+                                            abrirAtalhoMover(a);
+                                          }}
+                                        >
+                                          Mover horário e responsável…
+                                        </button>
+                                      </li>
+                                    </>
+                                  ) : null}
                                   <li role="none">
                                     <button
                                       type="button"
@@ -1630,31 +1663,6 @@ export function AgendaCalendario({
                                       className="dropdown-item"
                                       onClick={() => {
                                         setMenuCardAbertoId(null);
-                                        void aoClicarCalendarioAgendamento(a);
-                                      }}
-                                    >
-                                      Editar
-                                    </button>
-                                  </li>
-                                  <li role="none">
-                                    <button
-                                      type="button"
-                                      role="menuitem"
-                                      className="dropdown-item"
-                                      onClick={() => {
-                                        setMenuCardAbertoId(null);
-                                        abrirAtalhoMover(a);
-                                      }}
-                                    >
-                                      Mover horário e responsável…
-                                    </button>
-                                  </li>
-                                  <li role="none">
-                                    <button
-                                      type="button"
-                                      role="menuitem"
-                                      className="dropdown-item"
-                                      onClick={() => {
                                         void abrirAnamnese(a);
                                       }}
                                     >
@@ -1682,6 +1690,20 @@ export function AgendaCalendario({
                             <span className="agenda-appointment-room-tag d-inline-block text-truncate">
                               {a.nome_sala}
                             </span>
+                            {somenteMenuInicio ? (
+                              <div className="mt-1">
+                                <button
+                                  type="button"
+                                  className="btn btn-link btn-sm p-0"
+                                  onClick={(ev) => {
+                                    ev.stopPropagation();
+                                    void abrirAnamnese(a);
+                                  }}
+                                >
+                                  Anamnese
+                                </button>
+                              </div>
+                            ) : null}
                           </div>
                         );
                       })}
@@ -1791,6 +1813,20 @@ export function AgendaCalendario({
                             <span className="agenda-appointment-room-tag d-inline-block text-truncate">
                               {a.nome_sala}
                             </span>
+                            {somenteMenuInicio ? (
+                              <span className="d-block mt-1">
+                                <button
+                                  type="button"
+                                  className="btn btn-link btn-sm p-0"
+                                  onClick={(ev) => {
+                                    ev.stopPropagation();
+                                    void abrirAnamnese(a);
+                                  }}
+                                >
+                                  Anamnese
+                                </button>
+                              </span>
+                            ) : null}
                           </button>
                         );
                       })}
@@ -1876,6 +1912,20 @@ export function AgendaCalendario({
                                     <span className="agenda-cal-month-chip-room d-inline-block text-truncate">
                                       {a.nome_sala}
                                     </span>
+                                    {somenteMenuInicio ? (
+                                      <span className="d-block mt-1">
+                                        <button
+                                          type="button"
+                                          className="btn btn-link btn-sm p-0"
+                                          onClick={(ev) => {
+                                            ev.stopPropagation();
+                                            void abrirAnamnese(a);
+                                          }}
+                                        >
+                                          Anamnese
+                                        </button>
+                                      </span>
+                                    ) : null}
                                   </button>
                                   );
                                 })}

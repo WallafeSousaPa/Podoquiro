@@ -286,7 +286,7 @@ export function ModalCaixaAgendamento({
         tem_fechamento: Boolean(j.tem_fechamento),
         nomeFech,
       });
-      if (j.tem_fechamento) {
+      if (j.tem_fechamento && !j.tem_abertura) {
         const n = nomeFech ? ` ${nomeFech}` : "";
         setErro(
           `O caixa deste dia já está fechado. Não é possível registrar pagamentos. Contate${n} ou o responsável pelo caixa.`,

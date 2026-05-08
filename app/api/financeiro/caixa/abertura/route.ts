@@ -9,6 +9,17 @@ function parseEmpresaId(idEmpresa: string) {
 
 const DATA_RE = /^\d{4}-\d{2}-\d{2}$/;
 
+function proximoNumeroCaixa(numeros: string[]): string {
+  let maxNum = 0;
+  for (const n of numeros) {
+    const d = n.trim();
+    if (!/^\d+$/.test(d)) continue;
+    const v = Number(d);
+    if (Number.isFinite(v) && v > maxNum) maxNum = v;
+  }
+  return String(maxNum + 1).padStart(2, "0");
+}
+
 export async function POST(request: Request) {
   const session = await getSession();
   if (!session) {
@@ -40,11 +51,6 @@ export async function POST(request: Request) {
     );
   }
 
-  const numeroCaixa =
-    typeof body.numero_caixa === "string" && body.numero_caixa.trim()
-      ? body.numero_caixa.trim().slice(0, 16)
-      : "01";
-
   const supabase = createAdminClient();
 
   const { data: uOk, error: uErr } = await supabase
@@ -60,6 +66,36 @@ export async function POST(request: Request) {
   if (!uOk) {
     return NextResponse.json({ error: "Usuário inválido." }, { status: 403 });
   }
+
+  const { data: lancsDia, error: lancsErr } = await supabase
+    .from("caixa_lancamentos")
+    .select("tipo, numero_caixa")
+    .eq("id_empresa", empresaId)
+    .eq("data_referencia", dataRef);
+  if (lancsErr) {
+    console.error(lancsErr);
+    return NextResponse.json({ error: lancsErr.message }, { status: 500 });
+  }
+
+  const abertos = new Set<string>();
+  const fechados = new Set<string>();
+  for (const r of lancsDia ?? []) {
+    const numero = String(r.numero_caixa ?? "").trim();
+    if (!numero) continue;
+    if (r.tipo === "abertura") abertos.add(numero);
+    if (r.tipo === "fechamento") fechados.add(numero);
+  }
+  const caixaAberto = [...abertos].find((n) => !fechados.has(n));
+  if (caixaAberto) {
+    return NextResponse.json(
+      { error: `Já existe um caixa aberto nesta data (caixa ${caixaAberto}).` },
+      { status: 409 },
+    );
+  }
+
+  const numeroCaixa = proximoNumeroCaixa(
+    (lancsDia ?? []).map((r) => String(r.numero_caixa ?? "")),
+  );
 
   const { data, error } = await supabase
     .from("caixa_lancamentos")
@@ -77,7 +113,7 @@ export async function POST(request: Request) {
     console.error(error);
     if (error.code === "23505") {
       return NextResponse.json(
-        { error: "O caixa já foi aberto nesta data." },
+        { error: "Não foi possível abrir o próximo caixa desta data." },
         { status: 409 },
       );
     }

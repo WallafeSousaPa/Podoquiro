@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { idsProcedimentosLiberadosColaborador } from "@/lib/colaborador-procedimentos";
 import { getUsuarioAgendaSomentePropriaColuna } from "@/lib/agenda/permissoes-calendario";
 import { getSession } from "@/lib/auth/session";
 import { createAdminClient } from "@/lib/supabase/admin";
@@ -101,7 +102,7 @@ export async function GET(_request: Request, context: RouteContext) {
     return NextResponse.json({ error: apErr.message }, { status: 500 });
   }
 
-  const procedimentos = (aps ?? []).map((row) => {
+  const procedimentosAgendamento = (aps ?? []).map((row) => {
     const pr = row.procedimentos as
       | { procedimento: string }
       | { procedimento: string }[]
@@ -112,6 +113,42 @@ export async function GET(_request: Request, context: RouteContext) {
       nome: p?.procedimento ?? "—",
     };
   });
+
+  const idsLiberados = await idsProcedimentosLiberadosColaborador(
+    supabase,
+    sessionUserId,
+    empresaId,
+  );
+
+  let procedimentosLiberados: { id_procedimento: number; nome: string }[] = [];
+  if (idsLiberados.size > 0) {
+    const { data: procRows, error: procErr } = await supabase
+      .from("procedimentos")
+      .select("id, procedimento")
+      .eq("id_empresa", empresaId)
+      .in("id", [...idsLiberados]);
+    if (procErr) {
+      console.error(procErr);
+      return NextResponse.json({ error: procErr.message }, { status: 500 });
+    }
+    procedimentosLiberados = (procRows ?? []).map((p) => ({
+      id_procedimento: p.id as number,
+      nome: String(p.procedimento ?? "—"),
+    }));
+  }
+
+  const procedimentosMap = new Map<number, { id_procedimento: number; nome: string }>();
+  for (const p of procedimentosLiberados) {
+    procedimentosMap.set(p.id_procedimento, p);
+  }
+  for (const p of procedimentosAgendamento) {
+    if (!procedimentosMap.has(p.id_procedimento)) {
+      procedimentosMap.set(p.id_procedimento, p);
+    }
+  }
+  const procedimentos = [...procedimentosMap.values()].sort((a, b) =>
+    a.nome.localeCompare(b.nome, "pt-BR", { sensitivity: "base" }),
+  );
 
   const { data: pront, error: prErr } = await supabase
     .from("prontuario_paciente")

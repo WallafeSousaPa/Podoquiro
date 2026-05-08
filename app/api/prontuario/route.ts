@@ -1,5 +1,7 @@
 import { NextResponse } from "next/server";
+import { calcularValorTotal } from "@/lib/agenda/totais";
 import { getUsuarioAgendaSomentePropriaColuna } from "@/lib/agenda/permissoes-calendario";
+import { validarProcedimentosDoColaborador } from "@/lib/colaborador-procedimentos";
 import { montarCaminhoFotoProntuario } from "@/lib/prontuario/nomes-arquivo";
 import { getSession } from "@/lib/auth/session";
 import { createAdminClient } from "@/lib/supabase/admin";
@@ -120,6 +122,7 @@ export async function POST(request: Request) {
       id_usuario,
       id_paciente,
       status,
+      desconto,
       pacientes ( nome_completo, nome_social )
     `,
     )
@@ -144,24 +147,17 @@ export async function POST(request: Request) {
     );
   }
 
-  const { data: apRows, error: apErr } = await supabase
-    .from("agendamento_procedimentos")
-    .select("id_procedimento")
-    .eq("id_agendamento", idAgendamento);
-
-  if (apErr) {
-    console.error(apErr);
-    return NextResponse.json({ error: apErr.message }, { status: 500 });
-  }
-
-  const permitidos = new Set((apRows ?? []).map((r) => r.id_procedimento as number));
-  for (const pid of procedimentosIds) {
-    if (!permitidos.has(pid)) {
-      return NextResponse.json(
-        { error: "Procedimento selecionado não pertence a este agendamento." },
-        { status: 400 },
-      );
-    }
+  const validacaoProc = await validarProcedimentosDoColaborador(
+    supabase,
+    ag.id_usuario as number,
+    empresaId,
+    procedimentosIds,
+  );
+  if (!validacaoProc.ok) {
+    return NextResponse.json(
+      { error: validacaoProc.message },
+      { status: 400 },
+    );
   }
 
   const pacRaw = ag.pacientes as
@@ -242,6 +238,36 @@ export async function POST(request: Request) {
   }
 
   const procJson = [...new Set(procedimentosIds)];
+  const { data: procRows, error: procErr } = await supabase
+    .from("procedimentos")
+    .select("id, valor_total")
+    .eq("id_empresa", empresaId)
+    .in("id", procJson);
+  if (procErr) {
+    console.error(procErr);
+    return NextResponse.json({ error: procErr.message }, { status: 500 });
+  }
+
+  const procValorMap = new Map(
+    (procRows ?? []).map((p) => [p.id as number, Number(p.valor_total)]),
+  );
+  if (procValorMap.size !== procJson.length) {
+    return NextResponse.json(
+      { error: "Um ou mais procedimentos são inválidos para esta empresa." },
+      { status: 400 },
+    );
+  }
+  const procedimentosLancamento = procJson.map((idProcedimento) => ({
+    id_agendamento: idAgendamento,
+    id_procedimento: idProcedimento,
+    valor_aplicado: Math.round((procValorMap.get(idProcedimento) ?? 0) * 100) / 100,
+  }));
+  const valorBruto =
+    Math.round(
+      procedimentosLancamento.reduce((acc, p) => acc + p.valor_aplicado, 0) * 100,
+    ) / 100;
+  const descontoAtual = Number(ag.desconto ?? 0);
+  const valorTotal = calcularValorTotal(valorBruto, descontoAtual);
 
   const { error: upsertErr } = await supabase.from("prontuario_paciente").upsert(
     {
@@ -262,9 +288,26 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: upsertErr.message }, { status: 500 });
   }
 
+  const { error: delProcErr } = await supabase
+    .from("agendamento_procedimentos")
+    .delete()
+    .eq("id_agendamento", idAgendamento);
+  if (delProcErr) {
+    console.error(delProcErr);
+    return NextResponse.json({ error: delProcErr.message }, { status: 500 });
+  }
+
+  const { error: insProcErr } = await supabase
+    .from("agendamento_procedimentos")
+    .insert(procedimentosLancamento);
+  if (insProcErr) {
+    console.error(insProcErr);
+    return NextResponse.json({ error: insProcErr.message }, { status: 500 });
+  }
+
   const { error: stAg } = await supabase
     .from("agendamentos")
-    .update({ status: "realizado" })
+    .update({ status: "realizado", valor_bruto: valorBruto, valor_total: valorTotal })
     .eq("id", idAgendamento)
     .eq("id_empresa", empresaId);
 
