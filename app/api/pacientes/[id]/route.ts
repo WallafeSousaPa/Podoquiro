@@ -110,20 +110,23 @@ export async function PATCH(request: Request, context: RouteContext) {
     return NextResponse.json({ data });
   }
 
-  let cpfRaw = "";
-  if (body.cpf !== undefined && body.cpf !== null) {
-    cpfRaw = String(body.cpf).trim();
-  }
-  let cpfVal: string | null = null;
-  if (cpfRaw !== "") {
-    const cpfDigits = normalizeCpfDigits(cpfRaw);
-    if (!isCpfLengthOk(cpfDigits)) {
-      return NextResponse.json(
-        { error: "Informe um CPF válido (11 dígitos) ou deixe em branco." },
-        { status: 400 },
-      );
+  const atualizaCpfProperty = Object.prototype.hasOwnProperty.call(body, "cpf");
+  let usuarioCpf: string | null | undefined;
+  if (atualizaCpfProperty) {
+    const cpfRaw =
+      body.cpf === undefined || body.cpf === null ? "" : String(body.cpf).trim();
+    if (cpfRaw === "") {
+      usuarioCpf = null;
+    } else {
+      const cpfDigits = normalizeCpfDigits(cpfRaw);
+      if (!isCpfLengthOk(cpfDigits)) {
+        return NextResponse.json(
+          { error: "Informe um CPF válido (11 dígitos) ou deixe em branco." },
+          { status: 400 },
+        );
+      }
+      usuarioCpf = cpfDigits;
     }
-    cpfVal = cpfDigits;
   }
 
   const telefone = optString(body.telefone);
@@ -184,8 +187,7 @@ export async function PATCH(request: Request, context: RouteContext) {
     );
   }
 
-  const patch = {
-    cpf: cpfVal,
+  const basePatch = {
     nome_completo: usarNomeSocial ? null : nomeCompleto,
     nome_social: usarNomeSocial ? nomeSocial : null,
     genero,
@@ -202,7 +204,13 @@ export async function PATCH(request: Request, context: RouteContext) {
     uf: uf ? uf.toUpperCase() : null,
   };
 
-  const { data, error } = await supabase
+  let dataOut: unknown | null = null;
+  const patch =
+    atualizaCpfProperty && usuarioCpf !== undefined
+      ? { ...basePatch, cpf: usuarioCpf }
+      : basePatch;
+
+  const { data: updatedData, error } = await supabase
     .from("pacientes")
     .update(patch)
     .eq("id", id)
@@ -225,9 +233,12 @@ export async function PATCH(request: Request, context: RouteContext) {
     }
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
-  if (!data) {
+
+  if (!updatedData) {
     return NextResponse.json({ error: "Paciente não encontrado." }, { status: 404 });
   }
 
-  return NextResponse.json({ data });
+  dataOut = updatedData;
+
+  return NextResponse.json({ data: dataOut });
 }

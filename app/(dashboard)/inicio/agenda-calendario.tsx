@@ -1428,6 +1428,13 @@ export function AgendaCalendario({
               </button>
               <button
                 type="button"
+                className="btn btn-outline-primary btn-sm"
+                onClick={() => router.push("/pacientes/cadastro?novo=1")}
+              >
+                <i className="fas fa-user-plus mr-1" aria-hidden /> Novo paciente
+              </button>
+              <button
+                type="button"
                 className="agenda-btn-add"
                 disabled={loading || usuarios.length === 0}
                 onClick={() => void abrirNovo()}

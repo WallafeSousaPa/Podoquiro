@@ -7,6 +7,7 @@ import {
   type ReactNode,
   useEffect,
   useId,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -222,6 +223,9 @@ export function PacientesCadastroClient({ pacientes, loadError }: Props) {
     null,
   );
   const fileImportRef = useRef<HTMLInputElement>(null);
+  const abriuModalViaQueryRef = useRef(false);
+  /** Garante que nada (cache/autofill/extensão) marque o CPF como obrigatório no DOM. */
+  const pacienteCpfInputRef = useRef<HTMLInputElement | null>(null);
   const [importandoArquivo, setImportandoArquivo] = useState(false);
   const [resultadoImport, setResultadoImport] = useState<{
     importados: number;
@@ -251,6 +255,33 @@ export function PacientesCadastroClient({ pacientes, loadError }: Props) {
     setFormError(null);
     setAvisoEdicaoCadastro(null);
   }
+
+  function clearCpfCampoValidacaoNativa() {
+    const el = pacienteCpfInputRef.current;
+    if (!el) return;
+    el.required = false;
+    el.removeAttribute("required");
+    el.removeAttribute("pattern");
+    el.setCustomValidity("");
+  }
+
+  useLayoutEffect(() => {
+    if (!modalOpen) return;
+    queueMicrotask(() => {
+      clearCpfCampoValidacaoNativa();
+    });
+  }, [modalOpen]);
+
+  useEffect(() => {
+    if (abriuModalViaQueryRef.current) return;
+    if (typeof window === "undefined") return;
+    const params = new URLSearchParams(window.location.search);
+    if (params.get("novo") !== "1") return;
+
+    abriuModalViaQueryRef.current = true;
+    openCreate();
+    router.replace("/pacientes/cadastro");
+  }, [router]);
 
   function openCreate() {
     resetForm();
@@ -286,15 +317,16 @@ export function PacientesCadastroClient({ pacientes, loadError }: Props) {
     setFormError(null);
 
     const cpfDig = normalizeCpfDigits(row.cpf ?? "");
+    const cpfPreenchido = cpfDig.length > 0;
     const cpfOk = isCpfLengthOk(cpfDig);
     const telOk = Boolean(row.telefone?.trim());
-    if (!cpfOk && !telOk) {
+    if (cpfPreenchido && !cpfOk && !telOk) {
       setAvisoEdicaoCadastro(
         "Este paciente está sem CPF válido (11 dígitos) e sem telefone. Preencha CPF e telefone para concluir o cadastro.",
       );
-    } else if (!cpfOk) {
+    } else if (cpfPreenchido && !cpfOk) {
       setAvisoEdicaoCadastro(
-        "Este paciente está sem CPF válido (11 dígitos). Preencha o campo CPF.",
+        "Este paciente está com CPF inválido (11 dígitos). Corrija o CPF ou deixe o campo em branco.",
       );
     } else if (!telOk) {
       setAvisoEdicaoCadastro(
@@ -364,11 +396,11 @@ export function PacientesCadastroClient({ pacientes, loadError }: Props) {
     }
   }
 
-  async function submit(e: FormEvent) {
-    e.preventDefault();
+  async function submit(e?: FormEvent) {
+    e?.preventDefault();
     const cpfDigits = normalizeCpfDigits(cpf);
-    if (cpfDigits.length !== 11) {
-      setFormError("Informe um CPF válido (11 dígitos).");
+    if (cpfDigits.length !== 0 && cpfDigits.length !== 11) {
+      setFormError("Informe um CPF com 11 dígitos ou deixe o campo em branco.");
       return;
     }
     const tel = telefone.trim();
@@ -386,7 +418,7 @@ export function PacientesCadastroClient({ pacientes, loadError }: Props) {
     setFormError(null);
     try {
       const payload: Record<string, unknown> = {
-        cpf: cpfDigits,
+        cpf: cpfDigits.length === 11 ? cpfDigits : "",
         usar_nome_social: usarNomeSocial,
         nome_completo: usarNomeSocial ? null : nome,
         nome_social: usarNomeSocial ? nome : null,
@@ -779,7 +811,7 @@ export function PacientesCadastroClient({ pacientes, loadError }: Props) {
         <ModalBackdrop onBackdropClick={closeModal}>
           <div className="modal-dialog modal-lg" role="document">
             <div className="modal-content">
-              <form onSubmit={(e) => void submit(e)}>
+              <div className="d-flex flex-column h-100">
                 <div className="modal-header">
                   <h5 className="modal-title" id={modalTitleId}>
                     {editing ? "Editar paciente" : "Novo paciente"}
@@ -809,15 +841,25 @@ export function PacientesCadastroClient({ pacientes, loadError }: Props) {
                   <div className="form-group">
                     <label htmlFor="pac-cpf">CPF</label>
                     <input
+                      ref={pacienteCpfInputRef}
                       id="pac-cpf"
+                      name="pac_cpf_opcional"
+                      type="text"
                       className="form-control"
                       inputMode="numeric"
                       autoComplete="off"
-                      placeholder="Somente números (11 dígitos)"
+                      spellCheck={false}
+                      data-paciente-cpf-opcional=""
+                      placeholder="Opcional — pode ficar vazio"
                       value={cpf}
-                      onChange={(e) => onCpfChange(e.target.value)}
-                      required
+                      onChange={(e) => {
+                        onCpfChange(e.target.value);
+                        clearCpfCampoValidacaoNativa();
+                      }}
                     />
+                    <small className="form-text text-muted">
+                      O preenchimento do CPF é opcional.
+                    </small>
                   </div>
 
                   <div className="form-group">
@@ -843,7 +885,6 @@ export function PacientesCadastroClient({ pacientes, loadError }: Props) {
                       className="form-control"
                       value={nomePrincipal}
                       onChange={(e) => setNomePrincipal(e.target.value)}
-                      required
                     />
                     <small className="form-text text-muted">
                       Marque &quot;Nome social&quot; para cadastrar o paciente pelo nome social em
@@ -858,7 +899,6 @@ export function PacientesCadastroClient({ pacientes, loadError }: Props) {
                       className="form-control"
                       value={telefone}
                       onChange={(e) => setTelefone(e.target.value)}
-                      required
                     />
                   </div>
 
@@ -1039,11 +1079,19 @@ export function PacientesCadastroClient({ pacientes, loadError }: Props) {
                   <button type="button" className="btn btn-secondary" onClick={closeModal}>
                     Cancelar
                   </button>
-                  <button type="submit" className="btn btn-primary" disabled={saving}>
+                  <button
+                    type="button"
+                    className="btn btn-primary"
+                    disabled={saving}
+                    onClick={() => {
+                      clearCpfCampoValidacaoNativa();
+                      void submit();
+                    }}
+                  >
                     {saving ? "Salvando..." : "Salvar"}
                   </button>
                 </div>
-              </form>
+              </div>
             </div>
           </div>
         </ModalBackdrop>

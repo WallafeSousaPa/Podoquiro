@@ -91,7 +91,8 @@ export async function POST(request: Request) {
   if (body.cpf !== undefined && body.cpf !== null) {
     cpfRaw = String(body.cpf).trim();
   }
-  let cpfVal: string | null = null;
+  /** CPF digitado pelo usuário (null = salva sem CPF). */
+  let cpfUsuarioOuNull: string | null = null;
   if (cpfRaw !== "") {
     const cpfDigits = normalizeCpfDigits(cpfRaw);
     if (!isCpfLengthOk(cpfDigits)) {
@@ -100,7 +101,7 @@ export async function POST(request: Request) {
         { status: 400 },
       );
     }
-    cpfVal = cpfDigits;
+    cpfUsuarioOuNull = cpfDigits;
   }
 
   const telefone = optString(body.telefone);
@@ -167,9 +168,29 @@ export async function POST(request: Request) {
 
   const supabase = createAdminClient();
 
-  const insertRow = {
+  type InsertPacienteRow = {
+    id_empresa: number;
+    cpf: string | null;
+    nome_completo: string | null;
+    nome_social: string | null;
+    genero: ReturnType<typeof optString>;
+    data_nascimento: string | null;
+    estado_civil: ReturnType<typeof optString>;
+    email: ReturnType<typeof optString>;
+    telefone: ReturnType<typeof optString>;
+    cep: ReturnType<typeof optString>;
+    logradouro: ReturnType<typeof optString>;
+    numero: ReturnType<typeof optString>;
+    complemento: ReturnType<typeof optString>;
+    bairro: ReturnType<typeof optString>;
+    cidade: ReturnType<typeof optString>;
+    uf: string | null;
+    ativo: boolean;
+  };
+
+  const insertRow: InsertPacienteRow = {
     id_empresa: empresaId,
-    cpf: cpfVal,
+    cpf: cpfUsuarioOuNull,
     nome_completo: usarNomeSocial ? null : nomeCompleto,
     nome_social: usarNomeSocial ? nomeSocial : null,
     genero,
@@ -187,7 +208,7 @@ export async function POST(request: Request) {
     ativo: true,
   };
 
-  const { data, error } = await supabase
+  const { data: dataOut, error } = await supabase
     .from("pacientes")
     .insert(insertRow)
     .select(
@@ -209,5 +230,5 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 
-  return NextResponse.json({ data });
+  return NextResponse.json({ data: dataOut });
 }
