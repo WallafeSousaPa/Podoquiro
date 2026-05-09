@@ -50,7 +50,11 @@ function cx(...parts: (string | false | undefined | null)[]) {
   return parts.filter(Boolean).join(" ");
 }
 
-const ROTAS_LIBERADAS_SOMENTE_INICIO = ["/inicio", "/conta/senha"] as const;
+const ROTAS_LIBERADAS_SOMENTE_INICIO = [
+  "/inicio",
+  "/atendimentos/atendimento",
+  "/conta/senha",
+] as const;
 
 function rotaLiberadaParaGrupoSomenteInicio(pathname: string): boolean {
   return ROTAS_LIBERADAS_SOMENTE_INICIO.some(
@@ -76,6 +80,7 @@ export function DashboardShell({
   nomeEmpresa,
   somenteMenuInicio = false,
   menuRecepcao = false,
+  menuAtendimento = false,
   children,
 }: {
   nomeUsuario: string;
@@ -84,6 +89,8 @@ export function DashboardShell({
   somenteMenuInicio?: boolean;
   /** Início, Pacientes › Cadastrar, Financeiro › Caixa — grupo Recepção. */
   menuRecepcao?: boolean;
+  /** Atendimentos › Atendimento — Podólogo e Administrador. */
+  menuAtendimento?: boolean;
   children: ReactNode;
 }) {
   const router = useRouter();
@@ -105,6 +112,9 @@ export function DashboardShell({
   const [openFinanceiro, setOpenFinanceiro] = useState(() =>
     pathname.startsWith("/financeiro"),
   );
+  const [openAtendimentos, setOpenAtendimentos] = useState(() =>
+    pathname.startsWith("/atendimentos"),
+  );
   const [openParametrizacao, setOpenParametrizacao] = useState(() =>
     pathname.startsWith("/financeiro/parametrizacao"),
   );
@@ -115,6 +125,7 @@ export function DashboardShell({
     setOpenPacientes(pathname.startsWith("/pacientes"));
     setOpenProcedimentos(pathname.startsWith("/procedimentos"));
     setOpenFinanceiro(pathname.startsWith("/financeiro"));
+    setOpenAtendimentos(pathname.startsWith("/atendimentos"));
     setOpenParametrizacao(pathname.startsWith("/financeiro/parametrizacao"));
   }, [pathname]);
 
@@ -167,6 +178,7 @@ export function DashboardShell({
   const isPacientes = pathname.startsWith("/pacientes");
   const isProcedimentos = pathname.startsWith("/procedimentos");
   const isFinanceiro = pathname.startsWith("/financeiro");
+  const isAtendimentos = pathname.startsWith("/atendimentos");
   const isParametrizacao = pathname.startsWith("/financeiro/parametrizacao");
 
   return (
@@ -241,7 +253,44 @@ export function DashboardShell({
                 </Link>
               </li>
 
-              {somenteMenuInicio ? null : menuRecepcao ? (
+              {somenteMenuInicio ? (
+                <li
+                  className={cx(
+                    "nav-item",
+                    "has-treeview",
+                    openAtendimentos && "menu-open",
+                  )}
+                >
+                  <a
+                    href="#"
+                    className={cx("nav-link", isAtendimentos && "active")}
+                    onClick={(e) => {
+                      e.preventDefault();
+                      setOpenAtendimentos((v) => !v);
+                    }}
+                  >
+                    <i className="nav-icon fas fa-notes-medical" />
+                    <p>
+                      Atendimentos
+                      <i className="right fas fa-angle-left" />
+                    </p>
+                  </a>
+                  <ul className="nav nav-treeview">
+                    <li className="nav-item">
+                      <Link
+                        href="/atendimentos/atendimento"
+                        className={cx(
+                          "nav-link",
+                          pathname === "/atendimentos/atendimento" && "active",
+                        )}
+                      >
+                        <i className="far fa-circle nav-icon" />
+                        <p>Atendimento</p>
+                      </Link>
+                    </li>
+                  </ul>
+                </li>
+              ) : menuRecepcao ? (
                 <>
                   <li
                     className={cx(
@@ -331,6 +380,45 @@ export function DashboardShell({
                 </>
               ) : (
                 <>
+              {menuAtendimento ? (
+                <li
+                  className={cx(
+                    "nav-item",
+                    "has-treeview",
+                    openAtendimentos && "menu-open",
+                  )}
+                >
+                  <a
+                    href="#"
+                    className={cx("nav-link", isAtendimentos && "active")}
+                    onClick={(e) => {
+                      e.preventDefault();
+                      setOpenAtendimentos((v) => !v);
+                    }}
+                  >
+                    <i className="nav-icon fas fa-notes-medical" />
+                    <p>
+                      Atendimentos
+                      <i className="right fas fa-angle-left" />
+                    </p>
+                  </a>
+                  <ul className="nav nav-treeview">
+                    <li className="nav-item">
+                      <Link
+                        href="/atendimentos/atendimento"
+                        className={cx(
+                          "nav-link",
+                          pathname === "/atendimentos/atendimento" && "active",
+                        )}
+                      >
+                        <i className="far fa-circle nav-icon" />
+                        <p>Atendimento</p>
+                      </Link>
+                    </li>
+                  </ul>
+                </li>
+              ) : null}
+
               <li
                 className={cx(
                   "nav-item",

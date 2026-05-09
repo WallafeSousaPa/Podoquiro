@@ -1,6 +1,7 @@
 import { cache } from "react";
 import { createAdminClient } from "@/lib/supabase/admin";
 import {
+  grupoUsuariosAdministrador,
   grupoUsuariosMenuRecepcao,
   grupoUsuariosSomenteMenuInicioCalendario,
 } from "@/lib/dashboard/menu-grupo";
@@ -16,6 +17,10 @@ export type SaudacaoNomes = {
   somenteMenuInicio: boolean;
   /** Início + Pacientes › Cadastrar + Financeiro › Caixa — ex. grupo Recepção. */
   menuRecepcao: boolean;
+  /** Exibe menu Atendimentos › Atendimento (Podólogo e Administrador). */
+  menuAtendimento: boolean;
+  /** Exceção para agendar em data/hora retroativas (Administrador/Administrativo). */
+  podeAgendarRetroativo: boolean;
 };
 
 /**
@@ -29,6 +34,8 @@ export const getNomesSaudacao = cache(
     let nomeFantasia = "";
     let somenteMenuInicio = false;
     let menuRecepcao = false;
+    let menuAtendimento = false;
+    let podeAgendarRetroativo = false;
 
     if (Number.isFinite(userId) && userId > 0 && Number.isFinite(empresaId) && empresaId > 0) {
       const supabase = createAdminClient();
@@ -52,8 +59,11 @@ export const getNomesSaudacao = cache(
       const g = Array.isArray(gRaw) ? gRaw[0] : gRaw;
       const nomeGrupo = g?.grupo_usuarios;
       menuRecepcao = grupoUsuariosMenuRecepcao(nomeGrupo);
-      somenteMenuInicio =
-        !menuRecepcao && grupoUsuariosSomenteMenuInicioCalendario(nomeGrupo);
+      const isPodologo = grupoUsuariosSomenteMenuInicioCalendario(nomeGrupo);
+      const isAdministrador = grupoUsuariosAdministrador(nomeGrupo);
+      somenteMenuInicio = !menuRecepcao && isPodologo;
+      menuAtendimento = isPodologo || isAdministrador;
+      podeAgendarRetroativo = isAdministrador;
     }
 
     const nomeEmpresaComId = nomeFantasia
@@ -69,6 +79,8 @@ export const getNomesSaudacao = cache(
       nomeEmpresaCurto,
       somenteMenuInicio,
       menuRecepcao,
+      menuAtendimento,
+      podeAgendarRetroativo,
     };
   },
 );

@@ -27,6 +27,15 @@ export function grupoNomeContemRecepcao(nome: string | null | undefined): boolea
   return c.includes("recepcao");
 }
 
+/** Grupos administrativos (ex.: Administrador, Administrativo) podem retroagir agenda. */
+export function grupoNomePermiteAgendarRetroativo(
+  nome: string | null | undefined,
+): boolean {
+  if (nome == null || String(nome).trim() === "") return false;
+  const c = normalizarNomeGrupoAgenda(String(nome));
+  return c.includes("admin");
+}
+
 type GrupoAgendaEmbed = {
   grupo_usuarios: string | null;
   agenda_apenas_coluna_propria?: boolean | null;
@@ -80,6 +89,28 @@ export async function getPodeVerTodosAgendamentos(
   if (gErr) return false;
   if (grupoNomeContemRecepcao(g?.grupo_usuarios)) return true;
   return Boolean(g?.calendario);
+}
+
+/** Exceção de data/hora retroativa para grupos administrativos. */
+export async function getUsuarioPodeAgendarRetroativo(
+  supabase: SupabaseClient,
+  idUsuario: number,
+): Promise<boolean> {
+  const { data: u, error: uErr } = await supabase
+    .from("usuarios")
+    .select(
+      "usuarios_grupos:usuarios_grupos!usuarios_id_grupo_usuarios_fkey ( grupo_usuarios )",
+    )
+    .eq("id", idUsuario)
+    .maybeSingle();
+  if (uErr) return false;
+  const gRaw = u?.usuarios_grupos as
+    | { grupo_usuarios: string | null }
+    | { grupo_usuarios: string | null }[]
+    | null
+    | undefined;
+  const g = Array.isArray(gRaw) ? gRaw[0] : gRaw;
+  return grupoNomePermiteAgendarRetroativo(g?.grupo_usuarios);
 }
 
 /** Profissional pode ser coluna na agenda: grupo parametrizado ou exceção `exibir_na_agenda`. */

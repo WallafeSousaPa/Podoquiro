@@ -15,6 +15,15 @@ export function grupoUsuariosSomenteMenuInicioCalendario(
   return c === "podogolo" || c.includes("podolog");
 }
 
+/** Grupo com permissões administrativas (nome contém "admin"). */
+export function grupoUsuariosAdministrador(
+  nomeGrupo: string | null | undefined,
+): boolean {
+  if (nomeGrupo == null || String(nomeGrupo).trim() === "") return false;
+  const c = normalizarNomeGrupoAgenda(String(nomeGrupo));
+  return c.includes("admin");
+}
+
 /** Menu restrito: Início, Pacientes › Cadastrar, Financeiro › Caixa (ex.: grupo Recepção). */
 export function grupoUsuariosMenuRecepcao(
   nomeGrupo: string | null | undefined,

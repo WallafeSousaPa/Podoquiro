@@ -3,6 +3,7 @@ import { calcularValorTotal } from "@/lib/agenda/totais";
 import { resolveGruposCalendario } from "@/lib/agenda/grupos-calendario";
 import {
   getPodeVerTodosAgendamentos,
+  getUsuarioPodeAgendarRetroativo,
   getUsuarioAgendaSomentePropriaColuna,
   profissionalPodeNaAgenda,
 } from "@/lib/agenda/permissoes-calendario";
@@ -128,7 +129,12 @@ export async function POST(request: Request) {
     );
   }
 
-  if (inicioEhRetroativo(t0)) {
+  const supabase = createAdminClient();
+  const podeAgendarRetroativo = await getUsuarioPodeAgendarRetroativo(
+    supabase,
+    sessionUserId,
+  );
+  if (!podeAgendarRetroativo && inicioEhRetroativo(t0)) {
     return NextResponse.json({ error: MSG_HORARIO_RETROATIVO }, { status: 400 });
   }
 
@@ -213,8 +219,6 @@ export async function POST(request: Request) {
       });
     }
   }
-
-  const supabase = createAdminClient();
 
   const [podeVerTodos, somentePropriaColuna] = await Promise.all([
     getPodeVerTodosAgendamentos(supabase, sessionUserId),

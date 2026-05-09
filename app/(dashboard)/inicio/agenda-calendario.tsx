@@ -13,6 +13,7 @@ import {
   useState,
 } from "react";
 import "./agenda.css";
+import { ModalAnamneseAgenda } from "./modal-anamnese-agenda";
 import { ModalProntuarioPodologo } from "./modal-prontuario-podologo";
 import {
   MSG_HORARIO_RETROATIVO,
@@ -33,6 +34,11 @@ const HORA_FIM = 20;
 const ALTURA_HORA_PX = 42;
 const MINUTOS_POR_LINHA = 30;
 
+/** Instantâneo atual para validações (fora do componente — evita react-hooks/purity em handlers). */
+function msRelogioAgora(): number {
+  return Date.now();
+}
+
 type UsuarioCol = {
   id: number;
   nome: string;
@@ -40,39 +46,11 @@ type UsuarioCol = {
   card_cor?: string | null;
 };
 
-type ProcLinha = {
-  id_procedimento: number;
-  valor_aplicado: number;
-  label?: string;
-};
-
-type PagLinha = {
-  id_forma_pagamento: number;
-  id_maquineta: number | null;
-  valor_pago: number;
-  status_pagamento: "pago" | "estornado" | "pendente";
-};
-
 type PacienteListaItem = {
   id: number;
   nome: string;
   telefone: string | null;
 };
-
-type AvaliacaoOptionItem = {
-  id: number;
-  tipo?: string | null;
-  condicao?: string | null;
-  ativo: boolean;
-};
-
-const FORMAS_CONTATO_PACIENTE = [
-  "Instagram",
-  "Google",
-  "Tik Tok",
-  "Facebook",
-  "Indicação",
-] as const;
 
 function apenasDigitosTel(s: string): string {
   return s.replace(/\D/g, "");
@@ -409,12 +387,15 @@ type Props = {
   nomeEmpresa: string;
   /** Perfil Podólogo: oculta Agendar + e Parametrização na toolbar. */
   somenteMenuInicio?: boolean;
+  /** Exceção para agendar horários retroativos (Administrador/Administrativo). */
+  podeAgendarRetroativo?: boolean;
 };
 
 export function AgendaCalendario({
   idEmpresa,
   nomeEmpresa,
   somenteMenuInicio = false,
+  podeAgendarRetroativo = false,
 }: Props) {
   const router = useRouter();
   const modalId = useId();
@@ -445,12 +426,6 @@ export function AgendaCalendario({
   const [editingId, setEditingId] = useState<number | null>(null);
   const [pacientes, setPacientes] = useState<PacienteListaItem[]>([]);
   const [salas, setSalas] = useState<{ id: number; nome: string }[]>([]);
-  const [procedimentosCat, setProcedimentosCat] = useState<
-    { id: number; procedimento: string; valor_total: number }[]
-  >([]);
-  const [formasPg, setFormasPg] = useState<{ id: number; nome: string }[]>([]);
-  const [maquinetas, setMaquinetas] = useState<{ id: number; nome: string }[]>([]);
-
   const [idUsuario, setIdUsuario] = useState("");
   const [idPaciente, setIdPaciente] = useState("");
   const [pacienteBusca, setPacienteBusca] = useState("");
@@ -462,8 +437,6 @@ export function AgendaCalendario({
   const [statusAg, setStatusAg] = useState<string>("pendente");
   const [desconto, setDesconto] = useState("0");
   const [observacoes, setObservacoes] = useState("");
-  const [procedimentos, setProcedimentos] = useState<ProcLinha[]>([]);
-  const [pagamentos, setPagamentos] = useState<PagLinha[]>([]);
   const [saving, setSaving] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
   /** Mensagens de validação / API ao salvar (modal sobre o formulário). */
@@ -492,44 +465,7 @@ export function AgendaCalendario({
     idUsuario: string;
     horaInicio: string;
   } | null>(null);
-  const [anamneseOpen, setAnamneseOpen] = useState(false);
-  const [anamneseAg, setAnamneseAg] = useState<AgendamentoDia | null>(null);
-  const [anamneseSaving, setAnamneseSaving] = useState(false);
-  const [anamneseError, setAnamneseError] = useState<string | null>(null);
-  const [anamneseIdCondicao, setAnamneseIdCondicao] = useState("");
-  const [anamnesePressaoArterial, setAnamnesePressaoArterial] = useState("");
-  const [anamneseGlicemia, setAnamneseGlicemia] = useState("");
-  const [anamneseAtividadeFisica, setAnamneseAtividadeFisica] = useState("");
-  const [anamneseTipoCalcado, setAnamneseTipoCalcado] = useState("");
-  const [anamneseAlergias, setAnamneseAlergias] = useState("");
-  const [anamneseIdTipoUnha, setAnamneseIdTipoUnha] = useState("");
-  const [anamneseIdPeEsquerdo, setAnamneseIdPeEsquerdo] = useState("");
-  const [anamneseIdPeDireito, setAnamneseIdPeDireito] = useState("");
-  const [anamneseIdHidrose, setAnamneseIdHidrose] = useState("");
-  const [anamneseIdLesoes, setAnamneseIdLesoes] = useState("");
-  const [anamneseDigitoPressao, setAnamneseDigitoPressao] = useState("");
-  const [anamneseVarizes, setAnamneseVarizes] = useState("");
-  const [anamneseClaudicacao, setAnamneseClaudicacao] = useState("");
-  const [anamneseTemperatura, setAnamneseTemperatura] = useState("");
-  const [anamneseOleo, setAnamneseOleo] = useState("");
-  const [anamneseAgua, setAnamneseAgua] = useState("");
-  const [anamneseObservacao, setAnamneseObservacao] = useState("");
-  const [anamneseIdFormatoDedos, setAnamneseIdFormatoDedos] = useState("");
-  const [anamneseIdFormatoPe, setAnamneseIdFormatoPe] = useState("");
-  const [anamneseFormaContato, setAnamneseFormaContato] = useState("");
-  const [anamneseTratamento, setAnamneseTratamento] = useState("");
-  const [anamneseFotoPlantarDireito, setAnamneseFotoPlantarDireito] = useState<File | null>(null);
-  const [anamneseFotoPlantarEsquerdo, setAnamneseFotoPlantarEsquerdo] = useState<File | null>(null);
-  const [anamneseFotoDorsoDireito, setAnamneseFotoDorsoDireito] = useState<File | null>(null);
-  const [anamneseFotoDorsoEsquerdo, setAnamneseFotoDorsoEsquerdo] = useState<File | null>(null);
-  const [anamneseFotoTermo, setAnamneseFotoTermo] = useState<File | null>(null);
-  const [anamneseCondicoes, setAnamneseCondicoes] = useState<AvaliacaoOptionItem[]>([]);
-  const [anamneseTiposUnhas, setAnamneseTiposUnhas] = useState<AvaliacaoOptionItem[]>([]);
-  const [anamneseTiposPe, setAnamneseTiposPe] = useState<AvaliacaoOptionItem[]>([]);
-  const [anamneseHidroses, setAnamneseHidroses] = useState<AvaliacaoOptionItem[]>([]);
-  const [anamneseLesoes, setAnamneseLesoes] = useState<AvaliacaoOptionItem[]>([]);
-  const [anamneseFormatosDedos, setAnamneseFormatosDedos] = useState<AvaliacaoOptionItem[]>([]);
-  const [anamneseFormatosPe, setAnamneseFormatosPe] = useState<AvaliacaoOptionItem[]>([]);
+  const [anamneseAgModal, setAnamneseAgModal] = useState<AgendamentoDia | null>(null);
 
   useEffect(() => {
     if (menuCardAbertoId == null) return;
@@ -566,10 +502,6 @@ export function AgendaCalendario({
   const gradeMes = useMemo(
     () => gradeMesSegundaInicio(refMesD.getFullYear(), refMesD.getMonth() + 1),
     [refMesD],
-  );
-  const nomeUsuario = useMemo(
-    () => Object.fromEntries(usuarios.map((u) => [u.id, u.nome])) as Record<number, string>,
-    [usuarios],
   );
   const corCardUsuario = useMemo(
     () =>
@@ -652,7 +584,10 @@ export function AgendaCalendario({
   }, [dataDia, visualizacao]);
 
   useEffect(() => {
-    void loadAgenda();
+    const id = requestAnimationFrame(() => {
+      void loadAgenda();
+    });
+    return () => cancelAnimationFrame(id);
   }, [loadAgenda]);
 
   useEffect(() => {
@@ -709,12 +644,7 @@ export function AgendaCalendario({
   }
 
   async function carregarListasAuxiliares() {
-    const [pr, sa, fp, mq] = await Promise.all([
-      fetch("/api/pacientes"),
-      fetch("/api/salas"),
-      fetch("/api/formas-pagamento"),
-      fetch("/api/maquinetas"),
-    ]);
+    const [pr, sa] = await Promise.all([fetch("/api/pacientes"), fetch("/api/salas")]);
     const pj = (await pr.json()) as {
       data?: {
         id: number;
@@ -726,8 +656,6 @@ export function AgendaCalendario({
     const sj = (await sa.json()) as {
       data?: { id: number; id_empresa: number; nome_sala: string }[];
     };
-    const fpj = (await fp.json()) as { data?: { id: number; nome: string }[] };
-    const mqj = (await mq.json()) as { data?: { id: number; nome: string }[] };
 
     const emp = Number(idEmpresa);
     setPacientes(
@@ -748,29 +676,6 @@ export function AgendaCalendario({
         .filter((s) => s.id_empresa === emp)
         .map((s) => ({ id: s.id, nome: s.nome_sala })),
     );
-    setFormasPg((fpj.data ?? []).map((f) => ({ id: f.id, nome: f.nome })));
-    setMaquinetas((mqj.data ?? []).map((m) => ({ id: m.id, nome: m.nome })));
-  }
-
-  /** Procedimentos liberados para o profissional (Usuários → Colaboradores). */
-  async function carregarProcedimentosPorProfissional(idUsu: number) {
-    const proc = await fetch(
-      `/api/procedimentos?id_usuario=${encodeURIComponent(String(idUsu))}`,
-    );
-    const procj = (await proc.json()) as {
-      error?: string;
-      data?: { id: number; procedimento: string; valor_total: number }[];
-    };
-    if (!proc.ok) {
-      throw new Error(procj.error ?? "Erro ao carregar procedimentos.");
-    }
-    const list = (procj.data ?? []).map((p) => ({
-      id: p.id,
-      procedimento: p.procedimento,
-      valor_total: Number(p.valor_total),
-    }));
-    setProcedimentosCat(list);
-    return list;
   }
 
   async function abrirNovo(preUsuarioId?: number) {
@@ -780,9 +685,6 @@ export function AgendaCalendario({
     setStatusAg("pendente");
     setDesconto("0");
     setObservacoes("");
-    setPagamentos([]);
-    setProcedimentos([]);
-    setProcedimentosCat([]);
 
     try {
       await carregarListasAuxiliares();
@@ -809,22 +711,6 @@ export function AgendaCalendario({
     }
     setInicioLocal(toDatetimeLocalValue(base));
     setHoraFimLocal(formatHoraLocal(adicionarMinutos(base, 30)));
-
-    try {
-      if (defUser) {
-        const cat = await carregarProcedimentosPorProfissional(Number(defUser));
-        if (cat.length > 0) {
-          setProcedimentos([
-            {
-              id_procedimento: cat[0].id,
-              valor_aplicado: cat[0].valor_total,
-            },
-          ]);
-        }
-      }
-    } catch {
-      setFormError("Não foi possível carregar procedimentos do profissional.");
-    }
 
     setModalOpen(true);
   }
@@ -854,13 +740,6 @@ export function AgendaCalendario({
           status: string;
           desconto: number;
           observacoes: string | null;
-          procedimentos: { id_procedimento: number; valor_aplicado: number }[];
-          pagamentos: {
-            id_forma_pagamento: number;
-            id_maquineta: number | null;
-            valor_pago: number;
-            status_pagamento: string;
-          }[];
         };
       };
       if (!res.ok) throw new Error(json.error ?? "Erro ao carregar agendamento.");
@@ -882,28 +761,6 @@ export function AgendaCalendario({
       setStatusAg(d.status);
       setDesconto(String(d.desconto));
       setObservacoes(d.observacoes ?? "");
-
-      const cat = await carregarProcedimentosPorProfissional(d.id_usuario);
-      const permitidos = new Set(cat.map((c) => c.id));
-      setProcedimentos(
-        d.procedimentos
-          .filter((p) => permitidos.has(p.id_procedimento))
-          .map((p) => {
-            const c = cat.find((x) => x.id === p.id_procedimento);
-            return {
-              id_procedimento: p.id_procedimento,
-              valor_aplicado: c ? c.valor_total : p.valor_aplicado,
-            };
-          }),
-      );
-      setPagamentos(
-        d.pagamentos.map((p) => ({
-          id_forma_pagamento: p.id_forma_pagamento,
-          id_maquineta: p.id_maquineta,
-          valor_pago: p.valor_pago,
-          status_pagamento: p.status_pagamento as PagLinha["status_pagamento"],
-        })),
-      );
     } catch (e) {
       setFormError(e instanceof Error ? e.message : "Erro.");
     }
@@ -946,32 +803,6 @@ export function AgendaCalendario({
     }
   }
 
-  function addProcLinha() {
-    const p0 = procedimentosCat[0];
-    if (!p0) return;
-    setProcedimentos((prev) => [
-      ...prev,
-      {
-        id_procedimento: p0.id,
-        valor_aplicado: p0.valor_total,
-      },
-    ]);
-  }
-
-  function addPagLinha() {
-    const f0 = formasPg[0];
-    if (!f0) return;
-    setPagamentos((prev) => [
-      ...prev,
-      {
-        id_forma_pagamento: f0.id,
-        id_maquineta: null,
-        valor_pago: 0,
-        status_pagamento: "pago",
-      },
-    ]);
-  }
-
   async function submit(e: FormEvent) {
     e.preventDefault();
     setSaving(true);
@@ -1010,7 +841,7 @@ export function AgendaCalendario({
         setErroModal("O horário de fim deve ser maior que o horário de início.");
         return;
       }
-      if (!editingId && tInicio < Date.now()) {
+      if (!podeAgendarRetroativo && !editingId && tInicio < msRelogioAgora()) {
         setErroModal(MSG_HORARIO_RETROATIVO);
         return;
       }
@@ -1103,7 +934,7 @@ export function AgendaCalendario({
     if (!r) return;
     const { inicio, fim } = r;
     if (!agendamentoMudouAposDrop(ag, u.id, inicio, fim)) return;
-    if (inicio.getTime() < Date.now()) {
+    if (!podeAgendarRetroativo && inicio.getTime() < msRelogioAgora()) {
       setErroModal(MSG_HORARIO_RETROATIVO);
       return;
     }
@@ -1124,121 +955,9 @@ export function AgendaCalendario({
     });
   }
 
-  function resetAnamneseForm() {
-    setAnamneseError(null);
-    setAnamneseIdCondicao("");
-    setAnamnesePressaoArterial("");
-    setAnamneseGlicemia("");
-    setAnamneseAtividadeFisica("");
-    setAnamneseTipoCalcado("");
-    setAnamneseAlergias("");
-    setAnamneseIdTipoUnha("");
-    setAnamneseIdPeEsquerdo("");
-    setAnamneseIdPeDireito("");
-    setAnamneseIdHidrose("");
-    setAnamneseIdLesoes("");
-    setAnamneseDigitoPressao("");
-    setAnamneseVarizes("");
-    setAnamneseClaudicacao("");
-    setAnamneseTemperatura("");
-    setAnamneseOleo("");
-    setAnamneseAgua("");
-    setAnamneseObservacao("");
-    setAnamneseIdFormatoDedos("");
-    setAnamneseIdFormatoPe("");
-    setAnamneseFormaContato("");
-    setAnamneseTratamento("");
-    setAnamneseFotoPlantarDireito(null);
-    setAnamneseFotoPlantarEsquerdo(null);
-    setAnamneseFotoDorsoDireito(null);
-    setAnamneseFotoDorsoEsquerdo(null);
-    setAnamneseFotoTermo(null);
-  }
-
-  async function carregarCatalogosAnamnese() {
-    const endpoints = [
-      "/api/condicoes-saude",
-      "/api/tipos-unhas",
-      "/api/tipo-pe",
-      "/api/hidroses",
-      "/api/lesoes-mecanicas",
-      "/api/formato-dedos",
-      "/api/formato-pe",
-    ] as const;
-    const responses = await Promise.all(endpoints.map((u) => fetch(u)));
-    const jsons = await Promise.all(
-      responses.map((r) => r.json() as Promise<{ error?: string; data?: AvaliacaoOptionItem[] }>),
-    );
-    for (let i = 0; i < responses.length; i++) {
-      if (!responses[i].ok) throw new Error(jsons[i].error ?? "Erro ao carregar cadastros auxiliares.");
-    }
-    setAnamneseCondicoes(jsons[0].data ?? []);
-    setAnamneseTiposUnhas(jsons[1].data ?? []);
-    setAnamneseTiposPe(jsons[2].data ?? []);
-    setAnamneseHidroses(jsons[3].data ?? []);
-    setAnamneseLesoes(jsons[4].data ?? []);
-    setAnamneseFormatosDedos(jsons[5].data ?? []);
-    setAnamneseFormatosPe(jsons[6].data ?? []);
-  }
-
-  async function abrirAnamnese(ag: AgendamentoDia) {
+  function abrirAnamnese(ag: AgendamentoDia) {
     setMenuCardAbertoId(null);
-    setAnamneseAg(ag);
-    resetAnamneseForm();
-    setAnamneseOpen(true);
-    try {
-      await carregarCatalogosAnamnese();
-    } catch (e) {
-      setAnamneseError(e instanceof Error ? e.message : "Erro ao carregar dados da anamnese.");
-    }
-  }
-
-  async function salvarAnamnese() {
-    if (!anamneseAg || anamneseSaving) return;
-    setAnamneseSaving(true);
-    setAnamneseError(null);
-    try {
-      const fd = new FormData();
-      fd.append("id_paciente", String(anamneseAg.id_paciente));
-      fd.append("id_condicao", anamneseIdCondicao);
-      fd.append("pressao_arterial", anamnesePressaoArterial);
-      fd.append("glicemia", anamneseGlicemia);
-      fd.append("atividade_fisica", anamneseAtividadeFisica);
-      fd.append("tipo_calcado", anamneseTipoCalcado);
-      fd.append("alergias", anamneseAlergias);
-      fd.append("id_tipo_unha", anamneseIdTipoUnha);
-      fd.append("id_pe_esquerdo", anamneseIdPeEsquerdo);
-      fd.append("id_pe_direito", anamneseIdPeDireito);
-      fd.append("id_hidrose", anamneseIdHidrose);
-      fd.append("id_lesoes_mecanicas", anamneseIdLesoes);
-      fd.append("digito_pressao", anamneseDigitoPressao);
-      fd.append("varizes", anamneseVarizes);
-      fd.append("claudicacao", anamneseClaudicacao);
-      fd.append("temperatura", anamneseTemperatura);
-      fd.append("oleo", anamneseOleo);
-      fd.append("agua", anamneseAgua);
-      fd.append("observacao", anamneseObservacao);
-      fd.append("id_formato_dedos", anamneseIdFormatoDedos);
-      fd.append("id_formato_pe", anamneseIdFormatoPe);
-      fd.append("forma_contato", anamneseFormaContato);
-      fd.append("tratamento_sugerido", anamneseTratamento);
-      if (anamneseFotoPlantarDireito) fd.append("foto_plantar_direito", anamneseFotoPlantarDireito);
-      if (anamneseFotoPlantarEsquerdo) fd.append("foto_plantar_esquerdo", anamneseFotoPlantarEsquerdo);
-      if (anamneseFotoDorsoDireito) fd.append("foto_dorso_direito", anamneseFotoDorsoDireito);
-      if (anamneseFotoDorsoEsquerdo) fd.append("foto_dorso_esquerdo", anamneseFotoDorsoEsquerdo);
-      if (anamneseFotoTermo) fd.append("foto_doc_termo_consentimento", anamneseFotoTermo);
-
-      const res = await fetch("/api/pacientes-evolucao", { method: "POST", body: fd });
-      const json = (await res.json().catch(() => ({}))) as { error?: string };
-      if (!res.ok) throw new Error(json.error ?? "Erro ao salvar anamnese.");
-      setAnamneseOpen(false);
-      setAnamneseAg(null);
-      router.refresh();
-    } catch (e) {
-      setAnamneseError(e instanceof Error ? e.message : "Erro ao salvar anamnese.");
-    } finally {
-      setAnamneseSaving(false);
-    }
+    setAnamneseAgModal(ag);
   }
 
   function confirmarAtalhoMoverForm() {
@@ -1254,7 +973,7 @@ export function AgendaCalendario({
     const duracaoMs =
       new Date(ag.data_hora_fim).getTime() - new Date(ag.data_hora_inicio).getTime();
     const fim = new Date(inicio.getTime() + duracaoMs);
-    if (inicio.getTime() < Date.now()) {
+    if (!podeAgendarRetroativo && inicio.getTime() < msRelogioAgora()) {
       setErroModal(MSG_HORARIO_RETROATIVO);
       return;
     }
@@ -2120,102 +1839,20 @@ export function AgendaCalendario({
         </ModalBackdrop>
       ) : null}
 
-      {anamneseOpen ? (
-        <ModalBackdrop onBackdropClick={() => !anamneseSaving && setAnamneseOpen(false)}>
-          <div
-            className="modal-dialog modal-xl modal-dialog-centered"
-            role="document"
-            style={{ width: "calc(100% - 1rem)", maxWidth: "min(1140px, calc(100vw - 1rem))", margin: "0.5rem auto" }}
-          >
-            <div className="modal-content">
-              <form
-                onSubmit={(e) => {
-                  e.preventDefault();
-                  void salvarAnamnese();
-                }}
-              >
-                <div className="modal-header">
-                  <h5 className="modal-title">Anamnese</h5>
-                  <button type="button" className="close" disabled={anamneseSaving} onClick={() => setAnamneseOpen(false)}>
-                    <span aria-hidden="true">&times;</span>
-                  </button>
-                </div>
-                <div className="modal-body" style={{ maxHeight: "70vh", overflowY: "auto" }}>
-                  {anamneseError ? <div className="alert alert-danger py-2 small">{anamneseError}</div> : null}
-                  <div className="form-row">
-                    <div className="form-group col-md-12">
-                      <label>Paciente</label>
-                      <input className="form-control" value={anamneseAg?.paciente_nome ?? ""} readOnly />
-                    </div>
-                  </div>
-                  <div className="border rounded p-3 mb-3">
-                    <h6 className="text-primary mb-3">Informações de saúde do paciente</h6>
-                    <div className="form-row">
-                      <div className="form-group col-md-4"><label>Condição de saúde</label><select className="form-control" value={anamneseIdCondicao} onChange={(e) => setAnamneseIdCondicao(e.target.value)}><option value="">—</option>{anamneseCondicoes.filter((x) => x.ativo).map((x) => <option key={x.id} value={x.id}>{x.condicao}</option>)}</select></div>
-                      <div className="form-group col-md-4"><label>Pressão arterial</label><input className="form-control" value={anamnesePressaoArterial} onChange={(e) => setAnamnesePressaoArterial(e.target.value)} /></div>
-                      <div className="form-group col-md-4"><label>Glicemia</label><input className="form-control" value={anamneseGlicemia} onChange={(e) => setAnamneseGlicemia(e.target.value)} /></div>
-                    </div>
-                    <div className="form-row">
-                      <div className="form-group col-md-6"><label>Atividade física</label><input className="form-control" value={anamneseAtividadeFisica} onChange={(e) => setAnamneseAtividadeFisica(e.target.value)} /></div>
-                      <div className="form-group col-md-6"><label>Tipo de calçado</label><input className="form-control" value={anamneseTipoCalcado} onChange={(e) => setAnamneseTipoCalcado(e.target.value)} /></div>
-                    </div>
-                    <div className="form-row">
-                      <div className="form-group col-md-4"><label>Varizes</label><input className="form-control" value={anamneseVarizes} onChange={(e) => setAnamneseVarizes(e.target.value)} /></div>
-                      <div className="form-group col-md-4"><label>Claudicação</label><input className="form-control" value={anamneseClaudicacao} onChange={(e) => setAnamneseClaudicacao(e.target.value)} /></div>
-                      <div className="form-group col-md-4"><label>Alergias</label><input className="form-control" value={anamneseAlergias} onChange={(e) => setAnamneseAlergias(e.target.value)} /></div>
-                    </div>
-                  </div>
-                  <div className="border rounded p-3 mb-3">
-                    <h6 className="text-primary mb-3">Tipos de unhas</h6>
-                    <div className="form-row">
-                      <div className="form-group col-md-4"><label>Tipo de unha</label><select className="form-control" value={anamneseIdTipoUnha} onChange={(e) => setAnamneseIdTipoUnha(e.target.value)}><option value="">—</option>{anamneseTiposUnhas.filter((x) => x.ativo).map((x) => <option key={x.id} value={x.id}>{x.tipo}</option>)}</select></div>
-                      <div className="form-group col-md-4"><label>Pé esquerdo</label><select className="form-control" value={anamneseIdPeEsquerdo} onChange={(e) => setAnamneseIdPeEsquerdo(e.target.value)}><option value="">—</option>{anamneseTiposPe.filter((x) => x.ativo).map((x) => <option key={x.id} value={x.id}>{x.tipo}</option>)}</select></div>
-                      <div className="form-group col-md-4"><label>Pé direito</label><select className="form-control" value={anamneseIdPeDireito} onChange={(e) => setAnamneseIdPeDireito(e.target.value)}><option value="">—</option>{anamneseTiposPe.filter((x) => x.ativo).map((x) => <option key={x.id} value={x.id}>{x.tipo}</option>)}</select></div>
-                    </div>
-                  </div>
-                  <div className="border rounded p-3 mb-3">
-                    <h6 className="text-primary mb-3">Analise Clinica</h6>
-                    <div className="form-row">
-                      <div className="form-group col-md-6"><label>Hidrose</label><select className="form-control" value={anamneseIdHidrose} onChange={(e) => setAnamneseIdHidrose(e.target.value)}><option value="">—</option>{anamneseHidroses.filter((x) => x.ativo).map((x) => <option key={x.id} value={x.id}>{x.tipo}</option>)}</select></div>
-                      <div className="form-group col-md-6"><label>Lesões mecânicas</label><select className="form-control" value={anamneseIdLesoes} onChange={(e) => setAnamneseIdLesoes(e.target.value)}><option value="">—</option>{anamneseLesoes.filter((x) => x.ativo).map((x) => <option key={x.id} value={x.id}>{x.tipo}</option>)}</select></div>
-                    </div>
-                    <div className="form-row">
-                      <div className="form-group col-md-4"><label>Dígito pressão</label><input className="form-control" value={anamneseDigitoPressao} onChange={(e) => setAnamneseDigitoPressao(e.target.value)} /></div>
-                      <div className="form-group col-md-4"><label>Temperatura</label><input className="form-control" value={anamneseTemperatura} onChange={(e) => setAnamneseTemperatura(e.target.value)} /></div>
-                      <div className="form-group col-md-4"><label>Óleo</label><input className="form-control" value={anamneseOleo} onChange={(e) => setAnamneseOleo(e.target.value)} /></div>
-                    </div>
-                    <div className="form-row">
-                      <div className="form-group col-md-4"><label>Água</label><input className="form-control" value={anamneseAgua} onChange={(e) => setAnamneseAgua(e.target.value)} /></div>
-                      <div className="form-group col-md-4"><label>Formato dos dedos</label><select className="form-control" value={anamneseIdFormatoDedos} onChange={(e) => setAnamneseIdFormatoDedos(e.target.value)}><option value="">—</option>{anamneseFormatosDedos.filter((x) => x.ativo).map((x) => <option key={x.id} value={x.id}>{x.tipo}</option>)}</select></div>
-                      <div className="form-group col-md-4"><label>Formato do pé</label><select className="form-control" value={anamneseIdFormatoPe} onChange={(e) => setAnamneseIdFormatoPe(e.target.value)}><option value="">—</option>{anamneseFormatosPe.filter((x) => x.ativo).map((x) => <option key={x.id} value={x.id}>{x.tipo}</option>)}</select></div>
-                    </div>
-                    <div className="form-row">
-                      <div className="form-group col-md-6"><label>Forma de contato</label><select className="form-control" value={anamneseFormaContato} onChange={(e) => setAnamneseFormaContato(e.target.value)}><option value="">—</option>{FORMAS_CONTATO_PACIENTE.map((f) => <option key={f} value={f}>{f}</option>)}</select></div>
-                      <div className="form-group col-md-6"><label>Tratamento sugerido</label><input className="form-control" value={anamneseTratamento} onChange={(e) => setAnamneseTratamento(e.target.value)} /></div>
-                    </div>
-                    <div className="form-group mb-0"><label>Observação</label><textarea className="form-control" rows={3} value={anamneseObservacao} onChange={(e) => setAnamneseObservacao(e.target.value)} /></div>
-                  </div>
-                  <div className="border rounded p-3">
-                    <h6 className="text-primary mb-3">Analise visual</h6>
-                    <div className="form-row">
-                      <div className="form-group col-md-6"><label>Plantar direito</label><input type="file" className="form-control-file" accept="image/*" onChange={(e) => setAnamneseFotoPlantarDireito(e.target.files?.[0] ?? null)} /></div>
-                      <div className="form-group col-md-6"><label>Plantar esquerdo</label><input type="file" className="form-control-file" accept="image/*" onChange={(e) => setAnamneseFotoPlantarEsquerdo(e.target.files?.[0] ?? null)} /></div>
-                    </div>
-                    <div className="form-row">
-                      <div className="form-group col-md-6"><label>Dorso direito</label><input type="file" className="form-control-file" accept="image/*" onChange={(e) => setAnamneseFotoDorsoDireito(e.target.files?.[0] ?? null)} /></div>
-                      <div className="form-group col-md-6"><label>Dorso esquerdo</label><input type="file" className="form-control-file" accept="image/*" onChange={(e) => setAnamneseFotoDorsoEsquerdo(e.target.files?.[0] ?? null)} /></div>
-                    </div>
-                    <div className="form-group mb-0"><label>Doc. termo consentimento</label><input type="file" className="form-control-file" accept="image/*" onChange={(e) => setAnamneseFotoTermo(e.target.files?.[0] ?? null)} /></div>
-                  </div>
-                </div>
-                <div className="modal-footer">
-                  <button type="button" className="btn btn-secondary" onClick={() => setAnamneseOpen(false)} disabled={anamneseSaving}>Cancelar</button>
-                  <button type="submit" className="btn btn-primary" disabled={anamneseSaving}>{anamneseSaving ? "Salvando..." : "Salvar anamnese"}</button>
-                </div>
-              </form>
-            </div>
-          </div>
-        </ModalBackdrop>
+      {anamneseAgModal ? (
+        <ModalAnamneseAgenda
+          key={`anamnese-${anamneseAgModal.id}`}
+          ag={{
+            id: anamneseAgModal.id,
+            id_paciente: anamneseAgModal.id_paciente,
+            paciente_nome: anamneseAgModal.paciente_nome,
+          }}
+          onClose={() => setAnamneseAgModal(null)}
+          onSalvo={() => {
+            router.refresh();
+            void loadAgenda();
+          }}
+        />
       ) : null}
 
       {atalhoMover ? (
@@ -2437,51 +2074,7 @@ export function AgendaCalendario({
                       <select
                         className="form-control"
                         value={idUsuario}
-                        onChange={(e) => {
-                          const v = e.target.value;
-                          setIdUsuario(v);
-                          const idU = Number(v);
-                          if (!Number.isFinite(idU) || idU <= 0) {
-                            setProcedimentosCat([]);
-                            setProcedimentos([]);
-                            return;
-                          }
-                          void (async () => {
-                            try {
-                              const cat = await carregarProcedimentosPorProfissional(idU);
-                              setProcedimentos((prev) => {
-                                const allowed = new Set(cat.map((c) => c.id));
-                                const kept = prev.filter((l) =>
-                                  allowed.has(l.id_procedimento),
-                                );
-                                if (kept.length > 0) {
-                                  return kept.map((l) => {
-                                    const c = cat.find((x) => x.id === l.id_procedimento);
-                                    return c
-                                      ? {
-                                          ...l,
-                                          valor_aplicado: c.valor_total,
-                                        }
-                                      : l;
-                                  });
-                                }
-                                if (cat.length > 0) {
-                                  return [
-                                    {
-                                      id_procedimento: cat[0].id,
-                                      valor_aplicado: cat[0].valor_total,
-                                    },
-                                  ];
-                                }
-                                return [];
-                              });
-                            } catch {
-                              setErroModal(
-                                "Não foi possível carregar procedimentos do profissional.",
-                              );
-                            }
-                          })();
-                        }}
+                        onChange={(e) => setIdUsuario(e.target.value)}
                         required
                       >
                         <option value="">Selecione...</option>
@@ -2501,6 +2094,11 @@ export function AgendaCalendario({
                           className="form-control"
                           placeholder="Digite para buscar pelo nome..."
                           autoComplete="off"
+                          role="combobox"
+                          aria-autocomplete="list"
+                          aria-haspopup="listbox"
+                          aria-expanded={pacienteListaAberta}
+                          aria-controls="agenda-paciente-listbox"
                           value={pacienteBusca}
                           onChange={(e) => {
                             setPacienteBusca(e.target.value);
@@ -2511,9 +2109,6 @@ export function AgendaCalendario({
                           onBlur={() => {
                             window.setTimeout(() => setPacienteListaAberta(false), 200);
                           }}
-                          aria-autocomplete="list"
-                          aria-expanded={pacienteListaAberta}
-                          aria-controls="agenda-paciente-listbox"
                         />
                         {pacienteListaAberta ? (
                           <ul
@@ -2529,6 +2124,7 @@ export function AgendaCalendario({
                                   <button
                                     type="button"
                                     role="option"
+                                    aria-selected={String(p.id) === idPaciente}
                                     onMouseDown={(e) => e.preventDefault()}
                                     onClick={() => selecionarPaciente(p)}
                                   >

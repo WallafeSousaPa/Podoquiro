@@ -1,21 +1,22 @@
 import { redirect } from "next/navigation";
 import { getSession } from "@/lib/auth/session";
 import { getNomesSaudacao } from "@/lib/dashboard/saudacao";
-import { AgendaCalendario } from "./agenda-calendario";
+import { AtendimentoFila } from "./atendimento-fila";
 
-export default async function InicioPage() {
+export default async function AtendimentoPage() {
   const session = await getSession();
   if (!session) {
     redirect("/login");
   }
 
-  const {
-    nomeCompleto,
-    nomeEmpresaComId,
-    nomeEmpresaCurto,
-    somenteMenuInicio,
-    podeAgendarRetroativo,
-  } = await getNomesSaudacao(session.sub, session.usuario, session.idEmpresa);
+  const { nomeCompleto, nomeEmpresaComId, menuAtendimento } = await getNomesSaudacao(
+    session.sub,
+    session.usuario,
+    session.idEmpresa,
+  );
+  if (!menuAtendimento) {
+    redirect("/inicio");
+  }
 
   return (
     <>
@@ -23,14 +24,15 @@ export default async function InicioPage() {
         <div className="container-fluid">
           <div className="row mb-2">
             <div className="col-sm-6">
-              <h1 className="m-0 text-dark">Início</h1>
+              <h1 className="m-0 text-dark">Atendimento</h1>
             </div>
             <div className="col-sm-6">
               <ol className="breadcrumb float-sm-right">
                 <li className="breadcrumb-item">
                   <a href="/inicio">Início</a>
                 </li>
-                <li className="breadcrumb-item active">Agenda</li>
+                <li className="breadcrumb-item">Atendimentos</li>
+                <li className="breadcrumb-item active">Atendimento</li>
               </ol>
             </div>
           </div>
@@ -44,12 +46,7 @@ export default async function InicioPage() {
               <p className="text-muted small mb-3">
                 Olá, <strong>{nomeCompleto}</strong> — <strong>{nomeEmpresaComId}</strong>.
               </p>
-              <AgendaCalendario
-                idEmpresa={session.idEmpresa}
-                nomeEmpresa={nomeEmpresaCurto}
-                somenteMenuInicio={somenteMenuInicio}
-                podeAgendarRetroativo={podeAgendarRetroativo}
-              />
+              <AtendimentoFila />
             </div>
           </div>
         </div>

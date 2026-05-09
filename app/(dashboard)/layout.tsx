@@ -14,7 +14,13 @@ export default async function DashboardGroupLayout({
     redirect("/login");
   }
 
-  const { nomeCompleto, nomeEmpresaComId, somenteMenuInicio, menuRecepcao } =
+  const {
+    nomeCompleto,
+    nomeEmpresaComId,
+    somenteMenuInicio,
+    menuRecepcao,
+    menuAtendimento,
+  } =
     await getNomesSaudacao(session.sub, session.usuario, session.idEmpresa);
 
   return (
@@ -23,6 +29,7 @@ export default async function DashboardGroupLayout({
       nomeEmpresa={nomeEmpresaComId}
       somenteMenuInicio={somenteMenuInicio}
       menuRecepcao={menuRecepcao}
+      menuAtendimento={menuAtendimento}
     >
       {children}
     </DashboardShell>
