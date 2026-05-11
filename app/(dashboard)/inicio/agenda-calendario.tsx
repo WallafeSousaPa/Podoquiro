@@ -28,6 +28,7 @@ import {
   rotuloMesPt,
   rotuloSemanaPt,
 } from "@/lib/agenda/datas-agenda";
+import { normalizeCpfDigits } from "@/lib/pacientes";
 
 const HORA_INICIO = 8;
 const HORA_FIM = 20;
@@ -49,6 +50,8 @@ type UsuarioCol = {
 type PacienteListaItem = {
   id: number;
   nome: string;
+  /** Somente dígitos, para busca por CPF no modal. */
+  cpfDigits: string;
   telefone: string | null;
 };
 
@@ -512,9 +515,15 @@ export function AgendaCalendario({
   );
 
   const pacientesFiltrados = useMemo(() => {
-    const q = pacienteBusca.trim().toLowerCase();
-    if (!q) return pacientes.slice(0, 40);
-    return pacientes.filter((p) => p.nome.toLowerCase().includes(q)).slice(0, 60);
+    const raw = pacienteBusca.trim();
+    if (!raw) return [];
+    const qNome = raw.toLowerCase();
+    const qCpf = normalizeCpfDigits(raw);
+    return pacientes.filter((p) => {
+      if (p.nome.toLowerCase().includes(qNome)) return true;
+      if (qCpf.length >= 3 && p.cpfDigits.includes(qCpf)) return true;
+      return false;
+    });
   }, [pacientes, pacienteBusca]);
 
   const pacienteSelecionado = useMemo(() => {
@@ -648,6 +657,7 @@ export function AgendaCalendario({
     const pj = (await pr.json()) as {
       data?: {
         id: number;
+        cpf: string | null;
         nome_completo: string | null;
         nome_social: string | null;
         telefone: string | null;
@@ -667,6 +677,7 @@ export function AgendaCalendario({
             (p.nome_completo && p.nome_completo.trim()) ||
             (p.nome_social && p.nome_social.trim()) ||
             `Paciente #${p.id}`,
+          cpfDigits: normalizeCpfDigits(p.cpf),
           telefone: tel === "" ? null : tel,
         };
       }),
@@ -2092,7 +2103,7 @@ export function AgendaCalendario({
                           id="agenda-paciente-busca"
                           type="search"
                           className="form-control"
-                          placeholder="Digite para buscar pelo nome..."
+                          placeholder="Nome ou CPF do paciente…"
                           autoComplete="off"
                           role="combobox"
                           aria-autocomplete="list"
@@ -2117,7 +2128,11 @@ export function AgendaCalendario({
                             role="listbox"
                           >
                             {pacientesFiltrados.length === 0 ? (
-                              <li className="agenda-paciente-empty">Nenhum paciente encontrado.</li>
+                              <li className="agenda-paciente-empty">
+                                {pacienteBusca.trim() === ""
+                                  ? "Digite o nome ou parte do CPF para buscar entre todos os pacientes."
+                                  : "Nenhum paciente encontrado."}
+                              </li>
                             ) : (
                               pacientesFiltrados.map((p) => (
                                 <li key={p.id} role="presentation">

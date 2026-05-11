@@ -112,11 +112,17 @@ export function DashboardShell({
   const [openFinanceiro, setOpenFinanceiro] = useState(() =>
     pathname.startsWith("/financeiro"),
   );
+  const [openEstoque, setOpenEstoque] = useState(() =>
+    pathname.startsWith("/estoque"),
+  );
   const [openAtendimentos, setOpenAtendimentos] = useState(() =>
     pathname.startsWith("/atendimentos"),
   );
   const [openParametrizacao, setOpenParametrizacao] = useState(() =>
     pathname.startsWith("/financeiro/parametrizacao"),
+  );
+  const [openNotaFiscal, setOpenNotaFiscal] = useState(() =>
+    pathname.startsWith("/financeiro/nota-fiscal"),
   );
 
   useEffect(() => {
@@ -125,8 +131,10 @@ export function DashboardShell({
     setOpenPacientes(pathname.startsWith("/pacientes"));
     setOpenProcedimentos(pathname.startsWith("/procedimentos"));
     setOpenFinanceiro(pathname.startsWith("/financeiro"));
+    setOpenEstoque(pathname.startsWith("/estoque"));
     setOpenAtendimentos(pathname.startsWith("/atendimentos"));
     setOpenParametrizacao(pathname.startsWith("/financeiro/parametrizacao"));
+    setOpenNotaFiscal(pathname.startsWith("/financeiro/nota-fiscal"));
   }, [pathname]);
 
   useEffect(() => {
@@ -178,8 +186,10 @@ export function DashboardShell({
   const isPacientes = pathname.startsWith("/pacientes");
   const isProcedimentos = pathname.startsWith("/procedimentos");
   const isFinanceiro = pathname.startsWith("/financeiro");
+  const isEstoque = pathname.startsWith("/estoque");
   const isAtendimentos = pathname.startsWith("/atendimentos");
   const isParametrizacao = pathname.startsWith("/financeiro/parametrizacao");
+  const isNotaFiscal = pathname.startsWith("/financeiro/nota-fiscal");
 
   return (
     <div className="wrapper">
@@ -570,6 +580,43 @@ export function DashboardShell({
                 className={cx(
                   "nav-item",
                   "has-treeview",
+                  openEstoque && "menu-open",
+                )}
+              >
+                <a
+                  href="#"
+                  className={cx("nav-link", isEstoque && "active")}
+                  onClick={(e) => {
+                    e.preventDefault();
+                    setOpenEstoque((v) => !v);
+                  }}
+                >
+                  <i className="nav-icon fas fa-boxes" />
+                  <p>
+                    Estoque
+                    <i className="right fas fa-angle-left" />
+                  </p>
+                </a>
+                <ul className="nav nav-treeview">
+                  <li className="nav-item">
+                    <Link
+                      href="/estoque/cadastro"
+                      className={cx(
+                        "nav-link",
+                        pathname === "/estoque/cadastro" && "active",
+                      )}
+                    >
+                      <i className="far fa-circle nav-icon" />
+                      <p>Cadastro</p>
+                    </Link>
+                  </li>
+                </ul>
+              </li>
+
+              <li
+                className={cx(
+                  "nav-item",
+                  "has-treeview",
                   openFinanceiro && "menu-open",
                 )}
               >
@@ -646,6 +693,56 @@ export function DashboardShell({
                         >
                           <i className="far fa-dot-circle nav-icon" />
                           <p>Tipos de pagamento</p>
+                        </Link>
+                      </li>
+                    </ul>
+                  </li>
+                  <li
+                    className={cx(
+                      "nav-item",
+                      "has-treeview",
+                      openNotaFiscal && "menu-open",
+                    )}
+                  >
+                    <a
+                      href="#"
+                      className={cx("nav-link", isNotaFiscal && "active")}
+                      onClick={(e) => {
+                        e.preventDefault();
+                        setOpenNotaFiscal((v) => !v);
+                      }}
+                    >
+                      <i className="far fa-circle nav-icon" />
+                      <p>
+                        Nota Fiscal
+                        <i className="right fas fa-angle-left" />
+                      </p>
+                    </a>
+                    <ul className="nav nav-treeview">
+                      <li className="nav-item">
+                        <Link
+                          href="/financeiro/nota-fiscal/notas"
+                          className={cx(
+                            "nav-link",
+                            pathname === "/financeiro/nota-fiscal/notas" &&
+                              "active",
+                          )}
+                        >
+                          <i className="far fa-dot-circle nav-icon" />
+                          <p>Notas</p>
+                        </Link>
+                      </li>
+                      <li className="nav-item">
+                        <Link
+                          href="/financeiro/nota-fiscal/parametros"
+                          className={cx(
+                            "nav-link",
+                            pathname === "/financeiro/nota-fiscal/parametros" &&
+                              "active",
+                          )}
+                        >
+                          <i className="far fa-dot-circle nav-icon" />
+                          <p>Parâmetros</p>
                         </Link>
                       </li>
                     </ul>
