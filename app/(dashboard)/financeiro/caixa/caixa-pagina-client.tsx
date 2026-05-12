@@ -42,7 +42,14 @@ export function CaixaPaginaClient() {
         error?: string;
       };
       if (!res.ok) throw new Error(j.error ?? "Erro ao carregar agendamentos.");
-      setRows(Array.isArray(j.rows) ? j.rows : []);
+      const list = Array.isArray(j.rows) ? j.rows : [];
+      list.sort((a, b) => {
+        const ta = new Date(a.data_hora_inicio).getTime();
+        const tb = new Date(b.data_hora_inicio).getTime();
+        if (ta !== tb) return ta - tb;
+        return a.id - b.id;
+      });
+      setRows(list);
     } catch (e) {
       setLoadError(
         e instanceof Error ? e.message : "Não foi possível carregar o caixa.",

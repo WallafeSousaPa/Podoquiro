@@ -93,7 +93,8 @@ export async function carregarCaixaAgendamentosRows(
   }
 
   const { data, error } = await q
-    .order("data_hora_inicio", { ascending: false })
+    .order("data_hora_inicio", { ascending: true })
+    .order("id", { ascending: true })
     .limit(500);
 
   if (error) throw new Error(error.message);

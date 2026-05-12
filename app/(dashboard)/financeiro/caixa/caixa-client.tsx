@@ -118,8 +118,8 @@ export function CaixaClient({
           {dataRef ? (
             <p className="text-muted small mb-0 mt-1">
               Dia <strong>{fmtDiaRef(dataRef)}</strong> — agendamentos com início
-              neste dia (todos os status); pagamentos listados com o respectivo
-              status. Clique no nome do paciente (em azul) para abrir o
+              neste dia (todos os status), em ordem de horário; pagamentos listados com o
+              respectivo status. Clique no nome do paciente (em azul) para abrir o
               agendamento.
             </p>
           ) : null}
