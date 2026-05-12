@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 import { calcularValorTotal } from "@/lib/agenda/totais";
-import { getUsuarioAgendaSomentePropriaColuna } from "@/lib/agenda/permissoes-calendario";
+import {
+  getUsuarioPodeAcessarProntuarioAtendimento,
+} from "@/lib/agenda/permissoes-calendario";
 import { validarProcedimentosDoColaborador } from "@/lib/colaborador-procedimentos";
 import { montarCaminhoFotoProntuario } from "@/lib/prontuario/nomes-arquivo";
 import { getSession } from "@/lib/auth/session";
@@ -106,16 +108,6 @@ export async function POST(request: Request) {
   }
 
   const supabase = createAdminClient();
-  const somentePropria = await getUsuarioAgendaSomentePropriaColuna(
-    supabase,
-    sessionUserId,
-  );
-  if (!somentePropria) {
-    return NextResponse.json(
-      { error: "Acesso permitido apenas ao perfil podólogo." },
-      { status: 403 },
-    );
-  }
 
   const { data: ag, error: agErr } = await supabase
     .from("agendamentos")
@@ -141,13 +133,21 @@ export async function POST(request: Request) {
   if (!ag) {
     return NextResponse.json({ error: "Agendamento não encontrado." }, { status: 404 });
   }
-  if ((ag.id_usuario as number) !== sessionUserId) {
-    return NextResponse.json({ error: "Não autorizado." }, { status: 403 });
-  }
   if (String(ag.status) !== "em_andamento") {
     return NextResponse.json(
       { error: "Só é possível registrar prontuário com status Em andamento." },
       { status: 400 },
+    );
+  }
+  const podeProntuario = await getUsuarioPodeAcessarProntuarioAtendimento(
+    supabase,
+    sessionUserId,
+    ag.id_usuario as number,
+  );
+  if (!podeProntuario) {
+    return NextResponse.json(
+      { error: "Sem permissão para registrar o prontuário deste agendamento." },
+      { status: 403 },
     );
   }
 

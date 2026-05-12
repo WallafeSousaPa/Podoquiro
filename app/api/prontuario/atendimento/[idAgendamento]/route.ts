@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { idsProcedimentosLiberadosColaborador } from "@/lib/colaborador-procedimentos";
-import { getUsuarioAgendaSomentePropriaColuna } from "@/lib/agenda/permissoes-calendario";
+import { getUsuarioPodeAcessarProntuarioAtendimento } from "@/lib/agenda/permissoes-calendario";
 import { getSession } from "@/lib/auth/session";
 import { createAdminClient } from "@/lib/supabase/admin";
 
@@ -36,17 +36,6 @@ export async function GET(_request: Request, context: RouteContext) {
   }
 
   const supabase = createAdminClient();
-  const somentePropria = await getUsuarioAgendaSomentePropriaColuna(
-    supabase,
-    sessionUserId,
-  );
-  if (!somentePropria) {
-    return NextResponse.json(
-      { error: "Acesso permitido apenas ao perfil podólogo." },
-      { status: 403 },
-    );
-  }
-
   const { data: ag, error: agErr } = await supabase
     .from("agendamentos")
     .select(
@@ -72,13 +61,21 @@ export async function GET(_request: Request, context: RouteContext) {
   if (!ag) {
     return NextResponse.json({ error: "Agendamento não encontrado." }, { status: 404 });
   }
-  if ((ag.id_usuario as number) !== sessionUserId) {
-    return NextResponse.json({ error: "Não autorizado." }, { status: 403 });
-  }
   if (String(ag.status) !== "em_andamento") {
     return NextResponse.json(
       { error: "O prontuário só pode ser preenchido com status Em andamento." },
       { status: 400 },
+    );
+  }
+  const podeProntuario = await getUsuarioPodeAcessarProntuarioAtendimento(
+    supabase,
+    sessionUserId,
+    ag.id_usuario as number,
+  );
+  if (!podeProntuario) {
+    return NextResponse.json(
+      { error: "Sem permissão para acessar o prontuário deste agendamento." },
+      { status: 403 },
     );
   }
 
@@ -116,7 +113,7 @@ export async function GET(_request: Request, context: RouteContext) {
 
   const idsLiberados = await idsProcedimentosLiberadosColaborador(
     supabase,
-    sessionUserId,
+    ag.id_usuario as number,
     empresaId,
   );
 

@@ -155,6 +155,27 @@ export async function getNomeGrupoUsuariosDoUsuario(
   return g?.grupo_usuarios ?? null;
 }
 
+/**
+ * Prontuário do atendimento (API GET/POST — chamar só com agendamento Em andamento):
+ * - perfil podólogo: agenda “apenas coluna própria” e o usuário é o profissional do agendamento;
+ * - Administrador / Administrativo: vê agenda ampla (`calendario`) ou é o profissional do agendamento.
+ */
+export async function getUsuarioPodeAcessarProntuarioAtendimento(
+  supabase: SupabaseClient,
+  sessionUserId: number,
+  idUsuarioAgendamento: number,
+): Promise<boolean> {
+  const somentePropria = await getUsuarioAgendaSomentePropriaColuna(supabase, sessionUserId);
+  const mesmoProfissional = idUsuarioAgendamento === sessionUserId;
+  if (somentePropria && mesmoProfissional) return true;
+
+  const nomeGrupo = await getNomeGrupoUsuariosDoUsuario(supabase, sessionUserId);
+  if (!grupoNomeVisualizaDescontoProdutoModalCaixa(nomeGrupo)) return false;
+
+  const podeVerTodos = await getPodeVerTodosAgendamentos(supabase, sessionUserId);
+  return podeVerTodos || mesmoProfissional;
+}
+
 /** Profissional pode ser coluna na agenda: grupo parametrizado ou exceção `exibir_na_agenda`. */
 export function profissionalPodeNaAgenda(
   grupoIds: number[],

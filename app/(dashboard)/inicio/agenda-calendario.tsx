@@ -480,6 +480,12 @@ export function AgendaCalendario({
     useState<AgendamentoDia | null>(null);
   const [iniciandoAtendimentoPodologo, setIniciandoAtendimentoPodologo] =
     useState(false);
+  const [salvandoStatusMenuAgId, setSalvandoStatusMenuAgId] = useState<number | null>(
+    null,
+  );
+  const [finalizarAposProntuarioId, setFinalizarAposProntuarioId] = useState<
+    number | null
+  >(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
 
@@ -963,6 +969,43 @@ export function AgendaCalendario({
     } finally {
       setIniciandoAtendimentoPodologo(false);
     }
+  }
+
+  async function colocarEmAndamentoDesdeMenu(ag: AgendamentoDia) {
+    if (ag.status !== "pendente" && ag.status !== "confirmado") return;
+    setMenuCardAbertoId(null);
+    setSalvandoStatusMenuAgId(ag.id);
+    setErroModal(null);
+    try {
+      const res = await fetch(`/api/agendamentos/${ag.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status: "em_andamento" }),
+      });
+      const j = (await res.json()) as RespostaErroApiAgendamento;
+      if (!res.ok) {
+        logRespostaErroApiAgendamento(
+          "PATCH colocar em andamento (menu agenda)",
+          res,
+          j,
+          { status: "em_andamento" },
+        );
+        throw new Error(j.error ?? "Erro ao colocar em andamento.");
+      }
+      router.refresh();
+      void loadAgenda();
+    } catch (e) {
+      setErroModal(e instanceof Error ? e.message : "Erro ao colocar em andamento.");
+    } finally {
+      setSalvandoStatusMenuAgId(null);
+    }
+  }
+
+  function abrirProntuarioFinalizarDesdeMenu(ag: AgendamentoDia) {
+    if (ag.status !== "em_andamento") return;
+    setMenuCardAbertoId(null);
+    setFinalizarAposProntuarioId(ag.id);
+    setModalAtendimentoPodologo(ag);
   }
 
   async function submit(e: FormEvent) {
@@ -1583,6 +1626,34 @@ export function AgendaCalendario({
                                       </li>
                                     </>
                                   ) : null}
+                                  {perfilAdminAgenda &&
+                                  (a.status === "pendente" || a.status === "confirmado") ? (
+                                    <li role="none">
+                                      <button
+                                        type="button"
+                                        role="menuitem"
+                                        className="dropdown-item"
+                                        disabled={salvandoStatusMenuAgId === a.id}
+                                        onClick={() => void colocarEmAndamentoDesdeMenu(a)}
+                                      >
+                                        {salvandoStatusMenuAgId === a.id
+                                          ? "Salvando…"
+                                          : "Colocar em andamento"}
+                                      </button>
+                                    </li>
+                                  ) : null}
+                                  {perfilAdminAgenda && a.status === "em_andamento" ? (
+                                    <li role="none">
+                                      <button
+                                        type="button"
+                                        role="menuitem"
+                                        className="dropdown-item"
+                                        onClick={() => abrirProntuarioFinalizarDesdeMenu(a)}
+                                      >
+                                        Finalizar
+                                      </button>
+                                    </li>
+                                  ) : null}
                                   <li role="none">
                                     <button
                                       type="button"
@@ -2189,9 +2260,44 @@ export function AgendaCalendario({
       modalAtendimentoPodologo.status === "em_andamento" ? (
         <ModalProntuarioPodologo
           ag={modalAtendimentoPodologo}
-          onClose={() => setModalAtendimentoPodologo(null)}
-          onSalvo={() => {
+          onClose={() => {
             setModalAtendimentoPodologo(null);
+            setFinalizarAposProntuarioId(null);
+          }}
+          onSalvo={() => {
+            const alvo = modalAtendimentoPodologo;
+            setModalAtendimentoPodologo(null);
+            if (alvo && finalizarAposProntuarioId === alvo.id) {
+              setFinalizarAposProntuarioId(null);
+              void (async () => {
+                try {
+                  const res = await fetch(`/api/agendamentos/${alvo.id}`, {
+                    method: "PATCH",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ status: "realizado" }),
+                  });
+                  const j = (await res.json()) as RespostaErroApiAgendamento;
+                  if (!res.ok) {
+                    logRespostaErroApiAgendamento(
+                      "PATCH finalizar após prontuário (agenda)",
+                      res,
+                      j,
+                      { status: "realizado" },
+                    );
+                    setErroModal(j.error ?? "Erro ao finalizar atendimento.");
+                    return;
+                  }
+                  router.refresh();
+                  void loadAgenda();
+                } catch (e) {
+                  setErroModal(
+                    e instanceof Error ? e.message : "Erro ao finalizar atendimento.",
+                  );
+                }
+              })();
+              return;
+            }
+            setFinalizarAposProntuarioId(null);
             router.refresh();
             void loadAgenda();
           }}
@@ -2200,7 +2306,10 @@ export function AgendaCalendario({
         <ModalBackdrop
           zIndex={1072}
           onBackdropClick={() => {
-            if (!iniciandoAtendimentoPodologo) setModalAtendimentoPodologo(null);
+            if (!iniciandoAtendimentoPodologo) {
+              setModalAtendimentoPodologo(null);
+              setFinalizarAposProntuarioId(null);
+            }
           }}
         >
           <div className="modal-dialog modal-dialog-centered" role="document">
@@ -2213,7 +2322,10 @@ export function AgendaCalendario({
                   type="button"
                   className="close"
                   disabled={iniciandoAtendimentoPodologo}
-                  onClick={() => setModalAtendimentoPodologo(null)}
+                  onClick={() => {
+                    setModalAtendimentoPodologo(null);
+                    setFinalizarAposProntuarioId(null);
+                  }}
                   aria-label="Fechar"
                 >
                   <span aria-hidden="true">&times;</span>
@@ -2250,7 +2362,10 @@ export function AgendaCalendario({
                   type="button"
                   className="btn btn-secondary"
                   disabled={iniciandoAtendimentoPodologo}
-                  onClick={() => setModalAtendimentoPodologo(null)}
+                  onClick={() => {
+                    setModalAtendimentoPodologo(null);
+                    setFinalizarAposProntuarioId(null);
+                  }}
                 >
                   Fechar
                 </button>
