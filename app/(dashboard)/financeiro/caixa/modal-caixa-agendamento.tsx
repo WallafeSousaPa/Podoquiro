@@ -102,6 +102,7 @@ function badgeStatusAg(status: string) {
     em_andamento: "badge-info",
     realizado: "badge-success",
     cancelado: "badge-secondary",
+    faltou: "badge-secondary",
     adiado: "badge-primary",
   };
   const cls = map[status] ?? "badge-light";

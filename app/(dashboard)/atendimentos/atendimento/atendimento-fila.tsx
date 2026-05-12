@@ -44,6 +44,7 @@ const ORDEM_STATUS: Record<string, number> = {
   confirmado: 1,
   realizado: 2,
   cancelado: 3,
+  faltou: 3,
   adiado: 4,
 };
 
@@ -73,6 +74,8 @@ function rotuloStatus(status: string): string {
       return "Finalizado";
     case "cancelado":
       return "Cancelado";
+    case "faltou":
+      return "Faltou";
     case "adiado":
       return "Adiado";
     default:
@@ -83,6 +86,7 @@ function rotuloStatus(status: string): string {
 function classeStatus(status: string): string {
   if (status === "em_andamento") return "andamento";
   if (status === "realizado") return "finalizado";
+  if (status === "faltou") return "faltou";
   return "aguardando";
 }
 

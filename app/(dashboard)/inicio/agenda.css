@@ -258,6 +258,10 @@
   background: #ef4444;
 }
 
+.agenda-status-badge--faltou {
+  background: #64748b;
+}
+
 .agenda-status-badge--adiado {
   background: #f59e0b;
 }

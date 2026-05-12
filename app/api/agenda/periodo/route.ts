@@ -175,7 +175,7 @@ export async function GET(request: Request) {
     agQuery = agQuery.eq("id_usuario", sessionUserId);
   }
   if (somentePropriaColuna) {
-    agQuery = agQuery.in("status", ["pendente", "confirmado", "em_andamento"]);
+    agQuery = agQuery.in("status", ["pendente", "confirmado", "em_andamento", "faltou"]);
   }
   const { data: agRows, error: aErr } = await agQuery.order("data_hora_inicio", {
     ascending: true,

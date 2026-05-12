@@ -9,6 +9,11 @@ export const MSG_CONFLITO_PROFISSIONAL =
 export const MSG_PROCEDIMENTO_DUPLICADO =
   "Não é permitido repetir o mesmo procedimento mais de uma vez no mesmo agendamento.";
 
+/** Cancelado ou faltou: validação de intervalo início/fim e conflitos de agenda não se aplicam como nos demais status. */
+export function statusAgendamentoIgnoraValidacaoHorario(status: string): boolean {
+  return status === "cancelado" || status === "faltou";
+}
+
 /** Mantém um único registro por id_procedimento (evita violação de unique no banco). */
 export function dedupeProcedimentos(
   items: { id_procedimento: number; valor_aplicado: number }[],
@@ -21,7 +26,7 @@ export function dedupeProcedimentos(
 }
 
 /**
- * Conflito quando outro agendamento do mesmo profissional (não cancelado) se sobrepõe ao intervalo.
+ * Conflito quando outro agendamento do mesmo profissional (exceto cancelado/faltou) se sobrepõe ao intervalo.
  * Dois intervalos [i1,f1) e [i2,f2] se sobrepõem se i1 < f2 e f1 > i2 (comparando instantes).
  */
 export async function haConflitoAgendaProfissional(
@@ -40,6 +45,7 @@ export async function haConflitoAgendaProfissional(
     .eq("id_empresa", args.idEmpresa)
     .eq("id_usuario", args.idUsuario)
     .neq("status", "cancelado")
+    .neq("status", "faltou")
     .gt("data_hora_fim", args.inicioIso)
     .lt("data_hora_inicio", args.fimIso)
     .limit(1);

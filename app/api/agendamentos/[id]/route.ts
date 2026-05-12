@@ -14,6 +14,7 @@ import {
   MSG_PROCEDIMENTO_DUPLICADO,
   haConflitoAgendaProfissional,
   inicioEhRetroativo,
+  statusAgendamentoIgnoraValidacaoHorario,
 } from "@/lib/agenda/validacao-agendamento";
 import { dataReferenciaBrasilia } from "@/lib/financeiro/data-referencia-brasilia";
 import { obterSituacaoCaixaDia } from "@/lib/financeiro/caixa-situacao-dia";
@@ -36,6 +37,7 @@ const AGENDAMENTO_STATUS = [
   "em_andamento",
   "realizado",
   "cancelado",
+  "faltou",
   "adiado",
 ] as const;
 type AgendamentoStatus = (typeof AGENDAMENTO_STATUS)[number];
@@ -256,7 +258,11 @@ export async function PATCH(request: Request, context: RouteContext) {
       const transicaoPermitidaPodologo =
         (atual === "pendente" && novo === "em_andamento") ||
         (atual === "pendente" && novo === "confirmado") ||
-        (atual === "confirmado" && novo === "em_andamento");
+        (atual === "confirmado" && novo === "em_andamento") ||
+        (novo === "faltou" &&
+          (atual === "pendente" ||
+            atual === "confirmado" ||
+            atual === "em_andamento"));
       if (novo !== atual && !transicaoPermitidaPodologo) {
         return NextResponse.json(
           {
@@ -353,6 +359,13 @@ export async function PATCH(request: Request, context: RouteContext) {
     patch.id_sala = idSala;
   }
 
+  const statusParaValidacaoHorario =
+    typeof body.status === "string" && isAgStatus(body.status)
+      ? body.status
+      : String(existente.status);
+  const ignoraValidacaoHorario =
+    statusAgendamentoIgnoraValidacaoHorario(statusParaValidacaoHorario);
+
   let inicio = existente.data_hora_inicio as string;
   let fim = existente.data_hora_fim as string;
   if (typeof body.data_hora_inicio === "string") {
@@ -365,12 +378,31 @@ export async function PATCH(request: Request, context: RouteContext) {
   }
   const t0 = new Date(inicio);
   const t1 = new Date(fim);
-  if (Number.isNaN(t0.getTime()) || Number.isNaN(t1.getTime()) || t1 <= t0) {
+  if (ignoraValidacaoHorario) {
+    if (Number.isNaN(t0.getTime()) || Number.isNaN(t1.getTime()) || t1 <= t0) {
+      const base = !Number.isNaN(t0.getTime())
+        ? t0
+        : new Date(String(existente.data_hora_inicio));
+      if (Number.isNaN(base.getTime())) {
+        return NextResponse.json(
+          { error: "Intervalo de data/hora inválido." },
+          { status: 400 },
+        );
+      }
+      const fimAjustado = new Date(base.getTime() + 60_000);
+      inicio = base.toISOString();
+      fim = fimAjustado.toISOString();
+      patch.data_hora_inicio = inicio;
+      patch.data_hora_fim = fim;
+    }
+  } else if (Number.isNaN(t0.getTime()) || Number.isNaN(t1.getTime()) || t1 <= t0) {
     return NextResponse.json(
       { error: "Intervalo de data/hora inválido." },
       { status: 400 },
     );
   }
+
+  const t0ParaRetroativo = new Date(inicio);
 
   const podeAgendarRetroativo = await getUsuarioPodeAgendarRetroativo(
     supabase,
@@ -379,7 +411,12 @@ export async function PATCH(request: Request, context: RouteContext) {
   const exIni = String(existente.data_hora_inicio);
   const inicioMudou =
     typeof body.data_hora_inicio === "string" && body.data_hora_inicio !== exIni;
-  if (inicioMudou && !podeAgendarRetroativo && inicioEhRetroativo(t0)) {
+  if (
+    !ignoraValidacaoHorario &&
+    inicioMudou &&
+    !podeAgendarRetroativo &&
+    inicioEhRetroativo(t0ParaRetroativo)
+  ) {
     return NextResponse.json({ error: MSG_HORARIO_RETROATIVO }, { status: 400 });
   }
 
@@ -433,23 +470,25 @@ export async function PATCH(request: Request, context: RouteContext) {
     }
   }
 
-  try {
-    const conflito = await haConflitoAgendaProfissional(supabase, {
-      idEmpresa: empresaId,
-      idUsuario: idUsuarioFinal,
-      inicioIso: inicio,
-      fimIso: fim,
-      ignorarAgendamentoId: id,
-    });
-    if (conflito) {
-      return NextResponse.json({ error: MSG_CONFLITO_PROFISSIONAL }, { status: 400 });
+  if (!ignoraValidacaoHorario) {
+    try {
+      const conflito = await haConflitoAgendaProfissional(supabase, {
+        idEmpresa: empresaId,
+        idUsuario: idUsuarioFinal,
+        inicioIso: inicio,
+        fimIso: fim,
+        ignorarAgendamentoId: id,
+      });
+      if (conflito) {
+        return NextResponse.json({ error: MSG_CONFLITO_PROFISSIONAL }, { status: 400 });
+      }
+    } catch (e) {
+      console.error(e);
+      return NextResponse.json(
+        { error: e instanceof Error ? e.message : "Erro ao validar agenda." },
+        { status: 500 },
+      );
     }
-  } catch (e) {
-    console.error(e);
-    return NextResponse.json(
-      { error: e instanceof Error ? e.message : "Erro ao validar agenda." },
-      { status: 500 },
-    );
   }
 
   if (typeof body.status === "string") {

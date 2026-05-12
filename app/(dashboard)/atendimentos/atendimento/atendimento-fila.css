@@ -133,6 +133,11 @@
   color: #f39c12;
 }
 
+.atendimento-fila-page .faltou {
+  background: #e2e8f0;
+  color: #475569;
+}
+
 .atendimento-fila-page .nome {
   font-size: 1.15rem;
   font-weight: 700;

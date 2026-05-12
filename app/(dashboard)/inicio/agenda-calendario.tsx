@@ -17,6 +17,7 @@ import { ModalAnamneseAgenda } from "./modal-anamnese-agenda";
 import { ModalProntuarioPodologo } from "./modal-prontuario-podologo";
 import {
   MSG_HORARIO_RETROATIVO,
+  statusAgendamentoIgnoraValidacaoHorario,
 } from "@/lib/agenda/validacao-agendamento";
 import {
   type VisualizacaoAgenda,
@@ -307,7 +308,7 @@ function densidadeCardPorAlturaPercent(alturaPercent: number): DensidadeCardAgen
 }
 
 function classeStatus(status: string): string {
-  if (status === "cancelado") return "busy";
+  if (status === "cancelado" || status === "faltou") return "busy";
   if (status === "realizado") return "done";
   if (status === "adiado") return "warn";
   if (status === "confirmado") return "confirmed";
@@ -326,6 +327,8 @@ function rotuloStatusAgendamento(status: string): string {
       return "Realizado";
     case "cancelado":
       return "Cancelado";
+    case "faltou":
+      return "Faltou";
     case "adiado":
       return "Adiado";
     default:
@@ -368,6 +371,12 @@ function iconeStatusAgendamento(status: string): {
         iconClass: "fas fa-times-circle",
         badgeClass: "agenda-status-badge--cancelado",
         label: "Cancelado",
+      };
+    case "faltou":
+      return {
+        iconClass: "fas fa-user-slash",
+        badgeClass: "agenda-status-badge--faltou",
+        label: "Faltou",
       };
     case "adiado":
       return {
@@ -840,21 +849,23 @@ export function AgendaCalendario({
       const mFim = Number(fimPartes[1]);
       const inicioMin = inicioD.getHours() * 60 + inicioD.getMinutes();
       const fimMin = hFim * 60 + mFim;
-      if (
-        Number.isNaN(tInicio) ||
-        Number.isNaN(tFim) ||
-        !Number.isFinite(hFim) ||
-        !Number.isFinite(mFim) ||
-        fimMin <= inicioMin ||
-        tFim <= tInicio ||
-        !horaFimLocal.trim()
-      ) {
-        setErroModal("O horário de fim deve ser maior que o horário de início.");
-        return;
-      }
-      if (!podeAgendarRetroativo && !editingId && tInicio < msRelogioAgora()) {
-        setErroModal(MSG_HORARIO_RETROATIVO);
-        return;
+      if (!statusAgendamentoIgnoraValidacaoHorario(statusAg)) {
+        if (
+          Number.isNaN(tInicio) ||
+          Number.isNaN(tFim) ||
+          !Number.isFinite(hFim) ||
+          !Number.isFinite(mFim) ||
+          fimMin <= inicioMin ||
+          tFim <= tInicio ||
+          !horaFimLocal.trim()
+        ) {
+          setErroModal("O horário de fim deve ser maior que o horário de início.");
+          return;
+        }
+        if (!podeAgendarRetroativo && !editingId && tInicio < msRelogioAgora()) {
+          setErroModal(MSG_HORARIO_RETROATIVO);
+          return;
+        }
       }
       const inicioIso = inicioD.toISOString();
       const fimIso = fimD.toISOString();
@@ -2318,6 +2329,7 @@ export function AgendaCalendario({
                         <option value="em_andamento">Em andamento</option>
                         <option value="realizado">Realizado</option>
                         <option value="cancelado">Cancelado</option>
+                        <option value="faltou">Faltou</option>
                         <option value="adiado">Adiado</option>
                       </select>
                     </div>

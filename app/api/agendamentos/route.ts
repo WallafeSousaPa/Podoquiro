@@ -14,6 +14,7 @@ import {
   MSG_PROCEDIMENTO_DUPLICADO,
   haConflitoAgendaProfissional,
   inicioEhRetroativo,
+  statusAgendamentoIgnoraValidacaoHorario,
 } from "@/lib/agenda/validacao-agendamento";
 import { getSession } from "@/lib/auth/session";
 import { createAdminClient } from "@/lib/supabase/admin";
@@ -29,6 +30,7 @@ const AGENDAMENTO_STATUS = [
   "em_andamento",
   "realizado",
   "cancelado",
+  "faltou",
   "adiado",
 ] as const;
 type AgendamentoStatus = (typeof AGENDAMENTO_STATUS)[number];
@@ -80,9 +82,9 @@ export async function POST(request: Request) {
   const idUsuario = Number(body.id_usuario);
   const idPaciente = Number(body.id_paciente);
   const idSala = Number(body.id_sala);
-  const inicio =
+  let inicio =
     typeof body.data_hora_inicio === "string" ? body.data_hora_inicio : "";
-  const fim = typeof body.data_hora_fim === "string" ? body.data_hora_fim : "";
+  let fim = typeof body.data_hora_fim === "string" ? body.data_hora_fim : "";
   const statusStr =
     typeof body.status === "string" ? body.status : "pendente";
   const desconto =
@@ -117,12 +119,20 @@ export async function POST(request: Request) {
     );
   }
 
+  const ignoraValidacaoHorario = statusAgendamentoIgnoraValidacaoHorario(statusStr);
+
   const t0 = new Date(inicio);
   const t1 = new Date(fim);
   if (Number.isNaN(t0.getTime()) || Number.isNaN(t1.getTime())) {
     return NextResponse.json({ error: "Datas inválidas." }, { status: 400 });
   }
-  if (t1 <= t0) {
+  if (ignoraValidacaoHorario) {
+    if (t1 <= t0) {
+      const fimAjustado = new Date(t0.getTime() + 60_000);
+      inicio = t0.toISOString();
+      fim = fimAjustado.toISOString();
+    }
+  } else if (t1 <= t0) {
     return NextResponse.json(
       { error: "O término deve ser após o início." },
       { status: 400 },
@@ -134,7 +144,7 @@ export async function POST(request: Request) {
     supabase,
     sessionUserId,
   );
-  if (!podeAgendarRetroativo && inicioEhRetroativo(t0)) {
+  if (!ignoraValidacaoHorario && !podeAgendarRetroativo && inicioEhRetroativo(new Date(inicio))) {
     return NextResponse.json({ error: MSG_HORARIO_RETROATIVO }, { status: 400 });
   }
 
@@ -332,22 +342,24 @@ export async function POST(request: Request) {
     }
   }
 
-  try {
-    const conflito = await haConflitoAgendaProfissional(supabase, {
-      idEmpresa: empresaId,
-      idUsuario,
-      inicioIso: inicio,
-      fimIso: fim,
-    });
-    if (conflito) {
-      return NextResponse.json({ error: MSG_CONFLITO_PROFISSIONAL }, { status: 400 });
+  if (!ignoraValidacaoHorario) {
+    try {
+      const conflito = await haConflitoAgendaProfissional(supabase, {
+        idEmpresa: empresaId,
+        idUsuario,
+        inicioIso: inicio,
+        fimIso: fim,
+      });
+      if (conflito) {
+        return NextResponse.json({ error: MSG_CONFLITO_PROFISSIONAL }, { status: 400 });
+      }
+    } catch (e) {
+      console.error(e);
+      return NextResponse.json(
+        { error: e instanceof Error ? e.message : "Erro ao validar agenda." },
+        { status: 500 },
+      );
     }
-  } catch (e) {
-    console.error(e);
-    return NextResponse.json(
-      { error: e instanceof Error ? e.message : "Erro ao validar agenda." },
-      { status: 500 },
-    );
   }
 
   if (pagamentos.length > 0) {

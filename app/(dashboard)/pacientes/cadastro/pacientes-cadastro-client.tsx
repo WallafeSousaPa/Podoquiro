@@ -104,6 +104,7 @@ function badgeAgendamentoStatus(status: string): { label: string; className: str
     em_andamento: "badge-info",
     realizado: "badge-success",
     cancelado: "badge-secondary",
+    faltou: "badge-secondary",
     adiado: "badge-primary",
   };
   const cls = map[status] ?? "badge-light";
