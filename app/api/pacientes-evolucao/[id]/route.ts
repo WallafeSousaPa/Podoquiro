@@ -1,5 +1,11 @@
 import { NextResponse } from "next/server";
-import { CAMPOS_FOTO_EVOLUCAO, isFormaContatoPaciente, optText } from "@/lib/avaliacoes/evolucao";
+import {
+  CAMPOS_FOTO_EVOLUCAO,
+  isFormaContatoPaciente,
+  optText,
+  parsePositiveIdsFromFormData,
+} from "@/lib/avaliacoes/evolucao";
+import { syncPacientesEvolucaoVinculos } from "@/lib/avaliacoes/sync-pacientes-evolucao-vinculos";
 import { getSession } from "@/lib/auth/session";
 import { createAdminClient } from "@/lib/supabase/admin";
 
@@ -67,19 +73,22 @@ export async function PATCH(request: Request, context: RouteContext) {
     return NextResponse.json({ error: "Forma de contato inválida." }, { status: 400 });
   }
 
+  const vinculos = {
+    condicoes: parsePositiveIdsFromFormData(formData, "id_condicao"),
+    tiposUnha: parsePositiveIdsFromFormData(formData, "id_tipo_unha"),
+    hidroses: parsePositiveIdsFromFormData(formData, "id_hidrose"),
+  };
+
   const patch: Record<string, unknown> = {
     id_paciente: idPaciente,
     id_responsavel: idResponsavelSessao,
-    id_condicao: toPositiveNumber(formData.get("id_condicao")),
     pressao_arterial: optText(formData.get("pressao_arterial")),
     glicemia: optText(formData.get("glicemia")),
     atividade_fisica: optText(formData.get("atividade_fisica")),
     tipo_calcado: optText(formData.get("tipo_calcado")),
     alergias: optText(formData.get("alergias")),
-    id_tipo_unha: toPositiveNumber(formData.get("id_tipo_unha")),
     id_pe_esquerdo: toPositiveNumber(formData.get("id_pe_esquerdo")),
     id_pe_direito: toPositiveNumber(formData.get("id_pe_direito")),
-    id_hidrose: toPositiveNumber(formData.get("id_hidrose")),
     id_lesoes_mecanicas: toPositiveNumber(formData.get("id_lesoes_mecanicas")),
     digito_pressao: optText(formData.get("digito_pressao")),
     varizes: optText(formData.get("varizes")),
@@ -121,5 +130,9 @@ export async function PATCH(request: Request, context: RouteContext) {
     .maybeSingle();
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
   if (!data) return NextResponse.json({ error: "Registro não encontrado." }, { status: 404 });
+
+  const syncErr = await syncPacientesEvolucaoVinculos(supabase, id, vinculos);
+  if (syncErr.error) return NextResponse.json({ error: syncErr.error }, { status: 500 });
+
   return NextResponse.json({ data });
 }

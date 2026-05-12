@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { SELECT_PACIENTES_EVOLUCAO_VINCULOS } from "@/lib/avaliacoes/evolucao";
 import { getSession } from "@/lib/auth/session";
 import { createAdminClient } from "@/lib/supabase/admin";
 
@@ -55,22 +56,14 @@ export async function GET(request: Request, context: RouteContext) {
     return NextResponse.json({ error: "Paciente não encontrado." }, { status: 404 });
   }
 
+  const selectAnamneses =
+    "id, data, ativo, observacao, tratamento_sugerido, forma_contato, pressao_arterial, glicemia, " +
+    "usuarios ( nome_completo, usuario ), " +
+    SELECT_PACIENTES_EVOLUCAO_VINCULOS;
+
   let query = supabase
     .from("pacientes_evolucao")
-    .select(
-      `
-      id,
-      data,
-      ativo,
-      observacao,
-      tratamento_sugerido,
-      forma_contato,
-      pressao_arterial,
-      glicemia,
-      usuarios ( nome_completo, usuario ),
-      condicoes_saude ( condicao )
-    `,
-    )
+    .select(selectAnamneses)
     .eq("id_paciente", idPaciente)
     .order("data", { ascending: false })
     .limit(200);
@@ -86,18 +79,26 @@ export async function GET(request: Request, context: RouteContext) {
     return NextResponse.json({ error: evErr.message }, { status: 500 });
   }
 
-  const data = (rows ?? []).map((r) => {
+  const rawRows = (rows ?? []) as unknown as Record<string, unknown>[];
+  const data = rawRows.map((r) => {
     const uRaw = r.usuarios as
       | { nome_completo?: string | null; usuario?: string | null }
       | { nome_completo?: string | null; usuario?: string | null }[]
       | null;
     const u0 = Array.isArray(uRaw) ? uRaw[0] : uRaw;
 
-    const cRaw = r.condicoes_saude as
-      | { condicao?: string }
-      | { condicao?: string }[]
+    const vCond = r.pacientes_evolucao_condicoes as
+      | { condicoes_saude?: { condicao?: string } | { condicao?: string }[] | null }[]
       | null;
-    const c0 = Array.isArray(cRaw) ? cRaw[0] : cRaw;
+    const nomesCond: string[] = [];
+    if (Array.isArray(vCond)) {
+      for (const linha of vCond) {
+        const cs = linha?.condicoes_saude;
+        const c0 = Array.isArray(cs) ? cs[0] : cs;
+        const nome = c0?.condicao?.trim();
+        if (nome) nomesCond.push(nome);
+      }
+    }
 
     return {
       id: r.id as number,
@@ -111,7 +112,7 @@ export async function GET(request: Request, context: RouteContext) {
         typeof r.pressao_arterial === "string" ? r.pressao_arterial.trim() || null : null,
       glicemia: typeof r.glicemia === "string" ? r.glicemia.trim() || null : null,
       responsavel_nome: nomeResponsavelEmbed(u0),
-      condicao_nome: c0?.condicao?.trim() ?? null,
+      condicao_nome: nomesCond.length ? nomesCond.join(", ") : null,
     };
   });
 

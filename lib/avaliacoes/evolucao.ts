@@ -28,3 +28,23 @@ export function optText(value: unknown): string | null {
   const t = value.trim();
   return t.length > 0 ? t : null;
 }
+
+/** Lê múltiplos valores do FormData (mesma chave repetida), deduplica e filtra IDs positivos. */
+export function parsePositiveIdsFromFormData(formData: FormData, key: string): number[] {
+  const seen = new Set<number>();
+  const out: number[] = [];
+  for (const entry of formData.getAll(key)) {
+    const n = Number(entry);
+    if (!Number.isFinite(n) || n <= 0 || seen.has(n)) continue;
+    seen.add(n);
+    out.push(n);
+  }
+  return out;
+}
+
+/** String de select Supabase para vínculos N:N da evolução (anamnese). */
+export const SELECT_PACIENTES_EVOLUCAO_VINCULOS = `
+  pacientes_evolucao_condicoes ( id_condicao, condicoes_saude ( condicao ) ),
+  pacientes_evolucao_tipos_unha ( id_tipo_unha, tipos_unhas ( tipo ) ),
+  pacientes_evolucao_hidroses ( id_hidrose, hidroses ( tipo ) )
+`.trim();

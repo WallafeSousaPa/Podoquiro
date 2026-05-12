@@ -2,7 +2,16 @@
 
 import { useRouter } from "next/navigation";
 import { type FormEvent, type ReactNode, useEffect, useMemo, useState } from "react";
+import { DropdownCheckboxMultiselect } from "@/components/dropdown-checkbox-multiselect";
 import { FORMAS_CONTATO_PACIENTE } from "@/lib/avaliacoes/evolucao";
+import {
+  parseEvolucaoCondicaoIds,
+  parseEvolucaoHidroseIds,
+  parseEvolucaoTipoUnhaIds,
+  resumoTextosCondicoes,
+  resumoTextosHidroses,
+  resumoTextosTiposUnha,
+} from "@/lib/avaliacoes/parse-evolucao-vinculos-from-row";
 
 type OptionItem = { id: number; tipo?: string | null; condicao?: string | null; ativo: boolean };
 type PacienteOpt = { id: number; nome: string };
@@ -72,16 +81,16 @@ export function AvaliacoesClient(props: Props) {
   const [idPaciente, setIdPaciente] = useState("");
   const [pacienteBusca, setPacienteBusca] = useState("");
   const [pacienteListaAberta, setPacienteListaAberta] = useState(false);
-  const [idCondicao, setIdCondicao] = useState("");
+  const [idsCondicao, setIdsCondicao] = useState<number[]>([]);
   const [pressaoArterial, setPressaoArterial] = useState("");
   const [glicemia, setGlicemia] = useState("");
   const [atividadeFisica, setAtividadeFisica] = useState("");
   const [tipoCalcado, setTipoCalcado] = useState("");
   const [alergias, setAlergias] = useState("");
-  const [idTipoUnha, setIdTipoUnha] = useState("");
+  const [idsTipoUnha, setIdsTipoUnha] = useState<number[]>([]);
   const [idPeEsquerdo, setIdPeEsquerdo] = useState("");
   const [idPeDireito, setIdPeDireito] = useState("");
-  const [idHidrose, setIdHidrose] = useState("");
+  const [idsHidrose, setIdsHidrose] = useState<number[]>([]);
   const [idLesoesMecanicas, setIdLesoesMecanicas] = useState("");
   const [digitoPressao, setDigitoPressao] = useState("");
   const [varizes, setVarizes] = useState("");
@@ -177,16 +186,16 @@ export function AvaliacoesClient(props: Props) {
     setIdPaciente("");
     setPacienteBusca("");
     setPacienteListaAberta(false);
-    setIdCondicao("");
+    setIdsCondicao([]);
     setPressaoArterial("");
     setGlicemia("");
     setAtividadeFisica("");
     setTipoCalcado("");
     setAlergias("");
-    setIdTipoUnha("");
+    setIdsTipoUnha([]);
     setIdPeEsquerdo("");
     setIdPeDireito("");
-    setIdHidrose("");
+    setIdsHidrose([]);
     setIdLesoesMecanicas("");
     setDigitoPressao("");
     setVarizes("");
@@ -224,16 +233,17 @@ export function AvaliacoesClient(props: Props) {
     const pid = Number(row.id_paciente ?? 0);
     setPacienteBusca(pacientesById[pid] ?? "");
     setPacienteListaAberta(false);
-    setIdCondicao(String(row.id_condicao ?? ""));
+    const rec = row as Record<string, unknown>;
+    setIdsCondicao(parseEvolucaoCondicaoIds(rec));
     setPressaoArterial(toNullableString(row.pressao_arterial));
     setGlicemia(toNullableString(row.glicemia));
     setAtividadeFisica(toNullableString(row.atividade_fisica));
     setTipoCalcado(toNullableString(row.tipo_calcado));
     setAlergias(toNullableString(row.alergias));
-    setIdTipoUnha(String(row.id_tipo_unha ?? ""));
+    setIdsTipoUnha(parseEvolucaoTipoUnhaIds(rec));
     setIdPeEsquerdo(String(row.id_pe_esquerdo ?? ""));
     setIdPeDireito(String(row.id_pe_direito ?? ""));
-    setIdHidrose(String(row.id_hidrose ?? ""));
+    setIdsHidrose(parseEvolucaoHidroseIds(rec));
     setIdLesoesMecanicas(String(row.id_lesoes_mecanicas ?? ""));
     setDigitoPressao(toNullableString(row.digito_pressao));
     setVarizes(toNullableString(row.varizes));
@@ -266,16 +276,16 @@ export function AvaliacoesClient(props: Props) {
       const fd = new FormData();
       const appendText = (k: string, v: string) => fd.append(k, v.trim());
       appendText("id_paciente", idPaciente);
-      appendText("id_condicao", idCondicao);
+      for (const id of idsCondicao) fd.append("id_condicao", String(id));
       appendText("pressao_arterial", pressaoArterial);
       appendText("glicemia", glicemia);
       appendText("atividade_fisica", atividadeFisica);
       appendText("tipo_calcado", tipoCalcado);
       appendText("alergias", alergias);
-      appendText("id_tipo_unha", idTipoUnha);
+      for (const id of idsTipoUnha) fd.append("id_tipo_unha", String(id));
       appendText("id_pe_esquerdo", idPeEsquerdo);
       appendText("id_pe_direito", idPeDireito);
-      appendText("id_hidrose", idHidrose);
+      for (const id of idsHidrose) fd.append("id_hidrose", String(id));
       appendText("id_lesoes_mecanicas", idLesoesMecanicas);
       appendText("digito_pressao", digitoPressao);
       appendText("varizes", varizes);
@@ -493,7 +503,7 @@ export function AvaliacoesClient(props: Props) {
                 <th>ID</th>
                 <th>Paciente</th>
                 <th>Responsável</th>
-                <th>Condição</th>
+                <th>Condições</th>
                 <th>Data</th>
                 <th>Status</th>
                 <th className="text-right">Ações</th>
@@ -521,7 +531,7 @@ export function AvaliacoesClient(props: Props) {
                       </button>
                     </td>
                     <td>{responsavelById[uid] ?? `Usuário #${uid}`}</td>
-                    <td>{String(row.id_condicao ?? "-")}</td>
+                    <td>{resumoTextosCondicoes(row as Record<string, unknown>)}</td>
                     <td>{formatDataHora(row.data)}</td>
                     <td>{row.ativo === false ? <span className="badge badge-secondary">Inativo</span> : <span className="badge badge-success">Ativo</span>}</td>
                     <td className="text-right text-nowrap">
@@ -612,7 +622,17 @@ export function AvaliacoesClient(props: Props) {
                   <div className="border rounded p-3 mb-3">
                     <h6 className="text-primary mb-3">Informações de saúde do paciente</h6>
                     <div className="form-row">
-                      <div className="form-group col-md-4"><label>Condição de saúde</label><select className="form-control" value={idCondicao} onChange={(e) => setIdCondicao(e.target.value)}><option value="">—</option>{props.condicoes.filter((x) => x.ativo).map((x) => <option key={x.id} value={x.id}>{x.condicao}</option>)}</select></div>
+                      <div className="form-group col-md-4">
+                        <DropdownCheckboxMultiselect
+                          label="Condição de saúde"
+                          options={props.condicoes
+                            .filter((x) => x.ativo)
+                            .map((x) => ({ id: x.id, label: x.condicao?.trim() || `ID ${x.id}` }))}
+                          value={idsCondicao}
+                          onChange={setIdsCondicao}
+                          disabled={saving}
+                        />
+                      </div>
                       <div className="form-group col-md-4"><label>Pressão arterial</label><input className="form-control" value={pressaoArterial} onChange={(e) => setPressaoArterial(e.target.value)} /></div>
                       <div className="form-group col-md-4"><label>Glicemia</label><input className="form-control" value={glicemia} onChange={(e) => setGlicemia(e.target.value)} /></div>
                     </div>
@@ -630,7 +650,17 @@ export function AvaliacoesClient(props: Props) {
                   <div className="border rounded p-3 mb-3">
                     <h6 className="text-primary mb-3">Tipos de unhas</h6>
                     <div className="form-row">
-                      <div className="form-group col-md-4"><label>Tipo de unha</label><select className="form-control" value={idTipoUnha} onChange={(e) => setIdTipoUnha(e.target.value)}><option value="">—</option>{props.tiposUnhas.filter((x) => x.ativo).map((x) => <option key={x.id} value={x.id}>{x.tipo}</option>)}</select></div>
+                      <div className="form-group col-md-4">
+                        <DropdownCheckboxMultiselect
+                          label="Tipo de unha"
+                          options={props.tiposUnhas
+                            .filter((x) => x.ativo)
+                            .map((x) => ({ id: x.id, label: x.tipo?.trim() || `ID ${x.id}` }))}
+                          value={idsTipoUnha}
+                          onChange={setIdsTipoUnha}
+                          disabled={saving}
+                        />
+                      </div>
                       <div className="form-group col-md-4"><label>Pé esquerdo</label><select className="form-control" value={idPeEsquerdo} onChange={(e) => setIdPeEsquerdo(e.target.value)}><option value="">—</option>{props.tiposPe.filter((x) => x.ativo).map((x) => <option key={x.id} value={x.id}>{x.tipo}</option>)}</select></div>
                       <div className="form-group col-md-4"><label>Pé direito</label><select className="form-control" value={idPeDireito} onChange={(e) => setIdPeDireito(e.target.value)}><option value="">—</option>{props.tiposPe.filter((x) => x.ativo).map((x) => <option key={x.id} value={x.id}>{x.tipo}</option>)}</select></div>
                     </div>
@@ -639,7 +669,17 @@ export function AvaliacoesClient(props: Props) {
                   <div className="border rounded p-3 mb-3">
                     <h6 className="text-primary mb-3">Analise Clinica</h6>
                     <div className="form-row">
-                      <div className="form-group col-md-6"><label>Hidrose</label><select className="form-control" value={idHidrose} onChange={(e) => setIdHidrose(e.target.value)}><option value="">—</option>{props.hidroses.filter((x) => x.ativo).map((x) => <option key={x.id} value={x.id}>{x.tipo}</option>)}</select></div>
+                      <div className="form-group col-md-6">
+                        <DropdownCheckboxMultiselect
+                          label="Hidrose"
+                          options={props.hidroses
+                            .filter((x) => x.ativo)
+                            .map((x) => ({ id: x.id, label: x.tipo?.trim() || `ID ${x.id}` }))}
+                          value={idsHidrose}
+                          onChange={setIdsHidrose}
+                          disabled={saving}
+                        />
+                      </div>
                       <div className="form-group col-md-6"><label>Lesões mecânicas</label><select className="form-control" value={idLesoesMecanicas} onChange={(e) => setIdLesoesMecanicas(e.target.value)}><option value="">—</option>{props.lesoesMecanicas.filter((x) => x.ativo).map((x) => <option key={x.id} value={x.id}>{x.tipo}</option>)}</select></div>
                     </div>
                     <div className="form-row">
@@ -769,21 +809,23 @@ export function AvaliacoesClient(props: Props) {
                   </div>
                 </div>
                 <div className="form-row">
-                  <div className="form-group col-md-3">
+                  <div className="form-group col-md-4">
                     <label className="mb-1 text-muted">ID Avaliação</label>
                     <div>{String(consultaRow.id ?? "-")}</div>
                   </div>
-                  <div className="form-group col-md-3">
+                  <div className="form-group col-md-4">
                     <label className="mb-1 text-muted">ID Paciente</label>
                     <div>{String(consultaRow.id_paciente ?? "-")}</div>
                   </div>
-                  <div className="form-group col-md-3">
+                  <div className="form-group col-md-4">
                     <label className="mb-1 text-muted">ID Responsável</label>
                     <div>{String(consultaRow.id_responsavel ?? "-")}</div>
                   </div>
-                  <div className="form-group col-md-3">
-                    <label className="mb-1 text-muted">ID Condição</label>
-                    <div>{String(consultaRow.id_condicao ?? "-")}</div>
+                </div>
+                <div className="form-row">
+                  <div className="form-group col-md-12">
+                    <label className="mb-1 text-muted">Condições de saúde</label>
+                    <div>{resumoTextosCondicoes(consultaRow as Record<string, unknown>)}</div>
                   </div>
                 </div>
                 <div className="form-row">
@@ -857,34 +899,36 @@ export function AvaliacoesClient(props: Props) {
                   </div>
                 </div>
                 <div className="form-row">
-                  <div className="form-group col-md-3">
-                    <label className="mb-1 text-muted">ID Tipo unha</label>
-                    <div>{String(consultaRow.id_tipo_unha ?? "-")}</div>
+                  <div className="form-group col-md-4">
+                    <label className="mb-1 text-muted">Tipos de unha</label>
+                    <div>{resumoTextosTiposUnha(consultaRow as Record<string, unknown>)}</div>
                   </div>
-                  <div className="form-group col-md-3">
-                    <label className="mb-1 text-muted">ID Pé esquerdo</label>
+                  <div className="form-group col-md-4">
+                    <label className="mb-1 text-muted">Pé esquerdo (ID)</label>
                     <div>{String(consultaRow.id_pe_esquerdo ?? "-")}</div>
                   </div>
-                  <div className="form-group col-md-3">
-                    <label className="mb-1 text-muted">ID Pé direito</label>
+                  <div className="form-group col-md-4">
+                    <label className="mb-1 text-muted">Pé direito (ID)</label>
                     <div>{String(consultaRow.id_pe_direito ?? "-")}</div>
                   </div>
-                  <div className="form-group col-md-3">
-                    <label className="mb-1 text-muted">ID Hidrose</label>
-                    <div>{String(consultaRow.id_hidrose ?? "-")}</div>
+                </div>
+                <div className="form-row">
+                  <div className="form-group col-md-6">
+                    <label className="mb-1 text-muted">Hidroses</label>
+                    <div>{resumoTextosHidroses(consultaRow as Record<string, unknown>)}</div>
+                  </div>
+                  <div className="form-group col-md-6">
+                    <label className="mb-1 text-muted">Lesões mecânicas (ID)</label>
+                    <div>{String(consultaRow.id_lesoes_mecanicas ?? "-")}</div>
                   </div>
                 </div>
                 <div className="form-row">
                   <div className="form-group col-md-4">
-                    <label className="mb-1 text-muted">ID Lesões mecânicas</label>
-                    <div>{String(consultaRow.id_lesoes_mecanicas ?? "-")}</div>
-                  </div>
-                  <div className="form-group col-md-4">
-                    <label className="mb-1 text-muted">ID Formato dedos</label>
+                    <label className="mb-1 text-muted">Formato dedos (ID)</label>
                     <div>{String(consultaRow.id_formato_dedos ?? "-")}</div>
                   </div>
                   <div className="form-group col-md-4">
-                    <label className="mb-1 text-muted">ID Formato pé</label>
+                    <label className="mb-1 text-muted">Formato pé (ID)</label>
                     <div>{String(consultaRow.id_formato_pe ?? "-")}</div>
                   </div>
                 </div>

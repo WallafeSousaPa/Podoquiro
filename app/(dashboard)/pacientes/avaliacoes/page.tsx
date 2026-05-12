@@ -1,4 +1,5 @@
 import { redirect } from "next/navigation";
+import { SELECT_PACIENTES_EVOLUCAO_VINCULOS } from "@/lib/avaliacoes/evolucao";
 import { getSession } from "@/lib/auth/session";
 import { nomeExibicaoPaciente } from "@/lib/pacientes";
 import { createAdminClient } from "@/lib/supabase/admin";
@@ -24,6 +25,10 @@ export default async function PacientesAvaliacoesPage() {
   let formatosPe: ItemRef[] = [];
 
   try {
+    const evolucaoSelect =
+      "*, pacientes(id,nome_completo,nome_social,telefone), usuarios(id,usuario,nome_completo), " +
+      SELECT_PACIENTES_EVOLUCAO_VINCULOS;
+
     const [
       pacientesRes,
       usuariosRes,
@@ -38,11 +43,7 @@ export default async function PacientesAvaliacoesPage() {
     ] = await Promise.all([
       supabase.from("pacientes").select("id, nome_completo, nome_social, telefone").order("id", { ascending: false }),
       supabase.from("usuarios").select("id, usuario, nome_completo").eq("ativo", true).order("nome_completo", { ascending: true }),
-      supabase
-        .from("pacientes_evolucao")
-        .select("*, pacientes(id,nome_completo,nome_social,telefone), usuarios(id,usuario,nome_completo)")
-        .order("data", { ascending: false })
-        .limit(200),
+      supabase.from("pacientes_evolucao").select(evolucaoSelect).order("data", { ascending: false }).limit(200),
       supabase.from("condicoes_saude").select("id, condicao, ativo").order("condicao", { ascending: true }),
       supabase.from("tipos_unhas").select("id, tipo, ativo").order("tipo", { ascending: true }),
       supabase.from("tipo_pe").select("id, tipo, ativo").order("tipo", { ascending: true }),
@@ -69,7 +70,7 @@ export default async function PacientesAvaliacoesPage() {
         (u.nome_completo && String(u.nome_completo).trim()) ||
         String(u.usuario ?? `Usuário #${u.id}`),
     }));
-    evolucoes = (evolRes.data ?? []) as Record<string, unknown>[];
+    evolucoes = (evolRes.data ?? []) as unknown as Record<string, unknown>[];
     condicoes = (condRes.data ?? []) as ItemRef[];
     tiposUnhas = (unhaRes.data ?? []) as ItemRef[];
     tiposPe = (peRes.data ?? []) as ItemRef[];

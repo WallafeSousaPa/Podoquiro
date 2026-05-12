@@ -1,5 +1,12 @@
 import { NextResponse } from "next/server";
-import { CAMPOS_FOTO_EVOLUCAO, isFormaContatoPaciente, optText } from "@/lib/avaliacoes/evolucao";
+import {
+  CAMPOS_FOTO_EVOLUCAO,
+  isFormaContatoPaciente,
+  optText,
+  parsePositiveIdsFromFormData,
+  SELECT_PACIENTES_EVOLUCAO_VINCULOS,
+} from "@/lib/avaliacoes/evolucao";
+import { syncPacientesEvolucaoVinculos } from "@/lib/avaliacoes/sync-pacientes-evolucao-vinculos";
 import { getSession } from "@/lib/auth/session";
 import { createAdminClient } from "@/lib/supabase/admin";
 
@@ -29,13 +36,14 @@ export async function GET(request: Request) {
     .from("pacientes_evolucao")
     .select(
       `
-      id, id_paciente, id_responsavel, id_condicao,
+      id, id_paciente, id_responsavel,
       pressao_arterial, glicemia, atividade_fisica, tipo_calcado, alergias,
-      id_tipo_unha, id_pe_esquerdo, id_pe_direito, id_hidrose, id_lesoes_mecanicas,
+      id_pe_esquerdo, id_pe_direito, id_lesoes_mecanicas,
       digito_pressao, varizes, claudicacao, temperatura, oleo, agua, observacao,
       id_formato_dedos, id_formato_pe, forma_contato, tratamento_sugerido,
       foto_plantar_direito, foto_plantar_esquerdo, foto_dorso_direito, foto_dorso_esquerdo, foto_doc_termo_consentimento,
       ativo, data,
+      ${SELECT_PACIENTES_EVOLUCAO_VINCULOS},
       pacientes ( id, nome_completo, nome_social ),
       usuarios ( id, usuario, nome_completo )
     `,
@@ -78,19 +86,22 @@ export async function POST(request: Request) {
   }
 
   const supabase = createAdminClient();
+  const vinculos = {
+    condicoes: parsePositiveIdsFromFormData(formData, "id_condicao"),
+    tiposUnha: parsePositiveIdsFromFormData(formData, "id_tipo_unha"),
+    hidroses: parsePositiveIdsFromFormData(formData, "id_hidrose"),
+  };
+
   const row: Record<string, unknown> = {
     id_paciente: idPaciente,
     id_responsavel: idResponsavelSessao,
-    id_condicao: toPositiveNumber(formData.get("id_condicao")),
     pressao_arterial: optText(formData.get("pressao_arterial")),
     glicemia: optText(formData.get("glicemia")),
     atividade_fisica: optText(formData.get("atividade_fisica")),
     tipo_calcado: optText(formData.get("tipo_calcado")),
     alergias: optText(formData.get("alergias")),
-    id_tipo_unha: toPositiveNumber(formData.get("id_tipo_unha")),
     id_pe_esquerdo: toPositiveNumber(formData.get("id_pe_esquerdo")),
     id_pe_direito: toPositiveNumber(formData.get("id_pe_direito")),
-    id_hidrose: toPositiveNumber(formData.get("id_hidrose")),
     id_lesoes_mecanicas: toPositiveNumber(formData.get("id_lesoes_mecanicas")),
     digito_pressao: optText(formData.get("digito_pressao")),
     varizes: optText(formData.get("varizes")),
@@ -127,8 +138,31 @@ export async function POST(request: Request) {
   const { data, error } = await supabase
     .from("pacientes_evolucao")
     .insert(row)
-    .select("*")
+    .select("id")
     .single();
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-  return NextResponse.json({ data });
+  const novoId = toPositiveNumber(data?.id);
+  if (!novoId) return NextResponse.json({ error: "Falha ao obter ID da evolução." }, { status: 500 });
+
+  const syncErr = await syncPacientesEvolucaoVinculos(supabase, novoId, vinculos);
+  if (syncErr.error) return NextResponse.json({ error: syncErr.error }, { status: 500 });
+
+  const { data: completo, error: loadErr } = await supabase
+    .from("pacientes_evolucao")
+    .select(
+      `
+      id, id_paciente, id_responsavel,
+      pressao_arterial, glicemia, atividade_fisica, tipo_calcado, alergias,
+      id_pe_esquerdo, id_pe_direito, id_lesoes_mecanicas,
+      digito_pressao, varizes, claudicacao, temperatura, oleo, agua, observacao,
+      id_formato_dedos, id_formato_pe, forma_contato, tratamento_sugerido,
+      foto_plantar_direito, foto_plantar_esquerdo, foto_dorso_direito, foto_dorso_esquerdo, foto_doc_termo_consentimento,
+      ativo, data,
+      ${SELECT_PACIENTES_EVOLUCAO_VINCULOS}
+    `,
+    )
+    .eq("id", novoId)
+    .maybeSingle();
+  if (loadErr) return NextResponse.json({ error: loadErr.message }, { status: 500 });
+  return NextResponse.json({ data: completo });
 }

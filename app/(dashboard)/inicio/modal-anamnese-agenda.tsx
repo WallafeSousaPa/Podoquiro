@@ -7,6 +7,7 @@ import {
   useEffect,
   useState,
 } from "react";
+import { DropdownCheckboxMultiselect } from "@/components/dropdown-checkbox-multiselect";
 import "./agenda.css";
 
 function ModalBackdrop({
@@ -54,7 +55,10 @@ type AvaliacaoOptionItem = {
   ativo: boolean;
 };
 
-/** Dados mínimos do agendamento para abrir a anamnese (evolução / pacientes-evolucao). */
+/**
+ * Dados mínimos do agendamento para abrir a anamnese (evolução / pacientes-evolucao).
+ * Condição de saúde, tipo de unha e hidrose: multiseleção (vários `id_*` no FormData).
+ */
 export type AnamneseAgendamentoContext = {
   /** ID do agendamento (para reabrir o mesmo fluxo com formulário limpo). */
   id: number;
@@ -73,16 +77,16 @@ export function ModalAnamneseAgenda({ ag, onClose, onSalvo }: Props) {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const [idCondicao, setIdCondicao] = useState("");
+  const [idsCondicao, setIdsCondicao] = useState<number[]>([]);
   const [pressaoArterial, setPressaoArterial] = useState("");
   const [glicemia, setGlicemia] = useState("");
   const [atividadeFisica, setAtividadeFisica] = useState("");
   const [tipoCalcado, setTipoCalcado] = useState("");
   const [alergias, setAlergias] = useState("");
-  const [idTipoUnha, setIdTipoUnha] = useState("");
+  const [idsTipoUnha, setIdsTipoUnha] = useState<number[]>([]);
   const [idPeEsquerdo, setIdPeEsquerdo] = useState("");
   const [idPeDireito, setIdPeDireito] = useState("");
-  const [idHidrose, setIdHidrose] = useState("");
+  const [idsHidrose, setIdsHidrose] = useState<number[]>([]);
   const [idLesoes, setIdLesoes] = useState("");
   const [digitoPressao, setDigitoPressao] = useState("");
   const [varizes, setVarizes] = useState("");
@@ -153,16 +157,16 @@ export function ModalAnamneseAgenda({ ag, onClose, onSalvo }: Props) {
     try {
       const fd = new FormData();
       fd.append("id_paciente", String(ag.id_paciente));
-      fd.append("id_condicao", idCondicao);
+      for (const id of idsCondicao) fd.append("id_condicao", String(id));
       fd.append("pressao_arterial", pressaoArterial);
       fd.append("glicemia", glicemia);
       fd.append("atividade_fisica", atividadeFisica);
       fd.append("tipo_calcado", tipoCalcado);
       fd.append("alergias", alergias);
-      fd.append("id_tipo_unha", idTipoUnha);
+      for (const id of idsTipoUnha) fd.append("id_tipo_unha", String(id));
       fd.append("id_pe_esquerdo", idPeEsquerdo);
       fd.append("id_pe_direito", idPeDireito);
-      fd.append("id_hidrose", idHidrose);
+      for (const id of idsHidrose) fd.append("id_hidrose", String(id));
       fd.append("id_lesoes_mecanicas", idLesoes);
       fd.append("digito_pressao", digitoPressao);
       fd.append("varizes", varizes);
@@ -230,21 +234,15 @@ export function ModalAnamneseAgenda({ ag, onClose, onSalvo }: Props) {
                 <h6 className="text-primary mb-3">Informações de saúde do paciente</h6>
                 <div className="form-row">
                   <div className="form-group col-md-4">
-                    <label>Condição de saúde</label>
-                    <select
-                      className="form-control"
-                      value={idCondicao}
-                      onChange={(e) => setIdCondicao(e.target.value)}
-                    >
-                      <option value="">—</option>
-                      {condicoes
+                    <DropdownCheckboxMultiselect
+                      label="Condição de saúde"
+                      options={condicoes
                         .filter((x) => x.ativo)
-                        .map((x) => (
-                          <option key={x.id} value={x.id}>
-                            {x.condicao}
-                          </option>
-                        ))}
-                    </select>
+                        .map((x) => ({ id: x.id, label: x.condicao?.trim() || `ID ${x.id}` }))}
+                      value={idsCondicao}
+                      onChange={setIdsCondicao}
+                      disabled={saving}
+                    />
                   </div>
                   <div className="form-group col-md-4">
                     <label>Pressão arterial</label>
@@ -312,21 +310,15 @@ export function ModalAnamneseAgenda({ ag, onClose, onSalvo }: Props) {
                 <h6 className="text-primary mb-3">Tipos de unhas</h6>
                 <div className="form-row">
                   <div className="form-group col-md-4">
-                    <label>Tipo de unha</label>
-                    <select
-                      className="form-control"
-                      value={idTipoUnha}
-                      onChange={(e) => setIdTipoUnha(e.target.value)}
-                    >
-                      <option value="">—</option>
-                      {tiposUnhas
+                    <DropdownCheckboxMultiselect
+                      label="Tipo de unha"
+                      options={tiposUnhas
                         .filter((x) => x.ativo)
-                        .map((x) => (
-                          <option key={x.id} value={x.id}>
-                            {x.tipo}
-                          </option>
-                        ))}
-                    </select>
+                        .map((x) => ({ id: x.id, label: x.tipo?.trim() || `ID ${x.id}` }))}
+                      value={idsTipoUnha}
+                      onChange={setIdsTipoUnha}
+                      disabled={saving}
+                    />
                   </div>
                   <div className="form-group col-md-4">
                     <label>Pé esquerdo</label>
@@ -368,21 +360,15 @@ export function ModalAnamneseAgenda({ ag, onClose, onSalvo }: Props) {
                 <h6 className="text-primary mb-3">Analise Clinica</h6>
                 <div className="form-row">
                   <div className="form-group col-md-6">
-                    <label>Hidrose</label>
-                    <select
-                      className="form-control"
-                      value={idHidrose}
-                      onChange={(e) => setIdHidrose(e.target.value)}
-                    >
-                      <option value="">—</option>
-                      {hidroses
+                    <DropdownCheckboxMultiselect
+                      label="Hidrose"
+                      options={hidroses
                         .filter((x) => x.ativo)
-                        .map((x) => (
-                          <option key={x.id} value={x.id}>
-                            {x.tipo}
-                          </option>
-                        ))}
-                    </select>
+                        .map((x) => ({ id: x.id, label: x.tipo?.trim() || `ID ${x.id}` }))}
+                      value={idsHidrose}
+                      onChange={setIdsHidrose}
+                      disabled={saving}
+                    />
                   </div>
                   <div className="form-group col-md-6">
                     <label>Lesões mecânicas</label>
