@@ -5,6 +5,7 @@ import {
   type ChangeEvent,
   type FormEvent,
   type ReactNode,
+  useCallback,
   useEffect,
   useId,
   useLayoutEffect,
@@ -14,10 +15,37 @@ import {
 } from "react";
 import {
   isCpfLengthOk,
+  nomeExibicaoPaciente,
   PACIENTE_ESTADOS_CIVIS,
   PACIENTE_GENEROS,
   normalizeCpfDigits,
 } from "@/lib/pacientes";
+
+/** Texto para busca: minúsculas, sem acentos, espaços colapsados. */
+function normalizarTextoBusca(raw: string): string {
+  return raw
+    .trim()
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/\p{M}/gu, "")
+    .replace(/\s+/g, " ");
+}
+
+function campoContemTermo(campo: string | null | undefined, termoNormalizado: string): boolean {
+  if (!termoNormalizado) return true;
+  if (campo == null || campo === "") return false;
+  return normalizarTextoBusca(campo).includes(termoNormalizado);
+}
+
+/** Busca geral: apenas nome (completo, social ou exibido), sem diferenciar maiúsculas/minúsculas. */
+function nomePacienteContemBusca(r: PacienteItem, termoNormalizado: string): boolean {
+  if (!termoNormalizado) return true;
+  return (
+    campoContemTermo(r.nome_completo, termoNormalizado) ||
+    campoContemTermo(r.nome_social, termoNormalizado) ||
+    campoContemTermo(r.nome_exibicao, termoNormalizado)
+  );
+}
 
 type PacienteItem = {
   id: number;
@@ -40,12 +68,57 @@ type PacienteItem = {
   ativo: boolean;
 };
 
+type PacienteAtendimentoItem = {
+  id: number;
+  status: string;
+  data_hora_inicio: string;
+  data_hora_fim: string;
+  valor_bruto: number;
+  desconto: number;
+  valor_total: number;
+  observacoes: string | null;
+  profissional_nome: string;
+  sala_nome: string;
+  procedimentos: { nome: string; valor_aplicado: number }[];
+  produtos: { nome: string; qtd: number }[];
+};
+
+type PacienteAnamneseItem = {
+  id: number;
+  data: string;
+  ativo: boolean;
+  observacao: string | null;
+  tratamento_sugerido: string | null;
+  forma_contato: string | null;
+  pressao_arterial: string | null;
+  glicemia: string | null;
+  responsavel_nome: string;
+  condicao_nome: string | null;
+};
+
+function badgeAgendamentoStatus(status: string): { label: string; className: string } {
+  const s = status.replace(/_/g, " ");
+  const map: Record<string, string> = {
+    pendente: "badge-warning",
+    confirmado: "badge-primary",
+    em_andamento: "badge-info",
+    realizado: "badge-success",
+    cancelado: "badge-secondary",
+    adiado: "badge-primary",
+  };
+  const cls = map[status] ?? "badge-light";
+  return { label: s, className: `badge ${cls}` };
+}
+
 function ModalBackdrop({
   children,
   onBackdropClick,
+  ariaLabelledBy,
 }: {
   children: ReactNode;
   onBackdropClick: () => void;
+  /** ID do título visível do modal (acessibilidade). */
+  ariaLabelledBy?: string;
 }) {
   return (
     <>
@@ -55,6 +128,7 @@ function ModalBackdrop({
         tabIndex={-1}
         role="dialog"
         aria-modal="true"
+        aria-labelledby={ariaLabelledBy}
       >
         {children}
       </div>
@@ -90,6 +164,38 @@ function formatCepInput(digits: string): string {
   return `${d.slice(0, 5)}-${d.slice(5)}`;
 }
 
+function formatEnderecoResumo(row: PacienteItem): string {
+  const parts = [
+    row.logradouro?.trim() || null,
+    row.numero?.trim() ? `nº ${row.numero.trim()}` : null,
+    row.complemento?.trim() || null,
+    row.bairro?.trim() || null,
+    row.cidade?.trim() && row.uf?.trim()
+      ? `${row.cidade.trim()}/${row.uf.trim().toUpperCase()}`
+      : row.cidade?.trim() || row.uf?.trim()?.toUpperCase() || null,
+  ].filter(Boolean);
+  const linha = parts.join(", ");
+  const cepDig = normalizeCepDigits(row.cep ?? "");
+  const cepFmt = cepDig.length === 8 ? formatCepInput(cepDig) : row.cep?.trim() || "";
+  const bloco = [linha, cepFmt ? `CEP ${cepFmt}` : null].filter(Boolean).join(" — ");
+  return bloco || "—";
+}
+
+function fmtBrlLocal(n: number) {
+  return n.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+}
+
+function fmtDataHoraAg(iso: string) {
+  try {
+    return new Date(iso).toLocaleString("pt-BR", {
+      dateStyle: "short",
+      timeStyle: "short",
+    });
+  } catch {
+    return iso;
+  }
+}
+
 type Props = {
   pacientes: PacienteItem[];
   loadError?: string | null;
@@ -98,6 +204,7 @@ type Props = {
 export function PacientesCadastroClient({ pacientes, loadError }: Props) {
   const router = useRouter();
   const modalTitleId = useId();
+  const detalhePacienteTitleId = useId();
   const confirmTitleId = useId();
   const filtroNomeEmailId = useId();
   const filtroCpfId = useId();
@@ -109,32 +216,54 @@ export function PacientesCadastroClient({ pacientes, loadError }: Props) {
     setRows(pacientes);
   }, [pacientes]);
 
-  /** Busca por nome ou e-mail (texto livre). */
+  const recarregarListaPacientes = useCallback(async () => {
+    try {
+      const res = await fetch("/api/pacientes", { cache: "no-store" });
+      const json = (await res.json().catch(() => ({}))) as {
+        data?: Omit<PacienteItem, "nome_exibicao">[];
+        error?: string;
+      };
+      if (!res.ok) return;
+      const raw = json.data ?? [];
+      const list: PacienteItem[] = raw.map((p) => {
+        const nome = nomeExibicaoPaciente(p).trim();
+        return { ...p, nome_exibicao: nome !== "" ? nome : `Paciente #${p.id}` };
+      });
+      list.sort((a, b) =>
+        a.nome_exibicao.localeCompare(b.nome_exibicao, "pt-BR", { sensitivity: "base" }),
+      );
+      setRows(list);
+    } catch {
+      /* mantém lista atual */
+    }
+  }, []);
+
+  /** Busca geral: somente pelo nome do cliente (case-insensitive). */
   const [filtroNomeEmail, setFiltroNomeEmail] = useState("");
   const [filtroCpf, setFiltroCpf] = useState("");
   const [filtroTelefone, setFiltroTelefone] = useState("");
   const [filtroCidade, setFiltroCidade] = useState("");
 
   const filtrados = useMemo(() => {
-    const nomeEmail = filtroNomeEmail.trim().toLowerCase();
+    const nomeEmailNorm = filtroNomeEmail.trim()
+      ? normalizarTextoBusca(filtroNomeEmail)
+      : "";
     const cpfDig = normalizeCpfDigits(filtroCpf);
     const telDig = normalizeCpfDigits(filtroTelefone);
-    const cidade = filtroCidade.trim().toLowerCase();
+    const cidadeNorm = filtroCidade.trim() ? normalizarTextoBusca(filtroCidade) : "";
 
     return rows.filter((r) => {
-      if (nomeEmail) {
-        const okNome = r.nome_exibicao.toLowerCase().includes(nomeEmail);
-        const okEmail = r.email?.toLowerCase().includes(nomeEmail) ?? false;
-        if (!okNome && !okEmail) return false;
+      if (nomeEmailNorm) {
+        if (!nomePacienteContemBusca(r, nomeEmailNorm)) return false;
       }
       if (cpfDig) {
-        if (!r.cpf?.includes(cpfDig)) return false;
+        if (!normalizeCpfDigits(r.cpf).includes(cpfDig)) return false;
       }
       if (telDig) {
         if (!normalizeCpfDigits(r.telefone).includes(telDig)) return false;
       }
-      if (cidade) {
-        if (!r.cidade?.toLowerCase().includes(cidade)) return false;
+      if (cidadeNorm) {
+        if (!campoContemTermo(r.cidade, cidadeNorm)) return false;
       }
       return true;
     });
@@ -193,6 +322,15 @@ export function PacientesCadastroClient({ pacientes, loadError }: Props) {
 
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState<PacienteItem | null>(null);
+  const [detalhePaciente, setDetalhePaciente] = useState<PacienteItem | null>(null);
+  const [atendimentosRealizados, setAtendimentosRealizados] = useState<
+    PacienteAtendimentoItem[]
+  >([]);
+  const [atendimentosLoading, setAtendimentosLoading] = useState(false);
+  const [atendimentosError, setAtendimentosError] = useState<string | null>(null);
+  const [anamneses, setAnamneses] = useState<PacienteAnamneseItem[]>([]);
+  const [anamnesesLoading, setAnamnesesLoading] = useState(false);
+  const [anamnesesError, setAnamnesesError] = useState<string | null>(null);
   const [cpf, setCpf] = useState("");
   const [nomePrincipal, setNomePrincipal] = useState("");
   const [usarNomeSocial, setUsarNomeSocial] = useState(false);
@@ -287,6 +425,79 @@ export function PacientesCadastroClient({ pacientes, loadError }: Props) {
     resetForm();
     setModalOpen(true);
   }
+
+  function openDetalhesPaciente(row: PacienteItem) {
+    setDetalhePaciente(row);
+  }
+
+  function closeDetalhesPaciente() {
+    setDetalhePaciente(null);
+    setAtendimentosRealizados([]);
+    setAtendimentosError(null);
+    setAtendimentosLoading(false);
+    setAnamneses([]);
+    setAnamnesesError(null);
+    setAnamnesesLoading(false);
+  }
+
+  useEffect(() => {
+    if (!detalhePaciente) return;
+    const id = detalhePaciente.id;
+    let cancelled = false;
+    setAtendimentosLoading(true);
+    setAnamnesesLoading(true);
+    setAtendimentosError(null);
+    setAnamnesesError(null);
+    setAtendimentosRealizados([]);
+    setAnamneses([]);
+
+    async function loadAtendimentos() {
+      try {
+        const res = await fetch(`/api/pacientes/${id}/atendimentos-realizados`);
+        const json = (await res.json()) as {
+          data?: PacienteAtendimentoItem[];
+          error?: string;
+        };
+        if (cancelled) return;
+        if (res.ok) setAtendimentosRealizados(json.data ?? []);
+        else setAtendimentosError(json.error ?? "Erro ao carregar atendimentos.");
+      } catch (e) {
+        if (!cancelled) {
+          setAtendimentosError(
+            e instanceof Error ? e.message : "Erro ao carregar atendimentos.",
+          );
+        }
+      } finally {
+        if (!cancelled) setAtendimentosLoading(false);
+      }
+    }
+
+    async function loadAnamneses() {
+      try {
+        const res = await fetch(`/api/pacientes/${id}/anamneses?incluir_inativos=1`);
+        const json = (await res.json()) as {
+          data?: PacienteAnamneseItem[];
+          error?: string;
+        };
+        if (cancelled) return;
+        if (res.ok) setAnamneses(json.data ?? []);
+        else setAnamnesesError(json.error ?? "Erro ao carregar anamneses.");
+      } catch (e) {
+        if (!cancelled) {
+          setAnamnesesError(
+            e instanceof Error ? e.message : "Erro ao carregar anamneses.",
+          );
+        }
+      } finally {
+        if (!cancelled) setAnamnesesLoading(false);
+      }
+    }
+
+    void Promise.all([loadAtendimentos(), loadAnamneses()]);
+    return () => {
+      cancelled = true;
+    };
+  }, [detalhePaciente?.id]);
 
   function openEdit(row: PacienteItem) {
     setEditing(row);
@@ -453,6 +664,7 @@ export function PacientesCadastroClient({ pacientes, loadError }: Props) {
           ? `Os dados do paciente foram salvos.`
           : `O paciente foi cadastrado com sucesso.`,
       });
+      await recarregarListaPacientes();
       router.refresh();
     } catch (err) {
       setFormError(err instanceof Error ? err.message : "Erro ao salvar paciente.");
@@ -485,6 +697,7 @@ export function PacientesCadastroClient({ pacientes, loadError }: Props) {
           : `O paciente "${confirmStatus.row.nome_exibicao}" foi inativado.`,
       });
       setConfirmStatus(null);
+      await recarregarListaPacientes();
       router.refresh();
     } finally {
       setChangingStatus(false);
@@ -516,6 +729,7 @@ export function PacientesCadastroClient({ pacientes, loadError }: Props) {
         ignorados: json.ignorados ?? [],
         mensagem: json.mensagem ?? "",
       });
+      await recarregarListaPacientes();
       router.refresh();
     } catch (err) {
       setListError(err instanceof Error ? err.message : "Erro ao importar pacientes.");
@@ -593,13 +807,13 @@ export function PacientesCadastroClient({ pacientes, loadError }: Props) {
           <p className="text-muted small mb-2 mb-md-3">Consultar pacientes</p>
           <div className="form-group mb-3 mb-md-2">
             <label htmlFor={filtroNomeEmailId} className="mb-1">
-              Nome ou e-mail
+              Busca geral (nome)
             </label>
             <input
               id={filtroNomeEmailId}
               type="search"
               className="form-control"
-              placeholder="Parte do nome ou do e-mail..."
+              placeholder="Parte do nome do paciente…"
               value={filtroNomeEmail}
               onChange={(e) => setFiltroNomeEmail(e.target.value)}
               autoComplete="off"
@@ -654,8 +868,9 @@ export function PacientesCadastroClient({ pacientes, loadError }: Props) {
             </div>
           </div>
           <small className="form-text text-muted mb-0">
-            Os filtros se combinam: preencha só o que precisar. CPF e telefone aceitam parte dos
-            dígitos.
+            Os filtros se combinam. A busca geral considera só o nome (completo, social ou como
+            aparece na lista), sem diferenciar maiúsculas e minúsculas e ignorando acentos. Use CPF,
+            telefone e cidade para refinar.
           </small>
         </div>
         <div className="card-body border-bottom py-2 bg-light">
@@ -739,7 +954,7 @@ export function PacientesCadastroClient({ pacientes, loadError }: Props) {
             >
               <tr>
                 <th style={{ width: "70px" }}>ID</th>
-                <th>Nome</th>
+                <th title="Clique no nome na lista para ver os dados completos">Nome</th>
                 <th>CPF</th>
                 <th>Telefone</th>
                 <th>Nascimento</th>
@@ -762,7 +977,17 @@ export function PacientesCadastroClient({ pacientes, loadError }: Props) {
                 visiveis.map((row) => (
                   <tr key={row.id}>
                     <td>{row.id}</td>
-                    <td>{row.nome_exibicao}</td>
+                    <td>
+                      <button
+                        type="button"
+                        className="btn btn-link p-0 text-left font-weight-bold"
+                        style={{ whiteSpace: "normal", textDecoration: "underline" }}
+                        onClick={() => openDetalhesPaciente(row)}
+                        title="Ver informações do paciente"
+                      >
+                        {row.nome_exibicao}
+                      </button>
+                    </td>
                     <td>{formatCpfExibicao(row.cpf)}</td>
                     <td>{row.telefone || "-"}</td>
                     <td>{formatDataBr(row.data_nascimento)}</td>
@@ -806,6 +1031,299 @@ export function PacientesCadastroClient({ pacientes, loadError }: Props) {
           </table>
         </div>
       </div>
+
+      {detalhePaciente ? (
+        <ModalBackdrop
+          onBackdropClick={closeDetalhesPaciente}
+          ariaLabelledBy={detalhePacienteTitleId}
+        >
+          <div className="modal-dialog modal-lg modal-dialog-scrollable" role="document">
+            <div className="modal-content">
+              <div className="modal-header">
+                <h5 className="modal-title" id={detalhePacienteTitleId}>
+                  Informações do paciente
+                </h5>
+                <button
+                  type="button"
+                  className="close"
+                  aria-label="Fechar"
+                  onClick={closeDetalhesPaciente}
+                >
+                  <span aria-hidden="true">&times;</span>
+                </button>
+              </div>
+              <div className="modal-body" style={{ maxHeight: "min(75vh, 640px)" }}>
+                <p className="lead mb-3">{detalhePaciente.nome_exibicao}</p>
+                <dl className="row mb-0 small">
+                  <dt className="col-sm-4 text-muted">ID</dt>
+                  <dd className="col-sm-8">{detalhePaciente.id}</dd>
+                  <dt className="col-sm-4 text-muted">Nome completo</dt>
+                  <dd className="col-sm-8">{detalhePaciente.nome_completo?.trim() || "—"}</dd>
+                  <dt className="col-sm-4 text-muted">Nome social</dt>
+                  <dd className="col-sm-8">{detalhePaciente.nome_social?.trim() || "—"}</dd>
+                  <dt className="col-sm-4 text-muted">CPF</dt>
+                  <dd className="col-sm-8">{formatCpfExibicao(detalhePaciente.cpf)}</dd>
+                  <dt className="col-sm-4 text-muted">Telefone</dt>
+                  <dd className="col-sm-8">{detalhePaciente.telefone?.trim() || "—"}</dd>
+                  <dt className="col-sm-4 text-muted">E-mail</dt>
+                  <dd className="col-sm-8">{detalhePaciente.email?.trim() || "—"}</dd>
+                  <dt className="col-sm-4 text-muted">Gênero</dt>
+                  <dd className="col-sm-8">{detalhePaciente.genero?.trim() || "—"}</dd>
+                  <dt className="col-sm-4 text-muted">Nascimento</dt>
+                  <dd className="col-sm-8">{formatDataBr(detalhePaciente.data_nascimento)}</dd>
+                  <dt className="col-sm-4 text-muted">Estado civil</dt>
+                  <dd className="col-sm-8">{detalhePaciente.estado_civil?.trim() || "—"}</dd>
+                  <dt className="col-sm-4 text-muted">Endereço</dt>
+                  <dd className="col-sm-8">{formatEnderecoResumo(detalhePaciente)}</dd>
+                  <dt className="col-sm-4 text-muted">Status</dt>
+                  <dd className="col-sm-8">
+                    {detalhePaciente.ativo ? (
+                      <span className="badge badge-success">Ativo</span>
+                    ) : (
+                      <span className="badge badge-secondary">Inativo</span>
+                    )}
+                  </dd>
+                </dl>
+
+                <hr className="my-4" />
+                <h6 className="font-weight-bold mb-3 d-flex align-items-center">
+                  <i className="fas fa-stream text-primary mr-2" aria-hidden />
+                  Atendimentos (agenda)
+                </h6>
+                {atendimentosLoading ? (
+                  <p className="text-muted small mb-0">
+                    <span
+                      className="spinner-border spinner-border-sm mr-2"
+                      role="status"
+                      aria-hidden
+                    />
+                    Carregando histórico…
+                  </p>
+                ) : atendimentosError ? (
+                  <div className="alert alert-warning py-2 small mb-0" role="alert">
+                    {atendimentosError}
+                  </div>
+                ) : atendimentosRealizados.length === 0 ? (
+                  <p className="text-muted small mb-0">
+                    Nenhum agendamento encontrado para este paciente.
+                  </p>
+                ) : (
+                  <ul className="list-unstyled mb-0">
+                    {atendimentosRealizados.map((ag, idx) => {
+                      const ultimo = idx === atendimentosRealizados.length - 1;
+                      const st = badgeAgendamentoStatus(ag.status);
+                      return (
+                        <li
+                          key={ag.id}
+                          className="position-relative pl-4"
+                          style={{
+                            paddingBottom: ultimo ? 0 : "1.25rem",
+                            borderLeft: "2px solid #dee2e6",
+                            marginLeft: "0.4rem",
+                          }}
+                        >
+                          <span
+                            className="position-absolute bg-primary border border-white rounded-circle"
+                            style={{
+                              width: "0.75rem",
+                              height: "0.75rem",
+                              left: "-0.4rem",
+                              top: "0.2rem",
+                              boxShadow: "0 0 0 1px #dee2e6",
+                            }}
+                            aria-hidden
+                          />
+                          <div className="small">
+                            <div className="font-weight-bold text-dark">
+                              {fmtDataHoraAg(ag.data_hora_inicio)}
+                              <span className="text-muted font-weight-normal">
+                                {" "}
+                                — {fmtDataHoraAg(ag.data_hora_fim)}
+                              </span>
+                              <span className="text-muted font-weight-normal">
+                                {" "}
+                                · Ag. #{ag.id}
+                              </span>
+                              <span className="ml-2 align-middle">
+                                <span className={st.className}>{st.label}</span>
+                              </span>
+                            </div>
+                            <div className="text-muted mb-1">
+                              <i className="fas fa-user-md mr-1" aria-hidden />
+                              {ag.profissional_nome}
+                              <span className="mx-1">·</span>
+                              <i className="fas fa-door-open mr-1" aria-hidden />
+                              {ag.sala_nome}
+                            </div>
+                            {ag.procedimentos.length > 0 ? (
+                              <ul className="mb-1 pl-3">
+                                {ag.procedimentos.map((p, i) => (
+                                  <li key={`${ag.id}-p-${i}`}>
+                                    {p.nome}{" "}
+                                    <span className="text-muted">
+                                      ({fmtBrlLocal(p.valor_aplicado)})
+                                    </span>
+                                  </li>
+                                ))}
+                              </ul>
+                            ) : null}
+                            {ag.produtos.length > 0 ? (
+                              <div className="mb-1">
+                                <span className="text-muted">Produtos: </span>
+                                {ag.produtos.map((pr, i) => (
+                                  <span key={`${ag.id}-pr-${i}`}>
+                                    {i > 0 ? "; " : ""}
+                                    {pr.nome} ({pr.qtd})
+                                  </span>
+                                ))}
+                              </div>
+                            ) : null}
+                            <div className="d-flex flex-wrap align-items-baseline" style={{ gap: "0.5rem" }}>
+                              <span className="font-weight-bold">
+                                Total: {fmtBrlLocal(ag.valor_total)}
+                              </span>
+                              {ag.desconto > 0 ? (
+                                <span className="text-muted">
+                                  (bruto {fmtBrlLocal(ag.valor_bruto)}, desconto{" "}
+                                  {ag.desconto}%)
+                                </span>
+                              ) : null}
+                            </div>
+                            {ag.observacoes ? (
+                              <p className="text-muted mb-0 mt-1 font-italic small border-left border-secondary pl-2">
+                                {ag.observacoes}
+                              </p>
+                            ) : null}
+                          </div>
+                        </li>
+                      );
+                    })}
+                  </ul>
+                )}
+
+                <hr className="my-4" />
+                <h6 className="font-weight-bold mb-3 d-flex align-items-center">
+                  <i className="fas fa-notes-medical text-info mr-2" aria-hidden />
+                  Anamneses
+                </h6>
+                {anamnesesLoading ? (
+                  <p className="text-muted small mb-0">
+                    <span
+                      className="spinner-border spinner-border-sm mr-2"
+                      role="status"
+                      aria-hidden
+                    />
+                    Carregando anamneses…
+                  </p>
+                ) : anamnesesError ? (
+                  <div className="alert alert-warning py-2 small mb-0" role="alert">
+                    {anamnesesError}
+                  </div>
+                ) : anamneses.length === 0 ? (
+                  <p className="text-muted small mb-0">
+                    Nenhuma anamnese registrada para este paciente.
+                  </p>
+                ) : (
+                  <ul className="list-unstyled mb-0">
+                    {anamneses.map((ev, idx) => {
+                      const ultimo = idx === anamneses.length - 1;
+                      const vitals = [
+                        ev.pressao_arterial ? `PA: ${ev.pressao_arterial}` : null,
+                        ev.glicemia ? `Glicemia: ${ev.glicemia}` : null,
+                        ev.forma_contato ? `Contato: ${ev.forma_contato}` : null,
+                      ].filter(Boolean) as string[];
+                      return (
+                        <li
+                          key={ev.id}
+                          className="position-relative pl-4"
+                          style={{
+                            paddingBottom: ultimo ? 0 : "1.25rem",
+                            borderLeft: "2px solid #bee5eb",
+                            marginLeft: "0.4rem",
+                          }}
+                        >
+                          <span
+                            className="position-absolute bg-info border border-white rounded-circle"
+                            style={{
+                              width: "0.75rem",
+                              height: "0.75rem",
+                              left: "-0.4rem",
+                              top: "0.2rem",
+                              boxShadow: "0 0 0 1px #bee5eb",
+                            }}
+                            aria-hidden
+                          />
+                          <div className="small">
+                            <div className="font-weight-bold text-dark">
+                              {fmtDataHoraAg(ev.data)}
+                              <span className="text-muted font-weight-normal">
+                                {" "}
+                                · Reg. #{ev.id}
+                              </span>
+                              {!ev.ativo ? (
+                                <span className="ml-2 align-middle badge badge-secondary">
+                                  Inativa
+                                </span>
+                              ) : null}
+                            </div>
+                            <div className="text-muted mb-1">
+                              <i className="fas fa-user-md mr-1" aria-hidden />
+                              {ev.responsavel_nome}
+                              {ev.condicao_nome ? (
+                                <>
+                                  <span className="mx-1">·</span>
+                                  {ev.condicao_nome}
+                                </>
+                              ) : null}
+                            </div>
+                            {vitals.length > 0 ? (
+                              <div className="text-muted mb-1">{vitals.join(" · ")}</div>
+                            ) : null}
+                            {ev.observacao ? (
+                              <p className="text-muted mb-1 mt-1 small border-left border-info pl-2">
+                                <span className="font-weight-bold d-block text-dark">
+                                  Observação
+                                </span>
+                                {ev.observacao}
+                              </p>
+                            ) : null}
+                            {ev.tratamento_sugerido ? (
+                              <p className="text-muted mb-0 mt-1 small border-left border-secondary pl-2">
+                                <span className="font-weight-bold d-block text-dark">Tratamento sugerido</span>
+                                <span className="font-italic">{ev.tratamento_sugerido}</span>
+                              </p>
+                            ) : null}
+                          </div>
+                        </li>
+                      );
+                    })}
+                  </ul>
+                )}
+              </div>
+              <div className="modal-footer">
+                <button
+                  type="button"
+                  className="btn btn-secondary"
+                  onClick={closeDetalhesPaciente}
+                >
+                  Fechar
+                </button>
+                <button
+                  type="button"
+                  className="btn btn-primary"
+                  onClick={() => {
+                    const r = detalhePaciente;
+                    closeDetalhesPaciente();
+                    openEdit(r);
+                  }}
+                >
+                  <i className="fas fa-edit mr-1" aria-hidden /> Editar
+                </button>
+              </div>
+            </div>
+          </div>
+        </ModalBackdrop>
+      ) : null}
 
       {modalOpen ? (
         <ModalBackdrop onBackdropClick={closeModal}>

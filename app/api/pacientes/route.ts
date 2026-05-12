@@ -6,6 +6,7 @@ import {
   PACIENTE_ESTADOS_CIVIS,
   PACIENTE_GENEROS,
 } from "@/lib/pacientes";
+import { carregarTodosPacientesEmpresa } from "@/lib/pacientes/carregar-todos-pacientes-empresa";
 import { createAdminClient } from "@/lib/supabase/admin";
 
 function parseEmpresaId(idEmpresa: string) {
@@ -36,47 +37,9 @@ export async function GET() {
   }
 
   const supabase = createAdminClient();
-  const selectCols =
-    "id, cpf, nome_completo, nome_social, genero, data_nascimento, estado_civil, email, telefone, cep, logradouro, numero, complemento, bairro, cidade, uf, ativo";
-
-  /** PostgREST limita linhas por padrão (ex.: 1000); busca em páginas até esgotar. */
-  const pageSize = 1000;
-  type PacienteListRow = {
-    id: number;
-    cpf: string | null;
-    nome_completo: string | null;
-    nome_social: string | null;
-    genero: string | null;
-    data_nascimento: string | null;
-    estado_civil: string | null;
-    email: string | null;
-    telefone: string | null;
-    cep: string | null;
-    logradouro: string | null;
-    numero: string | null;
-    complemento: string | null;
-    bairro: string | null;
-    cidade: string | null;
-    uf: string | null;
-    ativo: boolean;
-  };
-  const allRows: PacienteListRow[] = [];
-
-  for (let from = 0; ; from += pageSize) {
-    const to = from + pageSize - 1;
-    const { data, error } = await supabase
-      .from("pacientes")
-      .select(selectCols)
-      .eq("id_empresa", empresaId)
-      .order("id", { ascending: false })
-      .range(from, to);
-    if (error) {
-      console.error(error);
-      return NextResponse.json({ error: error.message }, { status: 500 });
-    }
-    const chunk = (data ?? []) as PacienteListRow[];
-    allRows.push(...chunk);
-    if (chunk.length < pageSize) break;
+  const { data: allRows, error } = await carregarTodosPacientesEmpresa(supabase, empresaId);
+  if (error) {
+    return NextResponse.json({ error }, { status: 500 });
   }
 
   return NextResponse.json({ data: allRows });

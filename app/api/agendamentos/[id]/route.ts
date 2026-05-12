@@ -19,6 +19,11 @@ import { dataReferenciaBrasilia } from "@/lib/financeiro/data-referencia-brasili
 import { obterSituacaoCaixaDia } from "@/lib/financeiro/caixa-situacao-dia";
 import { getSession } from "@/lib/auth/session";
 import { createAdminClient } from "@/lib/supabase/admin";
+import {
+  baixarOuEstornarEstoqueMercadorias,
+  deltaVendaEntreMapas,
+  somarQtdPorProduto,
+} from "@/lib/estoque/agendamento-produtos-estoque";
 
 function parseEmpresaId(idEmpresa: string) {
   const n = Number(idEmpresa);
@@ -102,6 +107,13 @@ export async function GET(_request: Request, context: RouteContext) {
     .select("id, id_procedimento, valor_aplicado")
     .eq("id_agendamento", id);
 
+  const { data: aprods } = await supabase
+    .from("agendamento_produtos")
+    .select(
+      "id, id_produto, qtd, valor_desconto, valor_produto, valor_final, produtos ( produto )",
+    )
+    .eq("id_agendamento", id);
+
   let pagamentosRes: {
     id: number;
     id_forma_pagamento: number;
@@ -142,6 +154,19 @@ export async function GET(_request: Request, context: RouteContext) {
         id_procedimento: p.id_procedimento,
         valor_aplicado: Number(p.valor_aplicado),
       })),
+      produtos: (aprods ?? []).map((r) => {
+        const pr = r.produtos as { produto?: string } | { produto?: string }[] | null;
+        const p0 = Array.isArray(pr) ? pr[0] : pr;
+        return {
+          id: r.id,
+          id_produto: String(r.id_produto),
+          nome_produto: p0?.produto?.trim() ?? null,
+          qtd: Number(r.qtd),
+          valor_desconto: Number(r.valor_desconto),
+          valor_produto: Number(r.valor_produto),
+          valor_final: Number(r.valor_final),
+        };
+      }),
       pagamentos: pagamentosRes,
       permite_editar_procedimentos_e_pagamentos: podeEditarProcPag,
       pagamentos_nao_carregados_por_perfil: somentePropriaColunaGet,
@@ -506,9 +531,170 @@ export async function PATCH(request: Request, context: RouteContext) {
       }
     }
 
-    valorBruto =
+    const somaProc =
       Math.round(procedimentos.reduce((s, p) => s + p.valor_aplicado, 0) * 100) / 100;
+
+    if (!Array.isArray(body.produtos)) {
+      return NextResponse.json(
+        {
+          error:
+            "Informe a lista `produtos` junto com `procedimentos` (use `[]` se não houver mercadorias).",
+        },
+        { status: 400 },
+      );
+    }
+
+    type RowAgProd = {
+      id_agendamento: number;
+      id_produto: string;
+      qtd: number;
+      valor_desconto: number;
+      valor_produto: number;
+      valor_final: number;
+    };
+    const produtosInsert: RowAgProd[] = [];
+
+    for (const item of body.produtos) {
+      if (!item || typeof item !== "object") {
+        return NextResponse.json({ error: "Item de produto inválido." }, { status: 400 });
+      }
+      const o = item as { id_produto?: unknown; qtd?: unknown; valor_desconto?: unknown };
+      const idProd =
+        typeof o.id_produto === "string"
+          ? o.id_produto.trim()
+          : String(o.id_produto ?? "").trim();
+      if (!idProd) {
+        return NextResponse.json({ error: "Cada produto deve ter `id_produto`." }, { status: 400 });
+      }
+      const qtd = Number(o.qtd);
+      const vd =
+        o.valor_desconto === undefined || o.valor_desconto === null
+          ? 0
+          : Number(o.valor_desconto);
+      if (!Number.isFinite(qtd) || qtd <= 0) {
+        return NextResponse.json({ error: "Quantidade do produto inválida." }, { status: 400 });
+      }
+      if (!Number.isFinite(vd) || vd < 0) {
+        return NextResponse.json({ error: "Desconto do produto inválido." }, { status: 400 });
+      }
+      produtosInsert.push({
+        id_agendamento: id,
+        id_produto: idProd,
+        qtd,
+        valor_desconto: Math.round(vd * 100) / 100,
+        valor_produto: 0,
+        valor_final: 0,
+      });
+    }
+
+    if (produtosInsert.length > 0) {
+      const pids = [...new Set(produtosInsert.map((r) => r.id_produto))];
+      const { data: prodRows, error: prodErr } = await supabase
+        .from("produtos")
+        .select("id, id_empresa, servico, preco")
+        .in("id", pids);
+      if (prodErr) {
+        console.error(prodErr);
+        return NextResponse.json({ error: prodErr.message }, { status: 500 });
+      }
+      const prodMap = new Map(
+        (prodRows ?? []).map((r) => [
+          String(r.id),
+          {
+            id_empresa: r.id_empresa as number,
+            servico: Boolean(r.servico),
+            preco: Number(r.preco),
+          },
+        ]),
+      );
+      for (const row of produtosInsert) {
+        const meta = prodMap.get(row.id_produto);
+        if (!meta || meta.id_empresa !== empresaId) {
+          return NextResponse.json(
+            { error: "Produto inválido ou de outra empresa." },
+            { status: 400 },
+          );
+        }
+        if (meta.servico) {
+          return NextResponse.json(
+            { error: "Use apenas mercadorias (produtos não marcados como serviço)." },
+            { status: 400 },
+          );
+        }
+        if (!Number.isFinite(meta.preco) || meta.preco < 0) {
+          return NextResponse.json({ error: "Preço do produto inválido no cadastro." }, { status: 400 });
+        }
+        const vUnit = Math.round(meta.preco * 100) / 100;
+        const brutoLinha = Math.round(row.qtd * vUnit * 100) / 100;
+        if (row.valor_desconto > brutoLinha + 0.001) {
+          return NextResponse.json(
+            { error: "Desconto do produto não pode ser maior que o subtotal (qtd × preço)." },
+            { status: 400 },
+          );
+        }
+        row.valor_produto = vUnit;
+        row.valor_final = Math.round((brutoLinha - row.valor_desconto) * 100) / 100;
+      }
+    }
+
+    const somaProd =
+      Math.round(produtosInsert.reduce((s, r) => s + r.valor_final, 0) * 100) / 100;
+    valorBruto = Math.round((somaProc + somaProd) * 100) / 100;
     patch.valor_bruto = valorBruto;
+
+    const { data: oldAprodsRows, error: oldApErr } = await supabase
+      .from("agendamento_produtos")
+      .select("id_produto, qtd")
+      .eq("id_agendamento", id);
+    if (oldApErr) {
+      console.error(oldApErr);
+      return NextResponse.json({ error: oldApErr.message }, { status: 500 });
+    }
+
+    const { error: delAgPr } = await supabase
+      .from("agendamento_produtos")
+      .delete()
+      .eq("id_agendamento", id);
+    if (delAgPr) {
+      console.error(delAgPr);
+      return NextResponse.json({ error: delAgPr.message }, { status: 500 });
+    }
+
+    if (produtosInsert.length > 0) {
+      const { error: insAgPr } = await supabase.from("agendamento_produtos").insert(
+        produtosInsert.map((r) => ({
+          id_agendamento: r.id_agendamento,
+          id_produto: r.id_produto,
+          qtd: r.qtd,
+          valor_desconto: r.valor_desconto,
+          valor_produto: r.valor_produto,
+          valor_final: r.valor_final,
+        })),
+      );
+      if (insAgPr) {
+        console.error(insAgPr);
+        return NextResponse.json({ error: insAgPr.message }, { status: 500 });
+      }
+    }
+
+    const statusParaEstoque =
+      typeof patch.status === "string"
+        ? String(patch.status)
+        : String(existente.status);
+    if (statusParaEstoque === "realizado") {
+      const oldMap = somarQtdPorProduto(oldAprodsRows ?? []);
+      const newMap = somarQtdPorProduto(
+        produtosInsert.map((r) => ({ id_produto: r.id_produto, qtd: r.qtd })),
+      );
+      const delta = deltaVendaEntreMapas(oldMap, newMap);
+      const est = await baixarOuEstornarEstoqueMercadorias(supabase, empresaId, delta);
+      if (!est.ok) {
+        return NextResponse.json(
+          { error: `Não foi possível atualizar o estoque: ${est.message}` },
+          { status: 500 },
+        );
+      }
+    }
 
     const { error: delP } = await supabase
       .from("agendamento_procedimentos")
@@ -647,7 +833,7 @@ export async function PATCH(request: Request, context: RouteContext) {
     if (Math.abs(somaPagamentos - valorTotalEsperado) > 0.02) {
       return NextResponse.json(
         {
-          error: `A soma dos pagamentos (${somaPagamentos.toFixed(2).replace(".", ",")}) deve ser igual ao total do agendamento (${valorTotalEsperado.toFixed(2).replace(".", ",")}), com base na soma dos procedimentos${desconto > 0 ? ` e no desconto de ${desconto}%` : ""}.`,
+          error: `A soma dos pagamentos (${somaPagamentos.toFixed(2).replace(".", ",")}) deve ser igual ao total do agendamento (${valorTotalEsperado.toFixed(2).replace(".", ",")}), com base na soma dos procedimentos e produtos${desconto > 0 ? ` e no desconto de ${desconto}%` : ""}.`,
         },
         { status: 400 },
       );
@@ -709,6 +895,34 @@ export async function PATCH(request: Request, context: RouteContext) {
       if (insPg) {
         console.error(insPg);
         return NextResponse.json({ error: insPg.message }, { status: 500 });
+      }
+    }
+  }
+
+  const statusNovoPatch =
+    typeof patch.status === "string" ? String(patch.status) : String(existente.status);
+  const statusAntigoAg = String(existente.status);
+  if (
+    !trocaProcedimentos &&
+    statusNovoPatch === "realizado" &&
+    statusAntigoAg !== "realizado"
+  ) {
+    const { data: apLinhas, error: apStockErr } = await supabase
+      .from("agendamento_produtos")
+      .select("id_produto, qtd")
+      .eq("id_agendamento", id);
+    if (apStockErr) {
+      console.error(apStockErr);
+      return NextResponse.json({ error: apStockErr.message }, { status: 500 });
+    }
+    const map = somarQtdPorProduto(apLinhas ?? []);
+    if (map.size > 0) {
+      const est = await baixarOuEstornarEstoqueMercadorias(supabase, empresaId, map);
+      if (!est.ok) {
+        return NextResponse.json(
+          { error: `Não foi possível atualizar o estoque: ${est.message}` },
+          { status: 500 },
+        );
       }
     }
   }

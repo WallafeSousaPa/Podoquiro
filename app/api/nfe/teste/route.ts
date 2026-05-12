@@ -95,6 +95,7 @@ export async function POST() {
         x_motivo: truncar(motivoFinal, 2000),
         xml_enviado: truncar(envelopeEnviado, 120_000),
         xml_retorno_sefaz: truncar(xmlRetorno, 120_000),
+        escopo_emissao: "teste",
         payload_rascunho: {
           tipo: "teste_status_servico",
           endpoint: url,
@@ -142,6 +143,7 @@ export async function POST() {
         c_stat: null,
         x_motivo: truncar(msg, 2000),
         xml_retorno_sefaz: null,
+        escopo_emissao: "teste",
         payload_rascunho: { tipo: "teste_status_servico_erro", endpoint: url },
       });
     } catch {

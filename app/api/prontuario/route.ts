@@ -5,6 +5,10 @@ import { validarProcedimentosDoColaborador } from "@/lib/colaborador-procediment
 import { montarCaminhoFotoProntuario } from "@/lib/prontuario/nomes-arquivo";
 import { getSession } from "@/lib/auth/session";
 import { createAdminClient } from "@/lib/supabase/admin";
+import {
+  baixarOuEstornarEstoqueMercadorias,
+  somarQtdPorProduto,
+} from "@/lib/estoque/agendamento-produtos-estoque";
 
 const BUCKET = "Prontuario";
 const MAX_FOTOS = 4;
@@ -303,6 +307,25 @@ export async function POST(request: Request) {
   if (insProcErr) {
     console.error(insProcErr);
     return NextResponse.json({ error: insProcErr.message }, { status: 500 });
+  }
+
+  const { data: apLinhasEstoque, error: apEstErr } = await supabase
+    .from("agendamento_produtos")
+    .select("id_produto, qtd")
+    .eq("id_agendamento", idAgendamento);
+  if (apEstErr) {
+    console.error(apEstErr);
+    return NextResponse.json({ error: apEstErr.message }, { status: 500 });
+  }
+  const mapEstoque = somarQtdPorProduto(apLinhasEstoque ?? []);
+  if (mapEstoque.size > 0) {
+    const est = await baixarOuEstornarEstoqueMercadorias(supabase, empresaId, mapEstoque);
+    if (!est.ok) {
+      return NextResponse.json(
+        { error: `Não foi possível atualizar o estoque: ${est.message}` },
+        { status: 500 },
+      );
+    }
   }
 
   const { error: stAg } = await supabase

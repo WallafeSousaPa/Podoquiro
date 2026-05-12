@@ -734,6 +734,19 @@ export function DashboardShell({
                       </li>
                       <li className="nav-item">
                         <Link
+                          href="/financeiro/nota-fiscal/notas-produto"
+                          className={cx(
+                            "nav-link",
+                            pathname === "/financeiro/nota-fiscal/notas-produto" &&
+                              "active",
+                          )}
+                        >
+                          <i className="far fa-dot-circle nav-icon" />
+                          <p>Notas de produto</p>
+                        </Link>
+                      </li>
+                      <li className="nav-item">
+                        <Link
                           href="/financeiro/nota-fiscal/parametros"
                           className={cx(
                             "nav-link",

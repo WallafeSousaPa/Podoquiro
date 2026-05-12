@@ -70,6 +70,8 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Paciente é obrigatório." }, { status: 400 });
   }
 
+  /* Campos opcionais no FormData (ex.: id_agendamento) são ignorados: não há escrita em agendamentos. */
+
   const formaContatoRaw = optText(formData.get("forma_contato"));
   if (formaContatoRaw && !isFormaContatoPaciente(formaContatoRaw)) {
     return NextResponse.json({ error: "Forma de contato inválida." }, { status: 400 });

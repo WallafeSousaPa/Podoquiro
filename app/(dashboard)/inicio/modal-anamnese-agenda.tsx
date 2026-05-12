@@ -65,7 +65,7 @@ export type AnamneseAgendamentoContext = {
 type Props = {
   ag: AnamneseAgendamentoContext;
   onClose: () => void;
-  /** Chamado após salvar com sucesso (ex.: refresh da lista). */
+  /** Após salvar (ex.: refresh). Não deve alterar status do agendamento. */
   onSalvo?: () => void;
 };
 
@@ -184,6 +184,7 @@ export function ModalAnamneseAgenda({ ag, onClose, onSalvo }: Props) {
       const res = await fetch("/api/pacientes-evolucao", { method: "POST", body: fd });
       const json = (await res.json().catch(() => ({}))) as { error?: string };
       if (!res.ok) throw new Error(json.error ?? "Erro ao salvar anamnese.");
+      /* Só grava pacientes_evolucao; não altera status nem dados de agendamentos. */
       onClose();
       onSalvo?.();
     } catch (err) {

@@ -1,8 +1,11 @@
 import { redirect } from "next/navigation";
 import { getSession } from "@/lib/auth/session";
+import { carregarTodosPacientesEmpresa } from "@/lib/pacientes/carregar-todos-pacientes-empresa";
 import { nomeExibicaoPaciente } from "@/lib/pacientes";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { PacientesCadastroClient } from "./pacientes-cadastro-client";
+
+export const dynamic = "force-dynamic";
 
 type PacienteRaw = {
   id: number;
@@ -40,15 +43,9 @@ export default async function PacientesCadastroPage() {
   let loadError: string | null = null;
 
   try {
-    const { data, error } = await supabase
-      .from("pacientes")
-      .select(
-        "id, cpf, nome_completo, nome_social, genero, data_nascimento, estado_civil, email, telefone, cep, logradouro, numero, complemento, bairro, cidade, uf, ativo",
-      )
-      .eq("id_empresa", empresaId);
-
-    if (error) throw new Error(error.message);
-    pacientes = (data ?? []) as PacienteRaw[];
+    const { data, error } = await carregarTodosPacientesEmpresa(supabase, empresaId);
+    if (error) throw new Error(error);
+    pacientes = data as PacienteRaw[];
   } catch (e) {
     loadError =
       e instanceof Error ? e.message : "Não foi possível carregar os pacientes@.";
@@ -60,10 +57,13 @@ export default async function PacientesCadastroPage() {
     }),
   );
 
-  const pacientesView = sorted.map((p) => ({
-    ...p,
-    nome_exibicao: nomeExibicaoPaciente(p),
-  }));
+  const pacientesView = sorted.map((p) => {
+    const nome = nomeExibicaoPaciente(p).trim();
+    return {
+      ...p,
+      nome_exibicao: nome !== "" ? nome : `Paciente #${p.id}`,
+    };
+  });
 
   return (
     <>

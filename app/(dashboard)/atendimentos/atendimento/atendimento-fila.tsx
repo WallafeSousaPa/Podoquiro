@@ -359,7 +359,8 @@ export function AtendimentoFila() {
                   <div className="acoes">
                     <button
                       className="btn btn-anamnese"
-                      onClick={() => {
+                      onClick={(e) => {
+                        e.stopPropagation();
                         if (ag.status === "realizado") {
                           setProntuarioAg(ag);
                         } else {
@@ -370,6 +371,7 @@ export function AtendimentoFila() {
                           });
                         }
                       }}
+                      onMouseDown={(e) => e.stopPropagation()}
                       disabled={salvandoId === ag.id || !cardHabilitado}
                     >
                       {ag.status === "realizado" ? "Ver ficha" : "Anamnese"}

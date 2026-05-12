@@ -41,5 +41,10 @@ export {
   XNOME_DEST_HOMOLOGACAO,
 } from "./montar-nfe-minima";
 export type { DadosEmitenteNfeMinimo } from "./montar-nfe-minima";
+export {
+  montarNfeXmlProdutoNacional,
+  type DestinatarioProdutoNfe,
+  type LinhaProdutoNfe,
+} from "./montar-nfe-produto";
 export { assinarNfeXml } from "./assinar-nfe-xml";
 export { enviarLoteNfeSincrono, extrairRetornoAutorizacaoLote } from "./autorizacao-lote";

@@ -256,6 +256,7 @@ export async function POST() {
       c_stat: null,
       x_motivo: truncar(msg, 2000),
       xml_enviado: truncar(xmlAssinado, 120_000),
+      escopo_emissao: "teste",
       payload_rascunho: { tipo: "envio_teste_erro", endpoint: url },
     });
     return NextResponse.json({ error: msg }, { status: 502 });
@@ -284,6 +285,7 @@ export async function POST() {
       x_motivo: truncar(xMotivoFinal, 2000),
       xml_enviado: truncar(envelopeEnviado + "\n---NFe---\n" + xmlAssinado, 120_000),
       xml_retorno_sefaz: truncar(xmlRetorno, 120_000),
+      escopo_emissao: "teste",
       payload_rascunho: {
         tipo: "envio_teste_homolog",
         idLote,

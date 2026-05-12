@@ -19,6 +19,26 @@ import type { CaixaAgendamentoRow } from "./caixa-client";
 
 type ProcLinha = { id_procedimento: number; valor_aplicado: number };
 
+type ProdLinha = {
+  id_produto: string;
+  qtd: number;
+  valor_desconto: number;
+  desconto_texto: string;
+};
+
+function subtotalProdutosAgendamento(
+  linhas: ProdLinha[],
+  cat: { id: string; preco: number }[],
+): number {
+  let s = 0;
+  for (const l of linhas) {
+    const pu = cat.find((x) => x.id === l.id_produto)?.preco ?? 0;
+    const bruto = Math.round(l.qtd * pu * 100) / 100;
+    s += Math.max(0, Math.round((bruto - l.valor_desconto) * 100) / 100);
+  }
+  return Math.round(s * 100) / 100;
+}
+
 type PagLinha = {
   id_forma_pagamento: number;
   id_maquineta: number | null;
@@ -39,6 +59,15 @@ type AgDetail = {
     id: number;
     id_procedimento: number;
     valor_aplicado: number;
+  }[];
+  produtos: {
+    id: number;
+    id_produto: string;
+    nome_produto: string | null;
+    qtd: number;
+    valor_desconto: number;
+    valor_produto: number;
+    valor_final: number;
   }[];
   pagamentos: {
     id: number;
@@ -115,6 +144,10 @@ export function ModalCaixaAgendamento({
   );
 
   const [procedimentos, setProcedimentos] = useState<ProcLinha[]>([]);
+  const [produtosLinhas, setProdutosLinhas] = useState<ProdLinha[]>([]);
+  const [produtosCat, setProdutosCat] = useState<
+    { id: string; produto: string; preco: number; un_medida: string; qtd_estoque: number }[]
+  >([]);
   const [pagamentos, setPagamentos] = useState<PagLinha[]>([]);
 
   /** Situação do caixa no dia do agendamento (referência Brasília). */
@@ -139,10 +172,11 @@ export function ModalCaixaAgendamento({
       if (!d) throw new Error("Resposta inválida.");
       setDetalhe(d);
 
-      const [procRes, fpRes, mqRes] = await Promise.all([
+      const [procRes, prodMercRes, fpRes, mqRes] = await Promise.all([
         fetch(
           `/api/procedimentos?id_usuario=${encodeURIComponent(String(d.id_usuario))}`,
         ),
+        fetch("/api/produtos?tipo=mercadoria&status=ativo"),
         fetch("/api/formas-pagamento"),
         fetch("/api/maquinetas"),
       ]);
@@ -156,6 +190,27 @@ export function ModalCaixaAgendamento({
           id: p.id,
           procedimento: p.procedimento,
           valor_total: Number(p.valor_total),
+        })),
+      );
+
+      const prodMercJ = (await prodMercRes.json()) as {
+        data?: {
+          id: string;
+          produto: string;
+          preco: number;
+          un_medida: string;
+          qtd_estoque?: number;
+        }[];
+        error?: string;
+      };
+      if (!prodMercRes.ok) throw new Error(prodMercJ.error ?? "Erro ao carregar produtos.");
+      setProdutosCat(
+        (prodMercJ.data ?? []).map((p) => ({
+          id: String(p.id),
+          produto: p.produto,
+          preco: Number(p.preco),
+          un_medida: p.un_medida || "UN",
+          qtd_estoque: Number(p.qtd_estoque ?? 0),
         })),
       );
 
@@ -185,6 +240,14 @@ export function ModalCaixaAgendamento({
         d.procedimentos.map((p) => ({
           id_procedimento: p.id_procedimento,
           valor_aplicado: Number(p.valor_aplicado),
+        })),
+      );
+      setProdutosLinhas(
+        (d.produtos ?? []).map((p) => ({
+          id_produto: String(p.id_produto),
+          qtd: Number(p.qtd),
+          valor_desconto: 0,
+          desconto_texto: fmtMoedaBrCampo(0),
         })),
       );
       setPagamentos(
@@ -255,6 +318,34 @@ export function ModalCaixaAgendamento({
         valor_aplicado: primeiro.valor_total,
       },
     ]);
+  }
+
+  function addProdLinha() {
+    const primeiro = produtosCat[0];
+    if (!primeiro) return;
+    setProdutosLinhas((prev) => [
+      ...prev,
+      {
+        id_produto: primeiro.id,
+        qtd: 1,
+        valor_desconto: 0,
+        desconto_texto: fmtMoedaBrCampo(0),
+      },
+    ]);
+  }
+
+  function nomeProdutoCat(idProd: string) {
+    return produtosCat.find((x) => x.id === idProd)?.produto ?? "Produto";
+  }
+
+  function unProdutoCat(idProd: string) {
+    return produtosCat.find((x) => x.id === idProd)?.un_medida ?? "UN";
+  }
+
+  function valorFinalProdLinha(l: ProdLinha) {
+    const pu = produtosCat.find((x) => x.id === l.id_produto)?.preco ?? 0;
+    const bruto = Math.round(l.qtd * pu * 100) / 100;
+    return Math.max(0, Math.round((bruto - l.valor_desconto) * 100) / 100);
   }
 
   const garantirCaixaHabilitadoParaPagamento = useCallback(async (): Promise<boolean> => {
@@ -355,10 +446,18 @@ export function ModalCaixaAgendamento({
       return;
     }
 
-    const vb =
-      Math.round(
-        procedimentos.reduce((s, p) => s + p.valor_aplicado, 0) * 100,
-      ) / 100;
+    for (const l of produtosLinhas) {
+      if (!Number.isFinite(l.qtd) || l.qtd <= 0) {
+        setErro("Informe quantidade válida para todos os produtos.");
+        return;
+      }
+    }
+
+    const vbProc =
+      Math.round(procedimentos.reduce((s, p) => s + p.valor_aplicado, 0) * 100) /
+      100;
+    const vbProd = subtotalProdutosAgendamento(produtosLinhas, produtosCat);
+    const vb = Math.round((vbProc + vbProd) * 100) / 100;
     const totalEsperado = calcularValorTotal(vb, detalhe.desconto);
     const somaPg =
       Math.round(
@@ -371,7 +470,7 @@ export function ModalCaixaAgendamento({
     if (detalhe.status === "realizado") {
       if (Math.abs(somaPg - totalEsperado) > 0.02) {
         setErro(
-          `A soma dos pagamentos (${fmtBrl(somaPg)}) deve ser igual ao total do agendamento (${fmtBrl(totalEsperado)}): soma dos procedimentos${detalhe.desconto > 0 ? ` com ${detalhe.desconto}% de desconto` : ""}. Ajuste os valores antes de salvar.`,
+          `A soma dos pagamentos (${fmtBrl(somaPg)}) deve ser igual ao total do agendamento (${fmtBrl(totalEsperado)}): soma dos procedimentos e produtos${detalhe.desconto > 0 ? ` com ${detalhe.desconto}% de desconto` : ""}. Ajuste os valores antes de salvar.`,
         );
         return;
       }
@@ -382,7 +481,14 @@ export function ModalCaixaAgendamento({
     setSalvando(true);
     setErro(null);
     try {
-      const body: Record<string, unknown> = { procedimentos };
+      const body: Record<string, unknown> = {
+        procedimentos,
+        produtos: produtosLinhas.map((l) => ({
+          id_produto: l.id_produto,
+          qtd: l.qtd,
+          valor_desconto: 0,
+        })),
+      };
       if (detalhe.status === "realizado") {
         body.pagamentos = pagamentos.map(
           ({ id_forma_pagamento, id_maquineta, valor_pago }) => ({
@@ -424,10 +530,20 @@ export function ModalCaixaAgendamento({
     [procedimentos],
   );
 
+  const somaProdutos = useMemo(
+    () => subtotalProdutosAgendamento(produtosLinhas, produtosCat),
+    [produtosLinhas, produtosCat],
+  );
+
+  const somaBrutaAgendamento = useMemo(
+    () => Math.round((somaProcedimentos + somaProdutos) * 100) / 100,
+    [somaProcedimentos, somaProdutos],
+  );
+
   const totalEsperadoRecebimento = useMemo(() => {
     if (!detalhe) return 0;
-    return calcularValorTotal(somaProcedimentos, detalhe.desconto);
-  }, [detalhe, somaProcedimentos]);
+    return calcularValorTotal(somaBrutaAgendamento, detalhe.desconto);
+  }, [detalhe, somaBrutaAgendamento]);
 
   const somaPagamentos = useMemo(
     () =>
@@ -442,6 +558,11 @@ export function ModalCaixaAgendamento({
 
   const pagamentosBatendoTotal =
     Math.abs(somaPagamentos - totalEsperadoRecebimento) <= 0.02;
+
+  const produtosLinhasComEstoqueZerado = useMemo(() => {
+    const ids = new Set(produtosLinhas.map((l) => l.id_produto));
+    return produtosCat.filter((c) => ids.has(c.id) && c.qtd_estoque <= 0);
+  }, [produtosLinhas, produtosCat]);
 
   if (!row) return null;
 
@@ -561,6 +682,24 @@ export function ModalCaixaAgendamento({
                             ))
                           )}
                         </ul>
+                        <strong className="d-block mb-2">Produtos</strong>
+                        <ul className="small mb-3">
+                          {(detalhe.produtos ?? []).length === 0 ? (
+                            <li className="text-muted">—</li>
+                          ) : (
+                            (detalhe.produtos ?? []).map((p) => (
+                              <li key={p.id}>
+                                {p.nome_produto ?? "Produto"} · {p.qtd}{" "}
+                                {unProdutoCat(String(p.id_produto))} ×{" "}
+                                {fmtBrl(Number(p.valor_produto))}
+                                {Number(p.valor_desconto) > 0
+                                  ? ` · desc. ${fmtBrl(Number(p.valor_desconto))}`
+                                  : ""}{" "}
+                                → {fmtBrl(Number(p.valor_final))}
+                              </li>
+                            ))
+                          )}
+                        </ul>
                         {!pagamentosOcultos ? (
                           <>
                             <strong className="d-block mb-2">Pagamentos</strong>
@@ -671,6 +810,132 @@ export function ModalCaixaAgendamento({
                           ))
                         )}
 
+                        <hr />
+                        <div className="d-flex justify-content-between align-items-center mb-2">
+                          <strong>Produtos (mercadorias)</strong>
+                          <button
+                            type="button"
+                            className="btn btn-sm btn-outline-primary"
+                            onClick={addProdLinha}
+                            disabled={produtosCat.length === 0}
+                          >
+                            + Produto
+                          </button>
+                        </div>
+                        {produtosCat.length === 0 ? (
+                          <p className="small text-muted mb-0">
+                            Nenhuma mercadoria ativa no cadastro de produtos.
+                          </p>
+                        ) : produtosLinhas.length === 0 ? (
+                          <p className="small text-muted mb-0">
+                            Nenhum produto neste agendamento. Use &quot;+ Produto&quot; para
+                            incluir.
+                          </p>
+                        ) : (
+                          <>
+                          {produtosLinhasComEstoqueZerado.length > 0 ? (
+                            <div className="alert alert-warning py-2 small mb-2" role="status">
+                              <strong>Estoque zerado:</strong>{" "}
+                              {produtosLinhasComEstoqueZerado
+                                .map((p) => p.produto)
+                                .join(", ")}
+                              . Você pode concluir a venda mesmo assim; o estoque será
+                              atualizado e poderá ficar negativo.
+                            </div>
+                          ) : null}
+                          {produtosLinhas.map((linha, idx) => (
+                            <div key={idx} className="form-row align-items-end mb-2">
+                              <div className="form-group col-md-4 mb-0">
+                                <label className="small">Produto</label>
+                                <select
+                                  className="form-control form-control-sm"
+                                  value={linha.id_produto || ""}
+                                  onChange={(e) => {
+                                    const id = e.target.value;
+                                    setProdutosLinhas((prev) =>
+                                      prev.map((p, i) =>
+                                        i === idx ? { ...p, id_produto: id } : p,
+                                      ),
+                                    );
+                                  }}
+                                >
+                                  {!produtosCat.some((c) => c.id === linha.id_produto) &&
+                                  linha.id_produto ? (
+                                    <option value={linha.id_produto}>
+                                      (fora do catálogo) {linha.id_produto}
+                                    </option>
+                                  ) : null}
+                                  {produtosCat.map((p) => (
+                                    <option key={p.id} value={p.id}>
+                                      {p.produto} — {fmtBrl(p.preco)}/{p.un_medida}
+                                    </option>
+                                  ))}
+                                </select>
+                              </div>
+                              <div className="form-group col-md-2 mb-0">
+                                <label className="small">Qtd ({unProdutoCat(linha.id_produto)})</label>
+                                <input
+                                  type="number"
+                                  min={0.01}
+                                  step="any"
+                                  className="form-control form-control-sm"
+                                  value={Number.isFinite(linha.qtd) ? linha.qtd : ""}
+                                  onChange={(e) => {
+                                    const n = Number(e.target.value);
+                                    setProdutosLinhas((prev) =>
+                                      prev.map((p, i) =>
+                                        i === idx
+                                          ? {
+                                              ...p,
+                                              qtd: Number.isFinite(n) && n > 0 ? n : p.qtd,
+                                            }
+                                          : p,
+                                      ),
+                                    );
+                                  }}
+                                />
+                              </div>
+                              <div className="form-group col-md-2 mb-0">
+                                <label className="small text-muted">Desc. (R$)</label>
+                                <input
+                                  type="text"
+                                  readOnly
+                                  disabled
+                                  className="form-control form-control-sm bg-light"
+                                  value={fmtMoedaBrCampo(0)}
+                                  title="Desconto por produto desabilitado por enquanto."
+                                />
+                              </div>
+                              <div className="form-group col-md-2 mb-0">
+                                <label className="small">Subtotal</label>
+                                <input
+                                  type="text"
+                                  readOnly
+                                  className="form-control form-control-sm bg-light"
+                                  value={valorFinalProdLinha(linha).toLocaleString("pt-BR", {
+                                    minimumFractionDigits: 2,
+                                    maximumFractionDigits: 2,
+                                  })}
+                                />
+                              </div>
+                              <div className="form-group col-md-1 mb-0">
+                                <button
+                                  type="button"
+                                  className="btn btn-sm btn-outline-danger"
+                                  onClick={() =>
+                                    setProdutosLinhas((prev) =>
+                                      prev.filter((_, i) => i !== idx),
+                                    )
+                                  }
+                                >
+                                  ×
+                                </button>
+                              </div>
+                            </div>
+                          ))}
+                          </>
+                        )}
+
                         {podeEditarFormulario && !pagamentosOcultos && !agendamentoConcluido ? (
                           <>
                             <hr />
@@ -715,13 +980,18 @@ export function ModalCaixaAgendamento({
                               <>
                                 <div className="border rounded bg-light p-2 small mb-3">
                               <div className="d-flex flex-wrap justify-content-between gap-2">
-                                <span>
-                                  <strong>Soma dos procedimentos (bruto):</strong>{" "}
+                                <span className="d-block w-100">
+                                  <strong>Procedimentos (bruto):</strong>{" "}
                                   {fmtBrl(somaProcedimentos)}
+                                  {" · "}
+                                  <strong>Produtos:</strong> {fmtBrl(somaProdutos)}
+                                  {" · "}
+                                  <strong>Bruto do agendamento:</strong>{" "}
+                                  {fmtBrl(somaBrutaAgendamento)}
                                 </span>
                                 {detalhe.desconto > 0 ? (
                                   <span className="text-muted">
-                                    Desconto: {detalhe.desconto}% →{" "}
+                                    Desconto do agendamento: {detalhe.desconto}% →{" "}
                                     <strong>Total a receber:</strong>{" "}
                                     {fmtBrl(totalEsperadoRecebimento)}
                                   </span>

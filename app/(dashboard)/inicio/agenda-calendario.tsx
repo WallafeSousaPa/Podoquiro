@@ -1061,6 +1061,20 @@ export function AgendaCalendario({
                   Mês
                 </button>
               </div>
+              <button
+                type="button"
+                className="btn btn-sm btn-outline-secondary"
+                disabled={loading}
+                aria-label="Atualizar atendimentos da agenda"
+                title="Recarregar atendimentos"
+                onClick={() => void loadAgenda()}
+              >
+                <i
+                  className={`fas fa-sync-alt mr-1${loading ? " fa-spin" : ""}`}
+                  aria-hidden
+                />
+                Atualizar
+              </button>
               {visualizacao === "dia" ? (
                 <div className="agenda-cal-date-field d-flex align-items-center gap-2">
                   <label className="mb-0 small text-muted" htmlFor="agenda-data-input">
@@ -1391,10 +1405,12 @@ export function AgendaCalendario({
                                       type="button"
                                       role="menuitem"
                                       className="dropdown-item"
-                                      onClick={() => {
+                                      onClick={(ev) => {
+                                        ev.stopPropagation();
                                         setMenuCardAbertoId(null);
                                         void abrirAnamnese(a);
                                       }}
+                                      onMouseDown={(ev) => ev.stopPropagation()}
                                     >
                                       Anamnese
                                     </button>
@@ -1429,6 +1445,7 @@ export function AgendaCalendario({
                                     ev.stopPropagation();
                                     void abrirAnamnese(a);
                                   }}
+                                  onMouseDown={(ev) => ev.stopPropagation()}
                                 >
                                   Anamnese
                                 </button>
@@ -1511,9 +1528,10 @@ export function AgendaCalendario({
                           Number.isFinite(alturaPct) ? alturaPct : 11,
                         );
                         return (
-                          <button
+                          <div
                             key={a.id}
-                            type="button"
+                            role="button"
+                            tabIndex={0}
                             className={`agenda-appointment agenda-appointment--compact agenda-appointment--${densidade} text-left ${classeStatus(a.status)}`}
                             style={{
                               top: st.top,
@@ -1523,6 +1541,12 @@ export function AgendaCalendario({
                               ["--card-destaque" as string]: corCardUsuario[a.id_usuario] ?? undefined,
                             }}
                             title={a.paciente_nome}
+                            onKeyDown={(ev) => {
+                              if (ev.key === "Enter" || ev.key === " ") {
+                                ev.preventDefault();
+                                void aoClicarCalendarioAgendamento(a);
+                              }
+                            }}
                             onClick={() => void aoClicarCalendarioAgendamento(a)}
                           >
                             <span className="d-block text-truncate small font-weight-bold">
@@ -1552,12 +1576,13 @@ export function AgendaCalendario({
                                     ev.stopPropagation();
                                     void abrirAnamnese(a);
                                   }}
+                                  onMouseDown={(ev) => ev.stopPropagation()}
                                 >
                                   Anamnese
                                 </button>
                               </span>
                             ) : null}
-                          </button>
+                          </div>
                         );
                       })}
                     </div>
@@ -1614,13 +1639,20 @@ export function AgendaCalendario({
                                   const statusInfo = iconeStatusAgendamento(a.status);
                                   const densidade: DensidadeCardAgenda = "compact";
                                   return (
-                                  <button
+                                  <div
                                     key={a.id}
-                                    type="button"
+                                    role="button"
+                                    tabIndex={0}
                                     className={`agenda-cal-month-chip agenda-cal-month-chip--${densidade} w-100 text-left ${classeStatus(a.status)}`}
                                     style={{
                                       ["--card-destaque" as string]:
                                         corCardUsuario[a.id_usuario] ?? undefined,
+                                    }}
+                                    onKeyDown={(ev) => {
+                                      if (ev.key === "Enter" || ev.key === " ") {
+                                        ev.preventDefault();
+                                        void aoClicarCalendarioAgendamento(a);
+                                      }
                                     }}
                                     onClick={() => void aoClicarCalendarioAgendamento(a)}
                                   >
@@ -1651,12 +1683,13 @@ export function AgendaCalendario({
                                             ev.stopPropagation();
                                             void abrirAnamnese(a);
                                           }}
+                                          onMouseDown={(ev) => ev.stopPropagation()}
                                         >
                                           Anamnese
                                         </button>
                                       </span>
                                     ) : null}
-                                  </button>
+                                  </div>
                                   );
                                 })}
                                 {list.length > 4 ? (
