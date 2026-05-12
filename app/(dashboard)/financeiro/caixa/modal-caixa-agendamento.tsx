@@ -78,6 +78,8 @@ type AgDetail = {
   }[];
   permite_editar_procedimentos_e_pagamentos: boolean;
   pagamentos_nao_carregados_por_perfil: boolean;
+  /** Administrador / Administrativo: coluna de desconto (R$) em produtos no formulário. */
+  mostrar_desconto_produtos_modal_caixa?: boolean;
 };
 
 function fmtDataHora(iso: string) {
@@ -150,6 +152,8 @@ export function ModalCaixaAgendamento({
     { id: string; produto: string; preco: number; un_medida: string; qtd_estoque: number }[]
   >([]);
   const [pagamentos, setPagamentos] = useState<PagLinha[]>([]);
+  /** Desconto % do agendamento (editável no caixa para perfil admin). */
+  const [descontoAgendamentoTexto, setDescontoAgendamentoTexto] = useState("");
 
   /** Situação do caixa no dia do agendamento (referência Brasília). */
   const [sessaoCaixa, setSessaoCaixa] = useState<{
@@ -172,6 +176,7 @@ export function ModalCaixaAgendamento({
       const d = j.data;
       if (!d) throw new Error("Resposta inválida.");
       setDetalhe(d);
+      setDescontoAgendamentoTexto(String(Number(d.desconto ?? 0)));
 
       const [procRes, prodMercRes, fpRes, mqRes] = await Promise.all([
         fetch(
@@ -244,12 +249,15 @@ export function ModalCaixaAgendamento({
         })),
       );
       setProdutosLinhas(
-        (d.produtos ?? []).map((p) => ({
-          id_produto: String(p.id_produto),
-          qtd: Number(p.qtd),
-          valor_desconto: 0,
-          desconto_texto: fmtMoedaBrCampo(0),
-        })),
+        (d.produtos ?? []).map((p) => {
+          const vd = Math.max(0, Number(p.valor_desconto ?? 0));
+          return {
+            id_produto: String(p.id_produto),
+            qtd: Number(p.qtd),
+            valor_desconto: vd,
+            desconto_texto: fmtMoedaBrCampo(vd),
+          };
+        }),
       );
       setPagamentos(
         d.pagamentos.map((p) => {
@@ -422,6 +430,17 @@ export function ModalCaixaAgendamento({
     }
   }, [detalhe]);
 
+  const mostrarDescontoProdutosCaixa =
+    detalhe?.mostrar_desconto_produtos_modal_caixa === true;
+
+  const descontoAgendamentoNum = useMemo(() => {
+    if (!detalhe) return 0;
+    if (!mostrarDescontoProdutosCaixa) return Number(detalhe.desconto) || 0;
+    const n = Number(String(descontoAgendamentoTexto).replace(",", "."));
+    if (!Number.isFinite(n) || n < 0 || n > 100) return Number(detalhe.desconto) || 0;
+    return n;
+  }, [detalhe, mostrarDescontoProdutosCaixa, descontoAgendamentoTexto]);
+
   async function addPagLinha() {
     const primeira = formasPg[0];
     if (!primeira) return;
@@ -459,7 +478,7 @@ export function ModalCaixaAgendamento({
       100;
     const vbProd = subtotalProdutosAgendamento(produtosLinhas, produtosCat);
     const vb = Math.round((vbProc + vbProd) * 100) / 100;
-    const totalEsperado = calcularValorTotal(vb, detalhe.desconto);
+    const totalEsperado = calcularValorTotal(vb, descontoAgendamentoNum);
     const somaPg =
       Math.round(
         pagamentos.reduce(
@@ -471,7 +490,11 @@ export function ModalCaixaAgendamento({
     if (detalhe.status === "realizado") {
       if (Math.abs(somaPg - totalEsperado) > 0.02) {
         setErro(
-          `A soma dos pagamentos (${fmtBrl(somaPg)}) deve ser igual ao total do agendamento (${fmtBrl(totalEsperado)}): soma dos procedimentos e produtos${detalhe.desconto > 0 ? ` com ${detalhe.desconto}% de desconto` : ""}. Ajuste os valores antes de salvar.`,
+          `A soma dos pagamentos (${fmtBrl(somaPg)}) deve ser igual ao total do agendamento (${fmtBrl(totalEsperado)}): soma dos procedimentos e produtos${
+            mostrarDescontoProdutosCaixa && descontoAgendamentoNum > 0
+              ? ` com ${descontoAgendamentoNum}% de desconto`
+              : ""
+          }. Ajuste os valores antes de salvar.`,
         );
         return;
       }
@@ -487,9 +510,12 @@ export function ModalCaixaAgendamento({
         produtos: produtosLinhas.map((l) => ({
           id_produto: l.id_produto,
           qtd: l.qtd,
-          valor_desconto: 0,
+          valor_desconto: Math.max(0, l.valor_desconto),
         })),
       };
+      if (mostrarDescontoProdutosCaixa) {
+        body.desconto = descontoAgendamentoNum;
+      }
       if (detalhe.status === "realizado") {
         body.pagamentos = pagamentos.map(
           ({ id_forma_pagamento, id_maquineta, valor_pago }) => ({
@@ -543,8 +569,8 @@ export function ModalCaixaAgendamento({
 
   const totalEsperadoRecebimento = useMemo(() => {
     if (!detalhe) return 0;
-    return calcularValorTotal(somaBrutaAgendamento, detalhe.desconto);
-  }, [detalhe, somaBrutaAgendamento]);
+    return calcularValorTotal(somaBrutaAgendamento, descontoAgendamentoNum);
+  }, [detalhe, somaBrutaAgendamento, descontoAgendamentoNum]);
 
   const somaPagamentos = useMemo(
     () =>
@@ -693,7 +719,8 @@ export function ModalCaixaAgendamento({
                                 {p.nome_produto ?? "Produto"} · {p.qtd}{" "}
                                 {unProdutoCat(String(p.id_produto))} ×{" "}
                                 {fmtBrl(Number(p.valor_produto))}
-                                {Number(p.valor_desconto) > 0
+                                {mostrarDescontoProdutosCaixa &&
+                                Number(p.valor_desconto) > 0
                                   ? ` · desc. ${fmtBrl(Number(p.valor_desconto))}`
                                   : ""}{" "}
                                 → {fmtBrl(Number(p.valor_final))}
@@ -737,14 +764,16 @@ export function ModalCaixaAgendamento({
                         <hr />
                         <div className="d-flex justify-content-between align-items-center mb-2">
                           <strong>Procedimentos</strong>
-                          <button
-                            type="button"
-                            className="btn btn-sm btn-outline-primary"
-                            onClick={addProcLinha}
-                            disabled={procedimentosCat.length === 0}
-                          >
-                            + Procedimento
-                          </button>
+                          {mostrarDescontoProdutosCaixa ? (
+                            <button
+                              type="button"
+                              className="btn btn-sm btn-outline-primary"
+                              onClick={addProcLinha}
+                              disabled={procedimentosCat.length === 0}
+                            >
+                              + Procedimento
+                            </button>
+                          ) : null}
                         </div>
                         {procedimentosCat.length === 0 ? (
                           <p className="small text-muted">
@@ -846,7 +875,13 @@ export function ModalCaixaAgendamento({
                           ) : null}
                           {produtosLinhas.map((linha, idx) => (
                             <div key={idx} className="form-row align-items-end mb-2">
-                              <div className="form-group col-md-4 mb-0">
+                              <div
+                                className={`form-group mb-0 ${
+                                  mostrarDescontoProdutosCaixa
+                                    ? "col-md-4"
+                                    : "col-md-5"
+                                }`}
+                              >
                                 <label className="small">Produto</label>
                                 <select
                                   className="form-control form-control-sm"
@@ -896,18 +931,56 @@ export function ModalCaixaAgendamento({
                                   }}
                                 />
                               </div>
+                              {mostrarDescontoProdutosCaixa ? (
                               <div className="form-group col-md-2 mb-0">
-                                <label className="small text-muted">Desc. (R$)</label>
+                                <label className="small">Desc. (R$)</label>
                                 <input
                                   type="text"
-                                  readOnly
-                                  disabled
-                                  className="form-control form-control-sm bg-light"
-                                  value={fmtMoedaBrCampo(0)}
-                                  title="Desconto por produto desabilitado por enquanto."
+                                  inputMode="decimal"
+                                  autoComplete="off"
+                                  className="form-control form-control-sm"
+                                  value={linha.desconto_texto}
+                                  onChange={(e) => {
+                                    const raw = e.target.value;
+                                    const n = parseMoedaBrCliente(raw);
+                                    setProdutosLinhas((prev) =>
+                                      prev.map((p, i) =>
+                                        i === idx
+                                          ? {
+                                              ...p,
+                                              desconto_texto: raw,
+                                              valor_desconto: Number.isNaN(n)
+                                                ? p.valor_desconto
+                                                : Math.max(0, n),
+                                            }
+                                          : p,
+                                      ),
+                                    );
+                                  }}
+                                  onBlur={() => {
+                                    setProdutosLinhas((prev) =>
+                                      prev.map((p, i) =>
+                                        i === idx
+                                          ? {
+                                              ...p,
+                                              desconto_texto: fmtMoedaBrCampo(
+                                                p.valor_desconto,
+                                              ),
+                                            }
+                                          : p,
+                                      ),
+                                    );
+                                  }}
                                 />
                               </div>
-                              <div className="form-group col-md-2 mb-0">
+                              ) : null}
+                              <div
+                                className={`form-group mb-0 ${
+                                  mostrarDescontoProdutosCaixa
+                                    ? "col-md-2"
+                                    : "col-md-3"
+                                }`}
+                              >
                                 <label className="small">Subtotal</label>
                                 <input
                                   type="text"
@@ -919,7 +992,13 @@ export function ModalCaixaAgendamento({
                                   })}
                                 />
                               </div>
-                              <div className="form-group col-md-1 mb-0">
+                              <div
+                                className={`form-group mb-0 ${
+                                  mostrarDescontoProdutosCaixa
+                                    ? "col-md-1"
+                                    : "col-md-2"
+                                }`}
+                              >
                                 <button
                                   type="button"
                                   className="btn btn-sm btn-outline-danger"
@@ -990,12 +1069,38 @@ export function ModalCaixaAgendamento({
                                   <strong>Bruto do agendamento:</strong>{" "}
                                   {fmtBrl(somaBrutaAgendamento)}
                                 </span>
-                                {detalhe.desconto > 0 ? (
-                                  <span className="text-muted">
-                                    Desconto do agendamento: {detalhe.desconto}% →{" "}
-                                    <strong>Total a receber:</strong>{" "}
-                                    {fmtBrl(totalEsperadoRecebimento)}
-                                  </span>
+                                {mostrarDescontoProdutosCaixa ? (
+                                  <>
+                                    <div className="w-100 mt-1">
+                                      <label
+                                        className="small font-weight-bold d-block mb-1"
+                                        htmlFor="caixa-modal-desconto-agendamento"
+                                      >
+                                        Desconto do agendamento (%)
+                                      </label>
+                                      <input
+                                        id="caixa-modal-desconto-agendamento"
+                                        type="text"
+                                        className="form-control form-control-sm d-inline-block"
+                                        style={{ maxWidth: "7.5rem" }}
+                                        inputMode="decimal"
+                                        autoComplete="off"
+                                        value={descontoAgendamentoTexto}
+                                        onChange={(e) =>
+                                          setDescontoAgendamentoTexto(e.target.value)
+                                        }
+                                        title="Entre 0 e 100. Salve o formulário para aplicar."
+                                      />
+                                      <small className="form-text text-muted d-block">
+                                        O total a receber considera este percentual sobre o
+                                        bruto (procedimentos + produtos).
+                                      </small>
+                                    </div>
+                                    <span className="text-muted d-block w-100 mt-1">
+                                      <strong>Total a receber:</strong>{" "}
+                                      {fmtBrl(totalEsperadoRecebimento)}
+                                    </span>
+                                  </>
                                 ) : (
                                   <span>
                                     <strong>Total a receber:</strong>{" "}

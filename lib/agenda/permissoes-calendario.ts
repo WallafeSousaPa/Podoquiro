@@ -36,6 +36,26 @@ export function grupoNomePermiteAgendarRetroativo(
   return c.includes("admin");
 }
 
+/**
+ * Grupos Administrador e Administrativo:
+ * - coluna de desconto (R$) em produtos e resumo de desconto % na área de pagamentos
+ *   no modal do caixa;
+ * - botão de incluir novo procedimento no modal do caixa e na agenda;
+ * - inclusão de procedimentos via POST/PATCH de agendamentos (demais perfis não).
+ */
+export function grupoNomeVisualizaDescontoProdutoModalCaixa(
+  nome: string | null | undefined,
+): boolean {
+  if (nome == null || String(nome).trim() === "") return false;
+  const c = normalizarNomeGrupoAgenda(String(nome));
+  return (
+    c.includes("administrador") ||
+    c.includes("administrativo") ||
+    c.includes("administracao") ||
+    c === "admin"
+  );
+}
+
 type GrupoAgendaEmbed = {
   grupo_usuarios: string | null;
   agenda_apenas_coluna_propria?: boolean | null;
@@ -111,6 +131,28 @@ export async function getUsuarioPodeAgendarRetroativo(
     | undefined;
   const g = Array.isArray(gRaw) ? gRaw[0] : gRaw;
   return grupoNomePermiteAgendarRetroativo(g?.grupo_usuarios);
+}
+
+/** Nome do grupo do usuário (checagens de perfil na agenda e APIs). */
+export async function getNomeGrupoUsuariosDoUsuario(
+  supabase: SupabaseClient,
+  idUsuario: number,
+): Promise<string | null> {
+  const { data: u, error: uErr } = await supabase
+    .from("usuarios")
+    .select(
+      "usuarios_grupos:usuarios_grupos!usuarios_id_grupo_usuarios_fkey ( grupo_usuarios )",
+    )
+    .eq("id", idUsuario)
+    .maybeSingle();
+  if (uErr || !u) return null;
+  const gRaw = u.usuarios_grupos as
+    | { grupo_usuarios: string | null }
+    | { grupo_usuarios: string | null }[]
+    | null
+    | undefined;
+  const g = Array.isArray(gRaw) ? gRaw[0] : gRaw;
+  return g?.grupo_usuarios ?? null;
 }
 
 /** Profissional pode ser coluna na agenda: grupo parametrizado ou exceção `exibir_na_agenda`. */

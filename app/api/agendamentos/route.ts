@@ -5,15 +5,19 @@ import {
   getPodeVerTodosAgendamentos,
   getUsuarioPodeAgendarRetroativo,
   getUsuarioAgendaSomentePropriaColuna,
+  getNomeGrupoUsuariosDoUsuario,
+  grupoNomeVisualizaDescontoProdutoModalCaixa,
   profissionalPodeNaAgenda,
 } from "@/lib/agenda/permissoes-calendario";
 import { validarProcedimentosDoColaborador } from "@/lib/colaborador-procedimentos";
 import {
-  MSG_CONFLITO_PROFISSIONAL,
   MSG_HORARIO_RETROATIVO,
   MSG_PROCEDIMENTO_DUPLICADO,
-  haConflitoAgendaProfissional,
+  haConflitoNasLinhasSobreposicao,
   inicioEhRetroativo,
+  listarSobreposicaoAgendaProfissional,
+  mensagemConflitoAgendaProfissionalComDetalhe,
+  statusAgendaOcupacaoSlot,
   statusAgendamentoIgnoraValidacaoHorario,
 } from "@/lib/agenda/validacao-agendamento";
 import { getSession } from "@/lib/auth/session";
@@ -180,6 +184,19 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: MSG_PROCEDIMENTO_DUPLICADO }, { status: 400 });
   }
 
+  if (procedimentos.length > 0) {
+    const nomeGrupoPost = await getNomeGrupoUsuariosDoUsuario(supabase, sessionUserId);
+    if (!grupoNomeVisualizaDescontoProdutoModalCaixa(nomeGrupoPost)) {
+      return NextResponse.json(
+        {
+          error:
+            "Sem permissão para incluir procedimentos no agendamento. Use um usuário Administrador ou Administrativo.",
+        },
+        { status: 403 },
+      );
+    }
+  }
+
   let pagamentos: {
     id_forma_pagamento: number;
     id_maquineta: number | null;
@@ -344,14 +361,35 @@ export async function POST(request: Request) {
 
   if (!ignoraValidacaoHorario) {
     try {
-      const conflito = await haConflitoAgendaProfissional(supabase, {
+      const linhasSobreposicao = await listarSobreposicaoAgendaProfissional(supabase, {
         idEmpresa: empresaId,
         idUsuario,
         inicioIso: inicio,
         fimIso: fim,
       });
-      if (conflito) {
-        return NextResponse.json({ error: MSG_CONFLITO_PROFISSIONAL }, { status: 400 });
+      if (haConflitoNasLinhasSobreposicao(linhasSobreposicao)) {
+        const debugAgenda =
+          process.env.NODE_ENV !== "production"
+            ? {
+                consulta: {
+                  idEmpresa: empresaId,
+                  idUsuario,
+                  inicioIso: inicio,
+                  fimIso: fim,
+                },
+                linhasSobrepostas: linhasSobreposicao.map((row) => ({
+                  ...row,
+                  bloqueiaSlot: statusAgendaOcupacaoSlot(row.status),
+                })),
+              }
+            : undefined;
+        return NextResponse.json(
+          {
+            error: mensagemConflitoAgendaProfissionalComDetalhe(linhasSobreposicao),
+            ...(debugAgenda ? { debugAgenda } : {}),
+          },
+          { status: 400 },
+        );
       }
     } catch (e) {
       console.error(e);

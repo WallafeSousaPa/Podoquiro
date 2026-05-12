@@ -5,15 +5,19 @@ import {
   getPodeVerTodosAgendamentos,
   getUsuarioPodeAgendarRetroativo,
   getUsuarioAgendaSomentePropriaColuna,
+  getNomeGrupoUsuariosDoUsuario,
+  grupoNomeVisualizaDescontoProdutoModalCaixa,
   profissionalPodeNaAgenda,
 } from "@/lib/agenda/permissoes-calendario";
 import { validarProcedimentosDoColaborador } from "@/lib/colaborador-procedimentos";
 import {
-  MSG_CONFLITO_PROFISSIONAL,
   MSG_HORARIO_RETROATIVO,
   MSG_PROCEDIMENTO_DUPLICADO,
-  haConflitoAgendaProfissional,
+  haConflitoNasLinhasSobreposicao,
   inicioEhRetroativo,
+  listarSobreposicaoAgendaProfissional,
+  mensagemConflitoAgendaProfissionalComDetalhe,
+  statusAgendaOcupacaoSlot,
   statusAgendamentoIgnoraValidacaoHorario,
 } from "@/lib/agenda/validacao-agendamento";
 import { dataReferenciaBrasilia } from "@/lib/financeiro/data-referencia-brasilia";
@@ -145,6 +149,10 @@ export async function GET(_request: Request, context: RouteContext) {
     !somentePropriaColunaGet &&
     (podeVerTodosGet || idUsuarioAg === sessionUserId);
 
+  const nomeGrupoSessao = await getNomeGrupoUsuariosDoUsuario(supabase, sessionUserId);
+  const mostrar_desconto_produtos_modal_caixa =
+    grupoNomeVisualizaDescontoProdutoModalCaixa(nomeGrupoSessao);
+
   return NextResponse.json({
     data: {
       ...row,
@@ -172,6 +180,7 @@ export async function GET(_request: Request, context: RouteContext) {
       pagamentos: pagamentosRes,
       permite_editar_procedimentos_e_pagamentos: podeEditarProcPag,
       pagamentos_nao_carregados_por_perfil: somentePropriaColunaGet,
+      mostrar_desconto_produtos_modal_caixa,
     },
   });
 }
@@ -472,15 +481,37 @@ export async function PATCH(request: Request, context: RouteContext) {
 
   if (!ignoraValidacaoHorario) {
     try {
-      const conflito = await haConflitoAgendaProfissional(supabase, {
+      const linhasSobreposicao = await listarSobreposicaoAgendaProfissional(supabase, {
         idEmpresa: empresaId,
         idUsuario: idUsuarioFinal,
         inicioIso: inicio,
         fimIso: fim,
         ignorarAgendamentoId: id,
       });
-      if (conflito) {
-        return NextResponse.json({ error: MSG_CONFLITO_PROFISSIONAL }, { status: 400 });
+      if (haConflitoNasLinhasSobreposicao(linhasSobreposicao)) {
+        const debugAgenda =
+          process.env.NODE_ENV !== "production"
+            ? {
+                consulta: {
+                  idEmpresa: empresaId,
+                  idUsuario: idUsuarioFinal,
+                  inicioIso: inicio,
+                  fimIso: fim,
+                  ignorarAgendamentoId: id,
+                },
+                linhasSobrepostas: linhasSobreposicao.map((row) => ({
+                  ...row,
+                  bloqueiaSlot: statusAgendaOcupacaoSlot(row.status),
+                })),
+              }
+            : undefined;
+        return NextResponse.json(
+          {
+            error: mensagemConflitoAgendaProfissionalComDetalhe(linhasSobreposicao),
+            ...(debugAgenda ? { debugAgenda } : {}),
+          },
+          { status: 400 },
+        );
       }
     } catch (e) {
       console.error(e);
@@ -509,6 +540,13 @@ export async function PATCH(request: Request, context: RouteContext) {
 
   let desconto = Number(existente.desconto);
   if (typeof body.desconto !== "undefined" && body.desconto !== null) {
+    const nomeGDesconto = await getNomeGrupoUsuariosDoUsuario(supabase, sessionUserId);
+    if (!grupoNomeVisualizaDescontoProdutoModalCaixa(nomeGDesconto)) {
+      return NextResponse.json(
+        { error: "Sem permissão para alterar o desconto do agendamento." },
+        { status: 403 },
+      );
+    }
     desconto = Number(body.desconto);
     if (!Number.isFinite(desconto) || desconto < 0 || desconto > 100) {
       return NextResponse.json(
@@ -528,6 +566,16 @@ export async function PATCH(request: Request, context: RouteContext) {
       return NextResponse.json(
         { error: "Informe ao menos um procedimento." },
         { status: 400 },
+      );
+    }
+    const nomeGrupoPatch = await getNomeGrupoUsuariosDoUsuario(supabase, sessionUserId);
+    if (!grupoNomeVisualizaDescontoProdutoModalCaixa(nomeGrupoPatch)) {
+      return NextResponse.json(
+        {
+          error:
+            "Sem permissão para alterar a lista de procedimentos. Use um usuário Administrador ou Administrativo.",
+        },
+        { status: 403 },
       );
     }
     const procedimentos: { id_procedimento: number; valor_aplicado: number }[] = [];

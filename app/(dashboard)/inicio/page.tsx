@@ -9,51 +9,23 @@ export default async function InicioPage() {
     redirect("/login");
   }
 
-  const {
-    nomeCompleto,
-    nomeEmpresaComId,
-    nomeEmpresaCurto,
-    somenteMenuInicio,
-    podeAgendarRetroativo,
-  } = await getNomesSaudacao(session.sub, session.usuario, session.idEmpresa);
+  const { nomeEmpresaCurto, somenteMenuInicio, podeAgendarRetroativo } =
+    await getNomesSaudacao(session.sub, session.usuario, session.idEmpresa);
 
   return (
-    <>
-      <div className="content-header">
-        <div className="container-fluid">
-          <div className="row mb-2">
-            <div className="col-sm-6">
-              <h1 className="m-0 text-dark">Início</h1>
-            </div>
-            <div className="col-sm-6">
-              <ol className="breadcrumb float-sm-right">
-                <li className="breadcrumb-item">
-                  <a href="/inicio">Início</a>
-                </li>
-                <li className="breadcrumb-item active">Agenda</li>
-              </ol>
-            </div>
+    <section className="content pt-2">
+      <div className="container-fluid">
+        <div className="row">
+          <div className="col-12">
+            <AgendaCalendario
+              idEmpresa={session.idEmpresa}
+              nomeEmpresa={nomeEmpresaCurto}
+              somenteMenuInicio={somenteMenuInicio}
+              podeAgendarRetroativo={podeAgendarRetroativo}
+            />
           </div>
         </div>
       </div>
-
-      <section className="content">
-        <div className="container-fluid">
-          <div className="row">
-            <div className="col-12">
-              <p className="text-muted small mb-3">
-                Olá, <strong>{nomeCompleto}</strong> — <strong>{nomeEmpresaComId}</strong>.
-              </p>
-              <AgendaCalendario
-                idEmpresa={session.idEmpresa}
-                nomeEmpresa={nomeEmpresaCurto}
-                somenteMenuInicio={somenteMenuInicio}
-                podeAgendarRetroativo={podeAgendarRetroativo}
-              />
-            </div>
-          </div>
-        </div>
-      </section>
-    </>
+    </section>
   );
 }

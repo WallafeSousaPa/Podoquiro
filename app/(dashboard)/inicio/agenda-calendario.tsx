@@ -41,6 +41,42 @@ function msRelogioAgora(): number {
   return Date.now();
 }
 
+/** Resposta JSON de erro das rotas `/api/agendamentos` (campos opcionais de diagnóstico). */
+type RespostaErroApiAgendamento = {
+  error?: string;
+  debugAgenda?: {
+    consulta?: Record<string, unknown>;
+    linhasSobrepostas?: Array<Record<string, unknown>>;
+  };
+};
+
+/** Abre o DevTools → Console para inspecionar conflitos de agenda e o payload enviado. */
+function logRespostaErroApiAgendamento(
+  origem: string,
+  res: Response,
+  json: RespostaErroApiAgendamento,
+  payload?: unknown,
+) {
+  const errMsg = json.error ?? "(resposta sem campo `error`)";
+  // Uma linha sempre visível (evita confundir com objeto recolhido no Chrome).
+  console.warn(`[Podoquiro/agenda] ${origem} | HTTP ${res.status} | ${errMsg}`);
+  if (json.debugAgenda != null) {
+    console.info(
+      `[Podoquiro/agenda] debugAgenda (conflito / diagnóstico — copie se precisar de ajuda):\n${JSON.stringify(json.debugAgenda, null, 2)}`,
+    );
+  } else {
+    console.info(
+      "[Podoquiro/agenda] Não há `debugAgenda` nesta resposta (erro não é conflito de agenda na API, ou está em build de produção). Corpo recebido:",
+      json,
+    );
+  }
+  if (payload !== undefined) {
+    console.info(
+      `[Podoquiro/agenda] payload enviado:\n${JSON.stringify(payload, null, 2)}`,
+    );
+  }
+}
+
 type UsuarioCol = {
   id: number;
   nome: string;
@@ -123,6 +159,23 @@ type AgendamentoDia = {
   desconto: number;
   valor_total: number;
   observacoes: string | null;
+};
+
+type ProcCatalogoAgendaItem = {
+  id: number;
+  procedimento: string;
+  valor_total: number;
+};
+
+type ModalProcLinhaAgenda = {
+  id_procedimento: number;
+  valor_aplicado: number;
+};
+
+type AgendaProdutoSnapshot = {
+  id_produto: string;
+  qtd: number;
+  valor_desconto: number;
 };
 
 /** Grade do calendário: encaixe ao soltar (minutos). */
@@ -422,6 +475,7 @@ export function AgendaCalendario({
   const [agendaGruposConfigurados, setAgendaGruposConfigurados] = useState(false);
   const [ocultarSecaoPagamentosAgenda, setOcultarSecaoPagamentosAgenda] =
     useState(false);
+  const [perfilAdminAgenda, setPerfilAdminAgenda] = useState(false);
   const [modalAtendimentoPodologo, setModalAtendimentoPodologo] =
     useState<AgendamentoDia | null>(null);
   const [iniciandoAtendimentoPodologo, setIniciandoAtendimentoPodologo] =
@@ -453,6 +507,15 @@ export function AgendaCalendario({
   const [formError, setFormError] = useState<string | null>(null);
   /** Mensagens de validação / API ao salvar (modal sobre o formulário). */
   const [erroModal, setErroModal] = useState<string | null>(null);
+
+  const [procCatalogoAgenda, setProcCatalogoAgenda] = useState<ProcCatalogoAgendaItem[]>(
+    [],
+  );
+  const [modalProcLinhas, setModalProcLinhas] = useState<ModalProcLinhaAgenda[]>([]);
+  const [procAgendaDirty, setProcAgendaDirty] = useState(false);
+  const [agendaProdutosSnapshot, setAgendaProdutosSnapshot] = useState<
+    AgendaProdutoSnapshot[]
+  >([]);
 
   const [pendenteMover, setPendenteMover] = useState<{
     ag: AgendamentoDia;
@@ -588,12 +651,14 @@ export function AgendaCalendario({
         agendamentos?: AgendamentoDia[];
         agendaGruposConfigurados?: boolean;
         ocultarSecaoPagamentosAgenda?: boolean;
+        perfil_admin_agenda?: boolean;
       };
       if (!res.ok) throw new Error(json.error ?? "Erro ao carregar agenda.");
       setUsuarios(json.usuarios ?? []);
       setAgendamentos(json.agendamentos ?? []);
       setAgendaGruposConfigurados(!!json.agendaGruposConfigurados);
       setOcultarSecaoPagamentosAgenda(!!json.ocultarSecaoPagamentosAgenda);
+      setPerfilAdminAgenda(json.perfil_admin_agenda === true);
     } catch (e) {
       setLoadError(e instanceof Error ? e.message : "Erro ao carregar.");
     } finally {
@@ -607,6 +672,43 @@ export function AgendaCalendario({
     });
     return () => cancelAnimationFrame(id);
   }, [loadAgenda]);
+
+  useEffect(() => {
+    if (!modalOpen || !perfilAdminAgenda) {
+      setProcCatalogoAgenda([]);
+      return;
+    }
+    const iu = Number(idUsuario);
+    if (!Number.isFinite(iu) || iu <= 0) {
+      setProcCatalogoAgenda([]);
+      return;
+    }
+    let cancelled = false;
+    void (async () => {
+      try {
+        const res = await fetch(
+          `/api/procedimentos?id_usuario=${encodeURIComponent(String(iu))}`,
+        );
+        const j = (await res.json()) as {
+          data?: { id: number; procedimento: string; valor_total: number }[];
+          error?: string;
+        };
+        if (!res.ok || cancelled) return;
+        setProcCatalogoAgenda(
+          (j.data ?? []).map((p) => ({
+            id: p.id,
+            procedimento: p.procedimento,
+            valor_total: Number(p.valor_total),
+          })),
+        );
+      } catch {
+        if (!cancelled) setProcCatalogoAgenda([]);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [modalOpen, perfilAdminAgenda, idUsuario]);
 
   useEffect(() => {
     void (async () => {
@@ -705,6 +807,10 @@ export function AgendaCalendario({
     setStatusAg("pendente");
     setDesconto("0");
     setObservacoes("");
+    setModalProcLinhas([]);
+    setProcAgendaDirty(false);
+    setAgendaProdutosSnapshot([]);
+    setProcCatalogoAgenda([]);
 
     try {
       await carregarListasAuxiliares();
@@ -741,6 +847,19 @@ export function AgendaCalendario({
     setPacienteListaAberta(false);
   }
 
+  function addProcLinhaAgenda() {
+    const primeiro = procCatalogoAgenda[0];
+    if (!primeiro) return;
+    setModalProcLinhas((prev) => [
+      ...prev,
+      {
+        id_procedimento: primeiro.id,
+        valor_aplicado: primeiro.valor_total,
+      },
+    ]);
+    setProcAgendaDirty(true);
+  }
+
   async function abrirEditar(ag: AgendamentoDia) {
     setFormError(null);
     setErroModal(null);
@@ -760,12 +879,35 @@ export function AgendaCalendario({
           status: string;
           desconto: number;
           observacoes: string | null;
+          procedimentos: {
+            id_procedimento: number;
+            valor_aplicado: number;
+          }[];
+          produtos: {
+            id_produto: string;
+            qtd: number;
+            valor_desconto: number;
+          }[];
         };
       };
       if (!res.ok) throw new Error(json.error ?? "Erro ao carregar agendamento.");
       const d = json.data;
       if (!d) return;
 
+      setModalProcLinhas(
+        (d.procedimentos ?? []).map((p) => ({
+          id_procedimento: p.id_procedimento,
+          valor_aplicado: Number(p.valor_aplicado),
+        })),
+      );
+      setProcAgendaDirty(false);
+      setAgendaProdutosSnapshot(
+        (d.produtos ?? []).map((p) => ({
+          id_produto: String(p.id_produto),
+          qtd: Number(p.qtd),
+          valor_desconto: Number(p.valor_desconto ?? 0),
+        })),
+      );
       setIdUsuario(String(d.id_usuario));
       setIdPaciente(String(d.id_paciente));
       setPacienteBusca(ag.paciente_nome);
@@ -880,6 +1022,28 @@ export function AgendaCalendario({
         observacoes: observacoes.trim() || null,
       };
 
+      if (perfilAdminAgenda && procAgendaDirty) {
+        if (editingId && modalProcLinhas.length === 0) {
+          setErroModal(
+            "Ao editar, mantenha ao menos um procedimento na lista (ou recarregue o agendamento sem alterar procedimentos).",
+          );
+          return;
+        }
+        if (modalProcLinhas.length > 0) {
+          body.procedimentos = modalProcLinhas.map((p) => ({
+            id_procedimento: p.id_procedimento,
+            valor_aplicado: p.valor_aplicado,
+          }));
+          if (editingId) {
+            body.produtos = agendaProdutosSnapshot.map((p) => ({
+              id_produto: p.id_produto,
+              qtd: p.qtd,
+              valor_desconto: p.valor_desconto,
+            }));
+          }
+        }
+      }
+
       const url = editingId ? `/api/agendamentos/${editingId}` : "/api/agendamentos";
       const method = editingId ? "PATCH" : "POST";
       const res = await fetch(url, {
@@ -887,8 +1051,14 @@ export function AgendaCalendario({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(body),
       });
-      const json = (await res.json()) as { error?: string };
+      const json = (await res.json()) as RespostaErroApiAgendamento;
       if (!res.ok) {
+        logRespostaErroApiAgendamento(
+          editingId ? "PATCH salvar edição" : "POST novo agendamento",
+          res,
+          json,
+          body,
+        );
         setErroModal(json.error ?? "Erro ao salvar.");
         return;
       }
@@ -906,17 +1076,19 @@ export function AgendaCalendario({
     if (!pendenteMover || salvandoMover) return;
     setSalvandoMover(true);
     try {
+      const moverPayload = {
+        id_usuario: pendenteMover.novoUsuarioId,
+        data_hora_inicio: pendenteMover.inicioIso,
+        data_hora_fim: pendenteMover.fimIso,
+      };
       const res = await fetch(`/api/agendamentos/${pendenteMover.ag.id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          id_usuario: pendenteMover.novoUsuarioId,
-          data_hora_inicio: pendenteMover.inicioIso,
-          data_hora_fim: pendenteMover.fimIso,
-        }),
+        body: JSON.stringify(moverPayload),
       });
-      const json = (await res.json()) as { error?: string };
+      const json = (await res.json()) as RespostaErroApiAgendamento;
       if (!res.ok) {
+        logRespostaErroApiAgendamento("PATCH mover arrastar-soltar", res, json, moverPayload);
         setPendenteMover(null);
         setErroModal(json.error ?? "Erro ao salvar.");
         return;
@@ -2129,7 +2301,14 @@ export function AgendaCalendario({
                       <select
                         className="form-control"
                         value={idUsuario}
-                        onChange={(e) => setIdUsuario(e.target.value)}
+                        onChange={(e) => {
+                          const v = e.target.value;
+                          setIdUsuario(v);
+                          if (perfilAdminAgenda && editingId === null) {
+                            setModalProcLinhas([]);
+                            setProcAgendaDirty(false);
+                          }
+                        }}
                         required
                       >
                         <option value="">Selecione...</option>
@@ -2274,6 +2453,91 @@ export function AgendaCalendario({
                       ))}
                     </select>
                   </div>
+
+                  {perfilAdminAgenda ? (
+                    <>
+                      <hr />
+                      <div className="d-flex justify-content-between align-items-center mb-2">
+                        <strong>Procedimentos</strong>
+                        <button
+                          type="button"
+                          className="btn btn-sm btn-outline-primary"
+                          onClick={addProcLinhaAgenda}
+                          disabled={procCatalogoAgenda.length === 0}
+                        >
+                          + Procedimento
+                        </button>
+                      </div>
+                      {procCatalogoAgenda.length === 0 ? (
+                        <p className="small text-muted mb-3">
+                          {idUsuario
+                            ? "Nenhum procedimento liberado para este profissional."
+                            : "Selecione o profissional para listar os procedimentos."}
+                        </p>
+                      ) : (
+                        modalProcLinhas.map((linha, idx) => (
+                          <div key={idx} className="form-row align-items-end mb-2">
+                            <div className="form-group col-md-7 mb-0">
+                              <label className="small">Procedimento</label>
+                              <select
+                                className="form-control form-control-sm"
+                                value={linha.id_procedimento || ""}
+                                onChange={(e) => {
+                                  const id = Number(e.target.value);
+                                  const pr = procCatalogoAgenda.find((p) => p.id === id);
+                                  setModalProcLinhas((prev) =>
+                                    prev.map((p, i) =>
+                                      i === idx
+                                        ? {
+                                            ...p,
+                                            id_procedimento: id,
+                                            valor_aplicado:
+                                              pr?.valor_total ?? p.valor_aplicado,
+                                          }
+                                        : p,
+                                    ),
+                                  );
+                                  setProcAgendaDirty(true);
+                                }}
+                              >
+                                {procCatalogoAgenda.map((p) => (
+                                  <option key={p.id} value={p.id}>
+                                    {p.procedimento}
+                                  </option>
+                                ))}
+                              </select>
+                            </div>
+                            <div className="form-group col-md-4 mb-0">
+                              <label className="small">Valor aplicado</label>
+                              <input
+                                type="text"
+                                readOnly
+                                className="form-control form-control-sm bg-light"
+                                value={linha.valor_aplicado.toLocaleString("pt-BR", {
+                                  minimumFractionDigits: 2,
+                                  maximumFractionDigits: 2,
+                                })}
+                              />
+                            </div>
+                            <div className="form-group col-md-1 mb-0">
+                              <button
+                                type="button"
+                                className="btn btn-sm btn-outline-danger"
+                                onClick={() => {
+                                  setModalProcLinhas((prev) =>
+                                    prev.filter((_, i) => i !== idx),
+                                  );
+                                  setProcAgendaDirty(true);
+                                }}
+                              >
+                                ×
+                              </button>
+                            </div>
+                          </div>
+                        ))
+                      )}
+                    </>
+                  ) : null}
 
                   <div className="form-row">
                     <div className="form-group col-md-6">

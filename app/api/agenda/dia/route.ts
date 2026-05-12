@@ -3,6 +3,8 @@ import { resolveGruposCalendario } from "@/lib/agenda/grupos-calendario";
 import {
   getPodeVerTodosAgendamentos,
   getUsuarioAgendaSomentePropriaColuna,
+  getNomeGrupoUsuariosDoUsuario,
+  grupoNomeVisualizaDescontoProdutoModalCaixa,
 } from "@/lib/agenda/permissoes-calendario";
 import {
   carregarUsuariosColunasAgenda,
@@ -146,8 +148,21 @@ export async function GET(request: Request) {
     .eq("id_empresa", empresaId)
     .gt("data_hora_fim", inicioDia)
     .lt("data_hora_inicio", fimIntervalo);
-  if (!podeVerTodos || somentePropriaColuna) {
+  // Só a coluna própria: mesma regra de antes (só agendamentos do usuário da sessão).
+  // Várias colunas sem "ver todos": carregar agendamentos de *todos* os profissionais
+  // exibidos — senão as colunas dos colegas ficam vazias no calendário mas o POST
+  // ainda encontra conflito com registros reais no banco.
+  if (somentePropriaColuna) {
     agQuery = agQuery.eq("id_usuario", sessionUserId);
+  } else if (!podeVerTodos) {
+    const idsColunas = usuariosRows.map((u) => u.id);
+    if (idsColunas.length === 0) {
+      agQuery = agQuery.eq("id_usuario", sessionUserId);
+    } else if (idsColunas.length === 1) {
+      agQuery = agQuery.eq("id_usuario", idsColunas[0]!);
+    } else {
+      agQuery = agQuery.in("id_usuario", idsColunas);
+    }
   }
   if (somentePropriaColuna) {
     agQuery = agQuery.in("status", ["pendente", "confirmado", "em_andamento", "faltou"]);
@@ -312,6 +327,9 @@ export async function GET(request: Request) {
     card_cor: u.card_cor,
   }));
 
+  const nomeGrupoSessao = await getNomeGrupoUsuariosDoUsuario(supabase, sessionUserId);
+  const perfil_admin_agenda = grupoNomeVisualizaDescontoProdutoModalCaixa(nomeGrupoSessao);
+
   return NextResponse.json({
     data,
     gruposCalendario: (gruposRows ?? []).map((g) => ({
@@ -321,6 +339,8 @@ export async function GET(request: Request) {
     agendaGruposConfigurados: configuradoNaEmpresa,
     /** Grupo podoquiro / flag: ocultar pagamentos no modal de agendamento. */
     ocultarSecaoPagamentosAgenda: somentePropriaColuna,
+    /** Administrador / Administrativo: incluir procedimentos no modal da agenda. */
+    perfil_admin_agenda,
     usuarios,
     agendamentos,
   });

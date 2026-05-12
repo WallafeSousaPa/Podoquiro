@@ -3,6 +3,8 @@ import { resolveGruposCalendario } from "@/lib/agenda/grupos-calendario";
 import {
   getPodeVerTodosAgendamentos,
   getUsuarioAgendaSomentePropriaColuna,
+  getNomeGrupoUsuariosDoUsuario,
+  grupoNomeVisualizaDescontoProdutoModalCaixa,
 } from "@/lib/agenda/permissoes-calendario";
 import {
   carregarUsuariosColunasAgenda,
@@ -171,8 +173,17 @@ export async function GET(request: Request) {
     .eq("id_empresa", empresaId)
     .gt("data_hora_fim", inicioPeriodo)
     .lt("data_hora_inicio", fimIntervaloExclusivo);
-  if (!podeVerTodos || somentePropriaColuna) {
+  if (somentePropriaColuna) {
     agQuery = agQuery.eq("id_usuario", sessionUserId);
+  } else if (!podeVerTodos) {
+    const idsColunas = usuariosRows.map((u) => u.id);
+    if (idsColunas.length === 0) {
+      agQuery = agQuery.eq("id_usuario", sessionUserId);
+    } else if (idsColunas.length === 1) {
+      agQuery = agQuery.eq("id_usuario", idsColunas[0]!);
+    } else {
+      agQuery = agQuery.in("id_usuario", idsColunas);
+    }
   }
   if (somentePropriaColuna) {
     agQuery = agQuery.in("status", ["pendente", "confirmado", "em_andamento", "faltou"]);
@@ -335,6 +346,9 @@ export async function GET(request: Request) {
     card_cor: u.card_cor,
   }));
 
+  const nomeGrupoSessao = await getNomeGrupoUsuariosDoUsuario(supabase, sessionUserId);
+  const perfil_admin_agenda = grupoNomeVisualizaDescontoProdutoModalCaixa(nomeGrupoSessao);
+
   return NextResponse.json({
     periodo: { inicio, fim },
     gruposCalendario: (gruposRows ?? []).map((g) => ({
@@ -343,6 +357,7 @@ export async function GET(request: Request) {
     })),
     agendaGruposConfigurados: configuradoNaEmpresa,
     ocultarSecaoPagamentosAgenda: somentePropriaColuna,
+    perfil_admin_agenda,
     usuarios,
     agendamentos,
   });
