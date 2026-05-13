@@ -81,6 +81,7 @@ export function DashboardShell({
   somenteMenuInicio = false,
   menuRecepcao = false,
   menuAtendimento = false,
+  podeVerRelatorioCaixa = false,
   children,
 }: {
   nomeUsuario: string;
@@ -91,6 +92,8 @@ export function DashboardShell({
   menuRecepcao?: boolean;
   /** Atendimentos › Atendimento — Podólogo e Administrador. */
   menuAtendimento?: boolean;
+  /** Financeiro › Relatório caixa — somente Administrador / Administrativo. */
+  podeVerRelatorioCaixa?: boolean;
   children: ReactNode;
 }) {
   const router = useRouter();
@@ -647,6 +650,20 @@ export function DashboardShell({
                       <p>Caixa</p>
                     </Link>
                   </li>
+                  {podeVerRelatorioCaixa ? (
+                    <li className="nav-item">
+                      <Link
+                        href="/financeiro/relatorio-caixa"
+                        className={cx(
+                          "nav-link",
+                          pathname === "/financeiro/relatorio-caixa" && "active",
+                        )}
+                      >
+                        <i className="far fa-circle nav-icon" />
+                        <p>Relatório caixa</p>
+                      </Link>
+                    </li>
+                  ) : null}
                   <li
                     className={cx(
                       "nav-item",

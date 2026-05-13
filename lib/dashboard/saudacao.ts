@@ -3,6 +3,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import {
   grupoUsuariosAdministrador,
   grupoUsuariosMenuRecepcao,
+  grupoUsuariosRelatorioCaixa,
   grupoUsuariosSomenteMenuInicioCalendario,
 } from "@/lib/dashboard/menu-grupo";
 
@@ -21,6 +22,8 @@ export type SaudacaoNomes = {
   menuAtendimento: boolean;
   /** Exceção para agendar em data/hora retroativas (Administrador/Administrativo). */
   podeAgendarRetroativo: boolean;
+  /** Financeiro › Relatório caixa (somente Administrador / Administrativo). */
+  podeVerRelatorioCaixa: boolean;
 };
 
 /**
@@ -36,6 +39,7 @@ export const getNomesSaudacao = cache(
     let menuRecepcao = false;
     let menuAtendimento = false;
     let podeAgendarRetroativo = false;
+    let podeVerRelatorioCaixa = false;
 
     if (Number.isFinite(userId) && userId > 0 && Number.isFinite(empresaId) && empresaId > 0) {
       const supabase = createAdminClient();
@@ -64,6 +68,7 @@ export const getNomesSaudacao = cache(
       somenteMenuInicio = !menuRecepcao && isPodologo;
       menuAtendimento = isPodologo || isAdministrador;
       podeAgendarRetroativo = isAdministrador;
+      podeVerRelatorioCaixa = grupoUsuariosRelatorioCaixa(nomeGrupo);
     }
 
     const nomeEmpresaComId = nomeFantasia
@@ -81,6 +86,7 @@ export const getNomesSaudacao = cache(
       menuRecepcao,
       menuAtendimento,
       podeAgendarRetroativo,
+      podeVerRelatorioCaixa,
     };
   },
 );
