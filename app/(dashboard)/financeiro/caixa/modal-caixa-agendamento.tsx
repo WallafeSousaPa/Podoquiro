@@ -76,9 +76,13 @@ type AgDetail = {
     valor_pago: number;
     status_pagamento: string;
   }[];
+  /** Pode abrir o modal do caixa e lançar pagamentos (ex.: Recepção com visão de calendário). */
   permite_editar_procedimentos_e_pagamentos: boolean;
   pagamentos_nao_carregados_por_perfil: boolean;
-  /** Administrador / Administrativo: coluna de desconto (R$) em produtos no formulário. */
+  /**
+   * Administrador / Administrativo: editar lista de procedimentos, produtos e desconto %
+   * no modal — mesmo critério do PATCH em `/api/agendamentos/[id]` para `procedimentos`.
+   */
   mostrar_desconto_produtos_modal_caixa?: boolean;
 };
 
@@ -459,26 +463,100 @@ export function ModalCaixaAgendamento({
 
   async function salvar(e: FormEvent) {
     e.preventDefault();
-    if (!row || !detalhe || !detalhe.permite_editar_procedimentos_e_pagamentos) return;
-    if (somenteVisualizar) return;
-    if (procedimentos.length === 0) {
-      setErro("Informe ao menos um procedimento.");
+    if (!row || !detalhe || somenteVisualizar) return;
+    if (!detalhe.permite_editar_procedimentos_e_pagamentos) return;
+
+    const itensFaturamento = detalhe.mostrar_desconto_produtos_modal_caixa === true;
+
+    if (itensFaturamento) {
+      if (procedimentos.length === 0) {
+        setErro("Informe ao menos um procedimento.");
+        return;
+      }
+
+      for (const l of produtosLinhas) {
+        if (!Number.isFinite(l.qtd) || l.qtd <= 0) {
+          setErro("Informe quantidade válida para todos os produtos.");
+          return;
+        }
+      }
+
+      const vbProc =
+        Math.round(procedimentos.reduce((s, p) => s + p.valor_aplicado, 0) * 100) /
+        100;
+      const vbProd = subtotalProdutosAgendamento(produtosLinhas, produtosCat);
+      const vb = Math.round((vbProc + vbProd) * 100) / 100;
+      const totalEsperado = calcularValorTotal(vb, descontoAgendamentoNum);
+      const somaPg =
+        Math.round(
+          pagamentos.reduce(
+            (s, p) => s + (Number.isFinite(p.valor_pago) ? p.valor_pago : 0),
+            0,
+          ) * 100,
+        ) / 100;
+
+      if (detalhe.status === "realizado") {
+        if (Math.abs(somaPg - totalEsperado) > 0.02) {
+          setErro(
+            `A soma dos pagamentos (${fmtBrl(somaPg)}) deve ser igual ao total do agendamento (${fmtBrl(totalEsperado)}): soma dos procedimentos e produtos${
+              mostrarDescontoProdutosCaixa && descontoAgendamentoNum > 0
+                ? ` com ${descontoAgendamentoNum}% de desconto`
+                : ""
+            }. Ajuste os valores antes de salvar.`,
+          );
+          return;
+        }
+        const caixaOk = await garantirCaixaHabilitadoParaPagamento();
+        if (!caixaOk) return;
+      }
+
+      setSalvando(true);
+      setErro(null);
+      try {
+        const body: Record<string, unknown> = {
+          procedimentos,
+          produtos: produtosLinhas.map((l) => ({
+            id_produto: l.id_produto,
+            qtd: l.qtd,
+            valor_desconto: Math.max(0, l.valor_desconto),
+          })),
+        };
+        if (mostrarDescontoProdutosCaixa) {
+          body.desconto = descontoAgendamentoNum;
+        }
+        if (detalhe.status === "realizado") {
+          body.pagamentos = pagamentos.map(
+            ({ id_forma_pagamento, id_maquineta, valor_pago }) => ({
+              id_forma_pagamento,
+              id_maquineta,
+              valor_pago,
+              status_pagamento: "pago",
+            }),
+          );
+        }
+        const res = await fetch(`/api/agendamentos/${row.id}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(body),
+        });
+        const j = (await res.json()) as { error?: string };
+        if (!res.ok) throw new Error(j.error ?? "Erro ao salvar.");
+        onSaved();
+        onClose();
+      } catch (err) {
+        setErro(err instanceof Error ? err.message : "Erro ao salvar.");
+      } finally {
+        setSalvando(false);
+      }
       return;
     }
 
-    for (const l of produtosLinhas) {
-      if (!Number.isFinite(l.qtd) || l.qtd <= 0) {
-        setErro("Informe quantidade válida para todos os produtos.");
-        return;
-      }
+    /* Recepção etc.: só altera pagamentos; não enviar `procedimentos` (API exige admin). */
+    if (detalhe.status !== "realizado" || detalhe.pagamentos_nao_carregados_por_perfil) {
+      setErro("Não há alterações permitidas para salvar com seu perfil neste agendamento.");
+      return;
     }
 
-    const vbProc =
-      Math.round(procedimentos.reduce((s, p) => s + p.valor_aplicado, 0) * 100) /
-      100;
-    const vbProd = subtotalProdutosAgendamento(produtosLinhas, produtosCat);
-    const vb = Math.round((vbProc + vbProd) * 100) / 100;
-    const totalEsperado = calcularValorTotal(vb, descontoAgendamentoNum);
     const somaPg =
       Math.round(
         pagamentos.reduce(
@@ -486,46 +564,38 @@ export function ModalCaixaAgendamento({
           0,
         ) * 100,
       ) / 100;
-
-    if (detalhe.status === "realizado") {
-      if (Math.abs(somaPg - totalEsperado) > 0.02) {
-        setErro(
-          `A soma dos pagamentos (${fmtBrl(somaPg)}) deve ser igual ao total do agendamento (${fmtBrl(totalEsperado)}): soma dos procedimentos e produtos${
-            mostrarDescontoProdutosCaixa && descontoAgendamentoNum > 0
-              ? ` com ${descontoAgendamentoNum}% de desconto`
-              : ""
-          }. Ajuste os valores antes de salvar.`,
-        );
-        return;
-      }
-      const caixaOk = await garantirCaixaHabilitadoParaPagamento();
-      if (!caixaOk) return;
+    const brutoAg =
+      Math.round(
+        (Math.round(
+          procedimentos.reduce((s, p) => s + p.valor_aplicado, 0) * 100,
+        ) /
+          100 +
+          subtotalProdutosAgendamento(produtosLinhas, produtosCat)) *
+          100,
+      ) / 100;
+    const totalEsperado = calcularValorTotal(brutoAg, descontoAgendamentoNum);
+    if (Math.abs(somaPg - totalEsperado) > 0.02) {
+      setErro(
+        `A soma dos pagamentos (${fmtBrl(somaPg)}) deve ser igual ao total do agendamento (${fmtBrl(totalEsperado)}). Ajuste os valores antes de salvar.`,
+      );
+      return;
     }
+    const caixaOk = await garantirCaixaHabilitadoParaPagamento();
+    if (!caixaOk) return;
 
     setSalvando(true);
     setErro(null);
     try {
-      const body: Record<string, unknown> = {
-        procedimentos,
-        produtos: produtosLinhas.map((l) => ({
-          id_produto: l.id_produto,
-          qtd: l.qtd,
-          valor_desconto: Math.max(0, l.valor_desconto),
-        })),
-      };
-      if (mostrarDescontoProdutosCaixa) {
-        body.desconto = descontoAgendamentoNum;
-      }
-      if (detalhe.status === "realizado") {
-        body.pagamentos = pagamentos.map(
+      const body = {
+        pagamentos: pagamentos.map(
           ({ id_forma_pagamento, id_maquineta, valor_pago }) => ({
             id_forma_pagamento,
             id_maquineta,
             valor_pago,
-            status_pagamento: "pago",
+            status_pagamento: "pago" as const,
           }),
-        );
-      }
+        ),
+      };
       const res = await fetch(`/api/agendamentos/${row.id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
@@ -542,12 +612,21 @@ export function ModalCaixaAgendamento({
     }
   }
 
-  const podeEditar = detalhe?.permite_editar_procedimentos_e_pagamentos === true;
+  const podeAcessarCaixaAgendamento =
+    detalhe?.permite_editar_procedimentos_e_pagamentos === true;
+  /** Alinhado ao PATCH: só Administrador/Administrativo alteram lista de procedimentos/produtos. */
+  const podeEditarItensFaturamentoCaixa =
+    detalhe?.mostrar_desconto_produtos_modal_caixa === true;
   const pagamentosOcultos = detalhe?.pagamentos_nao_carregados_por_perfil === true;
-  const somenteLeitura = !podeEditar || somenteVisualizar;
-  const podeEditarFormulario = podeEditar && !somenteVisualizar;
+  const somenteLeitura = !podeAcessarCaixaAgendamento || somenteVisualizar;
+  const podeEditarFormularioBase = podeAcessarCaixaAgendamento && !somenteVisualizar;
   const agendamentoConcluido = detalhe?.status === "realizado";
-  const podeEditarPagamentos = podeEditarFormulario && agendamentoConcluido;
+  const podeEditarPagamentos =
+    podeEditarFormularioBase && agendamentoConcluido && !pagamentosOcultos;
+  const podeSalvarNoModal =
+    podeEditarFormularioBase &&
+    (podeEditarItensFaturamentoCaixa ||
+      (agendamentoConcluido && !pagamentosOcultos));
 
   const somaProcedimentos = useMemo(
     () =>
@@ -622,7 +701,7 @@ export function ModalCaixaAgendamento({
             <form
               onSubmit={(e) => {
                 e.preventDefault();
-                if (!podeEditarFormulario) return;
+                if (!podeEditarFormularioBase) return;
                 void salvar(e);
               }}
             >
@@ -660,14 +739,14 @@ export function ModalCaixaAgendamento({
                       <li>Status: {badgeStatusAg(detalhe.status)}</li>
                     </ul>
 
-                    {podeEditar && somenteVisualizar ? (
+                    {podeAcessarCaixaAgendamento && somenteVisualizar ? (
                       <div className="alert alert-info py-2 small mb-3" role="status">
                         Todos os pagamentos deste agendamento estão quitados. Você pode
                         apenas visualizar os dados.
                       </div>
                     ) : null}
 
-                    {!podeEditar ? (
+                    {!podeAcessarCaixaAgendamento ? (
                       <div className="alert alert-warning py-2 small mb-3">
                         {pagamentosOcultos
                           ? "Seu perfil na agenda só permite alterar o status do atendimento. Para lançar procedimentos e pagamentos, use um usuário com permissão de caixa/agenda completa."
@@ -681,7 +760,7 @@ export function ModalCaixaAgendamento({
                       </div>
                     ) : null}
 
-                    {podeEditarFormulario &&
+                    {podeEditarFormularioBase &&
                     detalhe &&
                     !pagamentosOcultos &&
                     !agendamentoConcluido ? (
@@ -759,8 +838,10 @@ export function ModalCaixaAgendamento({
                       </>
                     ) : null}
 
-                    {podeEditarFormulario ? (
+                    {podeEditarFormularioBase ? (
                       <>
+                        {podeEditarItensFaturamentoCaixa ? (
+                          <>
                         <hr />
                         <div className="d-flex justify-content-between align-items-center mb-2">
                           <strong>Procedimentos</strong>
@@ -1015,8 +1096,58 @@ export function ModalCaixaAgendamento({
                           ))}
                           </>
                         )}
+                          </>
+                        ) : (
+                          <>
+                            <hr />
+                            <div
+                              className="alert alert-light border small mb-3"
+                              role="status"
+                            >
+                              <strong>Leitura:</strong> procedimentos e mercadorias só
+                              podem ser alterados por perfil{" "}
+                              <strong>Administrador</strong> ou{" "}
+                              <strong>Administrativo</strong>. Com seu perfil você pode
+                              registrar ou ajustar apenas os{" "}
+                              <strong>pagamentos</strong> quando o status for{" "}
+                              <strong>Realizado</strong>.
+                            </div>
+                            <strong className="d-block mb-2">Procedimentos</strong>
+                            <ul className="small mb-3">
+                              {detalhe.procedimentos.length === 0 ? (
+                                <li className="text-muted">—</li>
+                              ) : (
+                                detalhe.procedimentos.map((p) => (
+                                  <li key={p.id}>
+                                    {nomeProcedimento(p.id_procedimento)} —{" "}
+                                    {fmtBrl(Number(p.valor_aplicado))}
+                                  </li>
+                                ))
+                              )}
+                            </ul>
+                            <strong className="d-block mb-2">Produtos</strong>
+                            <ul className="small mb-3">
+                              {(detalhe.produtos ?? []).length === 0 ? (
+                                <li className="text-muted">—</li>
+                              ) : (
+                                (detalhe.produtos ?? []).map((p) => (
+                                  <li key={p.id}>
+                                    {p.nome_produto ?? "Produto"} · {p.qtd}{" "}
+                                    {unProdutoCat(String(p.id_produto))} ×{" "}
+                                    {fmtBrl(Number(p.valor_produto))}
+                                    {mostrarDescontoProdutosCaixa &&
+                                    Number(p.valor_desconto) > 0
+                                      ? ` · desc. ${fmtBrl(Number(p.valor_desconto))}`
+                                      : ""}{" "}
+                                    → {fmtBrl(Number(p.valor_final))}
+                                  </li>
+                                ))
+                              )}
+                            </ul>
+                          </>
+                        )}
 
-                        {podeEditarFormulario && !pagamentosOcultos && !agendamentoConcluido ? (
+                        {podeEditarFormularioBase && !pagamentosOcultos && !agendamentoConcluido ? (
                           <>
                             <hr />
                             <strong className="d-block mb-2">Pagamentos (somente leitura)</strong>
@@ -1261,7 +1392,7 @@ export function ModalCaixaAgendamento({
                 >
                   Fechar
                 </button>
-                {podeEditarFormulario && detalhe && !loading ? (
+                {podeSalvarNoModal && detalhe && !loading ? (
                   <button type="submit" className="btn btn-primary" disabled={salvando}>
                     {salvando ? "Salvando…" : "Salvar"}
                   </button>
