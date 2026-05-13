@@ -366,6 +366,17 @@
   box-shadow: 0 1px 2px rgb(0 0 0 / 0.08);
 }
 
+.agenda-appointment--compact .agenda-appointment-menu-wrap {
+  top: 1px;
+  right: 1px;
+}
+
+.agenda-appointment--compact .agenda-appointment-kebab {
+  width: 18px;
+  height: 18px;
+  font-size: 0.8rem;
+}
+
 .agenda-appointment-kebab:hover,
 .agenda-appointment-kebab:focus {
   background: #fff;

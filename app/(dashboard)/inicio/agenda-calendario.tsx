@@ -128,16 +128,16 @@ function urlWhatsAppPaciente(tel: string | null | undefined): string | null {
   return null;
 }
 
-/** Mensagem padrão para confirmar horário (data do início + hora de término). */
+/** Mensagem padrão para confirmar horário (data e hora de início do agendamento). */
 function montarMensagemWhatsappConfirmacaoHorario(args: {
   nomePaciente: string;
   nomeEmpresa: string;
   inicioLocal: string;
-  horaFimLocal: string;
 }): string {
   const nomeP = args.nomePaciente.trim() || "paciente";
   const emp = args.nomeEmpresa.trim() || "nossa clínica";
   let dataFmt = "";
+  let horaInicio = "—";
   if (args.inicioLocal.trim()) {
     const d = new Date(args.inicioLocal);
     if (!Number.isNaN(d.getTime())) {
@@ -148,10 +148,13 @@ function montarMensagemWhatsappConfirmacaoHorario(args: {
         year: "numeric",
       });
       dataFmt = raw ? raw.charAt(0).toUpperCase() + raw.slice(1) : "";
+      horaInicio = d.toLocaleTimeString("pt-BR", {
+        hour: "2-digit",
+        minute: "2-digit",
+      });
     }
   }
-  const horaFim = args.horaFimLocal.trim() || "—";
-  return `Olá, Sr(a) ${nomeP}, aqui é da ${emp}, gostaria de confirmar seu horário de ${dataFmt || "—"} às ${horaFim}.`;
+  return `Olá, Sr(a) ${nomeP}, aqui é da ${emp}, gostaria de confirmar seu horário de ${dataFmt || "—"} às ${horaInicio}.`;
 }
 
 type AgendamentoDia = {
@@ -701,6 +704,8 @@ export function AgendaCalendario({
   const [formError, setFormError] = useState<string | null>(null);
   /** Mensagens de validação / API ao salvar (modal sobre o formulário). */
   const [erroModal, setErroModal] = useState<string | null>(null);
+  const [carregandoModalEditarAgenda, setCarregandoModalEditarAgenda] = useState(false);
+  const carregarEditarAgendaAbortRef = useRef<AbortController | null>(null);
 
   const [procCatalogoAgenda, setProcCatalogoAgenda] = useState<ProcCatalogoAgendaItem[]>(
     [],
@@ -806,10 +811,9 @@ export function AgendaCalendario({
       nomePaciente: pacienteSelecionado.nome,
       nomeEmpresa,
       inicioLocal,
-      horaFimLocal,
     });
     return `${base}?text=${encodeURIComponent(texto)}`;
-  }, [pacienteSelecionado, nomeEmpresa, inicioLocal, horaFimLocal]);
+  }, [pacienteSelecionado, nomeEmpresa, inicioLocal]);
 
   const erroFimMenorQueInicio = useMemo(() => {
     if (!inicioLocal.trim() || !horaFimLocal.trim()) return false;
@@ -995,6 +999,9 @@ export function AgendaCalendario({
   }
 
   async function abrirNovo(preUsuarioId?: number) {
+    carregarEditarAgendaAbortRef.current?.abort();
+    carregarEditarAgendaAbortRef.current = null;
+    setCarregandoModalEditarAgenda(false);
     setEditingId(null);
     setFormError(null);
     setErroModal(null);
@@ -1055,13 +1062,20 @@ export function AgendaCalendario({
   }
 
   async function abrirEditar(ag: AgendamentoDia) {
+    carregarEditarAgendaAbortRef.current?.abort();
+    const ac = new AbortController();
+    carregarEditarAgendaAbortRef.current = ac;
+
     setFormError(null);
     setErroModal(null);
     setEditingId(ag.id);
-    setModalOpen(true);
+    setCarregandoModalEditarAgenda(true);
+
     try {
       await carregarListasAuxiliares();
-      const res = await fetch(`/api/agendamentos/${ag.id}`);
+      if (ac.signal.aborted) return;
+
+      const res = await fetch(`/api/agendamentos/${ag.id}`, { signal: ac.signal });
       const json = (await res.json()) as {
         error?: string;
         data?: {
@@ -1084,9 +1098,14 @@ export function AgendaCalendario({
           }[];
         };
       };
+      if (ac.signal.aborted) return;
       if (!res.ok) throw new Error(json.error ?? "Erro ao carregar agendamento.");
       const d = json.data;
-      if (!d) return;
+      if (!d) {
+        setErroModal("Resposta sem dados do agendamento.");
+        setEditingId(null);
+        return;
+      }
 
       setModalProcLinhas(
         (d.procedimentos ?? []).map((p) => ({
@@ -1117,8 +1136,21 @@ export function AgendaCalendario({
       setStatusAg(d.status);
       setDesconto(String(d.desconto));
       setObservacoes(d.observacoes ?? "");
+
+      if (!ac.signal.aborted) {
+        setModalOpen(true);
+      }
     } catch (e) {
-      setFormError(e instanceof Error ? e.message : "Erro.");
+      if (e instanceof DOMException && e.name === "AbortError") {
+        return;
+      }
+      setErroModal(e instanceof Error ? e.message : "Erro.");
+      setEditingId(null);
+    } finally {
+      setCarregandoModalEditarAgenda(false);
+      if (carregarEditarAgendaAbortRef.current === ac) {
+        carregarEditarAgendaAbortRef.current = null;
+      }
     }
   }
 
@@ -1621,6 +1653,98 @@ export function AgendaCalendario({
           </div>
         ) : (
           <div className="agenda-cal-scroll border-top">
+            {loading ? (
+              <div
+                className="agenda-cal-loading-skeleton placeholder-glow px-2 pt-2 pb-3"
+                role="status"
+                aria-live="polite"
+              >
+                <span className="visually-hidden">A carregar a agenda…</span>
+                {visualizacao === "mes" ? (
+                  <div className="p-2">
+                    <div className="d-flex gap-2 mb-3 flex-wrap align-items-center">
+                      <span className="placeholder rounded" style={{ width: 72, height: 32 }} />
+                      <span className="placeholder rounded" style={{ width: 180, height: 32 }} />
+                      <span className="placeholder rounded col-6 col-md-3" style={{ height: 32 }} />
+                    </div>
+                    <div
+                      className="border rounded overflow-hidden p-2 bg-light"
+                      style={{ minHeight: 320 }}
+                    >
+                      <div className="d-grid gap-1 mb-2" style={{ gridTemplateColumns: "repeat(7, 1fr)" }}>
+                        {Array.from({ length: 7 }).map((_, i) => (
+                          <span key={`sk-d-${i}`} className="placeholder rounded w-100" style={{ height: 20 }} />
+                        ))}
+                      </div>
+                      <div className="d-grid gap-1" style={{ gridTemplateColumns: "repeat(7, 1fr)" }}>
+                        {Array.from({ length: 21 }).map((_, i) => (
+                          <span key={`sk-c-${i}`} className="placeholder rounded w-100" style={{ height: 44 }} />
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                ) : (
+                  <>
+                    <div
+                      className="d-flex flex-nowrap align-items-center border-bottom pb-2 mb-0"
+                      style={{ background: "#f8fafc" }}
+                    >
+                      <span className="placeholder rounded flex-shrink-0" style={{ width: 72, height: 22 }} />
+                      {Array.from({ length: 4 }).map((_, i) => (
+                        <div
+                          key={`sk-h-${i}`}
+                          className="flex-fill px-1"
+                          style={{ minWidth: 120, maxWidth: 220 }}
+                        >
+                          <span className="placeholder w-100 rounded d-block" style={{ height: 20 }} />
+                        </div>
+                      ))}
+                    </div>
+                    <div
+                      className="d-flex flex-nowrap border rounded overflow-hidden bg-white"
+                      style={{ minHeight: alturaColunaPx }}
+                    >
+                      <div className="flex-shrink-0 border-right" style={{ width: 72 }}>
+                        {linhasVisiveis
+                          .filter((_, idx) => idx % 3 === 0)
+                          .map((linha) => (
+                            <div
+                              key={`sk-t-${linha.totalMinutos}`}
+                              className="d-flex align-items-center justify-content-center border-bottom"
+                              style={{ height: alturaLinhaPx * 3 }}
+                            >
+                              <span className="placeholder rounded" style={{ width: 40, height: 10 }} />
+                            </div>
+                          ))}
+                      </div>
+                      {Array.from({ length: 4 }).map((_, col) => (
+                        <div
+                          key={`sk-col-${col}`}
+                          className="flex-fill border-left position-relative"
+                          style={{
+                            minWidth: 136,
+                            height: alturaColunaPx,
+                            backgroundImage: `repeating-linear-gradient(to bottom, #fff 0, #fff ${alturaLinhaPx - 1}px, #e9ecef ${alturaLinhaPx}px)`,
+                          }}
+                        >
+                          <span
+                            className="placeholder position-absolute rounded"
+                            style={{
+                              left: "5%",
+                              width: "90%",
+                              top: `${10 + col * 9}%`,
+                              height: `${8 + (col % 2) * 3}%`,
+                              minHeight: 40,
+                            }}
+                          />
+                        </div>
+                      ))}
+                    </div>
+                  </>
+                )}
+              </div>
+            ) : (
+              <>
             {visualizacao === "dia" ? (
               <>
                 <div className="d-flex flex-nowrap border-bottom" style={{ background: "#f8fafc" }}>
@@ -1797,8 +1921,7 @@ export function AgendaCalendario({
                               className="agenda-appointment-menu-wrap"
                               onClick={(ev) => ev.stopPropagation()}
                             >
-                              {(!ocultarSecaoPagamentosAgenda || somenteMenuInicio) &&
-                              densidade !== "compact" ? (
+                              {(!ocultarSecaoPagamentosAgenda || somenteMenuInicio) ? (
                                 <button
                                   type="button"
                                   className="agenda-appointment-kebab"
@@ -1815,8 +1938,7 @@ export function AgendaCalendario({
                                 </button>
                               ) : null}
                               {menuCardAbertoId === a.id &&
-                              (!ocultarSecaoPagamentosAgenda || somenteMenuInicio) &&
-                              densidade !== "compact" ? (
+                              (!ocultarSecaoPagamentosAgenda || somenteMenuInicio) ? (
                                 <ul className="agenda-appointment-menu" role="menu">
                                   {!ocultarSecaoPagamentosAgenda ? (
                                     <>
@@ -2242,6 +2364,8 @@ export function AgendaCalendario({
                 ))}
               </div>
             ) : null}
+              </>
+            )}
           </div>
         )}
       </div>
@@ -2630,6 +2754,33 @@ export function AgendaCalendario({
                     {iniciandoAtendimentoPodologo ? "Salvando…" : "Iniciar atendimento"}
                   </button>
                 ) : null}
+              </div>
+            </div>
+          </div>
+        </ModalBackdrop>
+      ) : null}
+
+      {carregandoModalEditarAgenda ? (
+        <ModalBackdrop
+          zIndex={1060}
+          onBackdropClick={() => {
+            carregarEditarAgendaAbortRef.current?.abort();
+            setCarregandoModalEditarAgenda(false);
+            setEditingId(null);
+          }}
+        >
+          <div className="modal-dialog modal-dialog-centered modal-sm" role="document">
+            <div className="modal-content border-0 shadow-sm">
+              <div className="modal-body text-center py-5 px-4" role="status" aria-live="polite">
+                <span className="visually-hidden">A carregar o agendamento.</span>
+                <div
+                  className="spinner-border text-primary mb-3 mx-auto d-block"
+                  aria-hidden="true"
+                />
+                <p className="mb-1 small font-weight-bold text-dark">A carregar o agendamento…</p>
+                <p className="mb-0 text-muted small">
+                  O formulário abre assim que os dados estiverem prontos.
+                </p>
               </div>
             </div>
           </div>
