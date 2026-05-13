@@ -132,6 +132,11 @@
   background-color: rgba(37, 99, 235, 0.05);
 }
 
+/* Menu ⋮ aberto: coluna inteira à frente das vizinhas (cada coluna era z-index implícito igual). */
+.agenda-cal-column--menu-front {
+  z-index: 50;
+}
+
 .agenda-appointment {
   position: absolute;
   left: 4px;
@@ -158,7 +163,8 @@
 
 .agenda-appointment--menu-open {
   overflow: visible;
-  z-index: 8;
+  /* z-index efetivo vem do inline (sobrepõe 2+lane de estiloFaixasSobreposicaoCard). */
+  z-index: 80;
 }
 
 .agenda-appointment--full {
@@ -377,6 +383,23 @@
   font-size: 0.8rem;
 }
 
+/* Vista dia: reserva à direita para o ⋮ não cobrir nome / tag de sala (menu-wrap é absolute). */
+.agenda-appointment--com-menu-card.agenda-appointment--full {
+  padding-right: 30px;
+}
+
+.agenda-appointment--com-menu-card.agenda-appointment--medium {
+  padding-right: 28px;
+}
+
+.agenda-appointment--com-menu-card.agenda-appointment--compact {
+  padding-right: 24px;
+}
+
+.agenda-appointment--com-menu-card.agenda-appointment--micro.agenda-appointment--compact {
+  padding-right: 22px;
+}
+
 .agenda-appointment-kebab:hover,
 .agenda-appointment-kebab:focus {
   background: #fff;
@@ -395,7 +418,7 @@
   border: 1px solid var(--agenda-border);
   border-radius: 8px;
   box-shadow: 0 4px 12px rgb(0 0 0 / 0.12);
-  z-index: 6;
+  z-index: 90;
 }
 
 .agenda-appointment-menu .dropdown-item {

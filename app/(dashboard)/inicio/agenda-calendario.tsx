@@ -752,6 +752,13 @@ export function AgendaCalendario({
     return () => window.removeEventListener("click", fechar, true);
   }, [menuCardAbertoId]);
 
+  /** Coluna (profissional) do card cujo menu ⋮ está aberto — sobe o z-index da coluna inteira. */
+  const idUsuarioColunaMenuAberto = useMemo(() => {
+    if (menuCardAbertoId == null) return null;
+    const ag = agendamentos.find((x) => x.id === menuCardAbertoId);
+    return ag?.id_usuario ?? null;
+  }, [menuCardAbertoId, agendamentos]);
+
   const linhasVisiveis = useMemo(() => {
     const linhas: { totalMinutos: number; label: string }[] = [];
     const totalMinutos = (HORA_FIM - HORA_INICIO) * 60;
@@ -1781,6 +1788,8 @@ export function AgendaCalendario({
                   key={u.id}
                   className={`position-relative border-left agenda-cal-column ${
                     colunaDropHoverId === u.id ? "agenda-cal-column--drop-hover" : ""
+                  } ${
+                    idUsuarioColunaMenuAberto === u.id ? "agenda-cal-column--menu-front" : ""
                   }`}
                   style={{
                     flex: "1 1 0%",
@@ -1827,7 +1836,7 @@ export function AgendaCalendario({
                       width: "auto",
                       height: "100%",
                       pointerEvents: "none",
-                      zIndex: 2,
+                      zIndex: idUsuarioColunaMenuAberto === u.id ? 6 : 2,
                     }}
                   >
                     {(() => {
@@ -1871,12 +1880,19 @@ export function AgendaCalendario({
                               menuCardAbertoId === a.id ? "agenda-appointment--menu-open" : ""
                             } ${faixasEstreitas ? "agenda-appointment--lane-split" : ""} ${
                               cardMicro ? "agenda-appointment--micro" : ""
-                            } ${slotCurto ? "agenda-appointment--duracao-curta" : ""} text-left ${classeStatus(a.status)}`}
+                            } ${slotCurto ? "agenda-appointment--duracao-curta" : ""} ${
+                              !ocultarSecaoPagamentosAgenda || somenteMenuInicio
+                                ? "agenda-appointment--com-menu-card"
+                                : ""
+                            } text-left ${classeStatus(a.status)}`}
                             style={{
                               top: st.top,
                               height: st.height,
                               pointerEvents: "auto",
                               ...estiloFaixasSobreposicaoCard(layFaixa, "dia"),
+                              ...(menuCardAbertoId === a.id
+                                ? { zIndex: 80 }
+                                : {}),
                               ["--card-destaque" as string]: corCardUsuario[a.id_usuario] ?? undefined,
                             }}
                             onDragStart={(ev) => {
