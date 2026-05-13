@@ -26,6 +26,74 @@ import {
   type PendenciaImport,
 } from "@/lib/agenda/importacao-planilha-parse";
 
+function fmtMoedaImportacaoMsg(n: number): string {
+  return new Intl.NumberFormat("pt-BR", {
+    style: "currency",
+    currency: "BRL",
+  }).format(n);
+}
+
+function textoCelulaPlanilhaResumo(v: unknown, maxLen: number): string {
+  const s = String(v ?? "")
+    .replace(/\s+/g, " ")
+    .trim();
+  if (!s) return "(vazio)";
+  return s.length <= maxLen ? s : `${s.slice(0, maxLen)}…`;
+}
+
+/** Explica bruto × total quando a coluna Valor Total da planilha supera o bruto calculado. */
+function mensagemValorTotalMaiorQueBrutoImportacao(params: {
+  valorBruto: number;
+  valorTotal: number;
+  qtdProcedimentos: number;
+  listaValores: number[] | null;
+  valoresPorProc: number[];
+  celulaValor: unknown;
+  celulaValorTotal: unknown;
+}): string {
+  const {
+    valorBruto,
+    valorTotal,
+    qtdProcedimentos,
+    listaValores,
+    valoresPorProc,
+    celulaValor,
+    celulaValorTotal,
+  } = params;
+  const diff = Math.round((valorTotal - valorBruto) * 100) / 100;
+
+  let regra: string;
+  if (listaValores == null) {
+    regra = "a coluna Valor não pôde ser interpretada por completo.";
+  } else if (qtdProcedimentos === 1 && listaValores.length > 1) {
+    regra = `há 1 procedimento e ${listaValores.length} valor(es) na coluna Valor: o sistema soma todos para formar o bruto.`;
+  } else if (listaValores.length === 1) {
+    regra = `há 1 valor na coluna Valor e ${qtdProcedimentos} procedimento(s): o sistema divide esse valor igualmente entre eles.`;
+  } else {
+    regra = `há ${listaValores.length} valor(es) na coluna Valor e ${qtdProcedimentos} procedimento(s): o sistema emparelha na ordem (1º valor com 1º procedimento, e assim por diante; falta vira 0).`;
+  }
+
+  const trechos =
+    listaValores != null && listaValores.length > 0
+      ? ` Valores numéricos lidos em Valor: ${listaValores.map((x) => fmtMoedaImportacaoMsg(x)).join(", ")}.`
+      : "";
+
+  const porProc =
+    valoresPorProc.length > 0
+      ? ` Valor por procedimento (soma = bruto): ${valoresPorProc
+          .map((v, idx) => `${idx + 1}º ${fmtMoedaImportacaoMsg(v)}`)
+          .join(", ")}.`
+      : "";
+
+  return (
+    `O valor total da planilha (${fmtMoedaImportacaoMsg(valorTotal)}) não pode ser maior que o valor bruto calculado (${fmtMoedaImportacaoMsg(valorBruto)}); ` +
+    `o total excede o bruto em ${fmtMoedaImportacaoMsg(diff)}. ` +
+    `Como o bruto foi obtido: ${regra}${trechos}${porProc} ` +
+    `Trecho da célula Valor: «${textoCelulaPlanilhaResumo(celulaValor, 100)}». ` +
+    `Trecho da célula Valor Total: «${textoCelulaPlanilhaResumo(celulaValorTotal, 100)}».`
+  );
+}
+
 export type LinhaPlanilhaBruta = {
   numeroLinha: number;
   status: unknown;
@@ -65,6 +133,49 @@ export type ProcedimentoResolvido = {
   id_procedimento: number | null;
   valor_aplicado: number;
 };
+
+/**
+ * Mesmo procedimento repetido na linha da planilha: unifica em um único item,
+ * somando os valores aplicados (evita erro de duplicata no insert e mantém o total da linha).
+ */
+function dedupeProcedimentosImportacaoExecutar(
+  itens: { id_procedimento: number; valor_aplicado: number }[],
+): { id_procedimento: number; valor_aplicado: number }[] {
+  const map = new Map<number, { id_procedimento: number; valor_aplicado: number }>();
+  for (const p of itens) {
+    const id = p.id_procedimento;
+    const ex = map.get(id);
+    if (!ex) {
+      map.set(id, {
+        id_procedimento: id,
+        valor_aplicado: Math.round(p.valor_aplicado * 100) / 100,
+      });
+    } else {
+      ex.valor_aplicado = Math.round((ex.valor_aplicado + p.valor_aplicado) * 100) / 100;
+    }
+  }
+  return [...map.values()];
+}
+
+/** Igual ao de cima, para a pré-visualização (mantém o primeiro nome da planilha por id). */
+function dedupeProcedimentosPreviewResolvido(rows: ProcedimentoResolvido[]): ProcedimentoResolvido[] {
+  const map = new Map<number, ProcedimentoResolvido>();
+  const semId: ProcedimentoResolvido[] = [];
+  for (const p of rows) {
+    if (p.id_procedimento != null && p.id_procedimento > 0) {
+      const id = p.id_procedimento;
+      const ex = map.get(id);
+      if (!ex) {
+        map.set(id, { ...p });
+      } else {
+        ex.valor_aplicado = Math.round((ex.valor_aplicado + p.valor_aplicado) * 100) / 100;
+      }
+    } else {
+      semId.push(p);
+    }
+  }
+  return [...map.values(), ...semId];
+}
 
 export type LinhaPreviewImport = {
   numeroLinha: number;
@@ -605,6 +716,8 @@ export function montarPreviewLinha(
     }
   });
 
+  const procedimentosFinal = dedupeProcedimentosPreviewResolvido(procedimentos);
+
   const valor_bruto =
     listaValores == null
       ? null
@@ -634,7 +747,15 @@ export function montarPreviewLinha(
     pendencias.push({
       campo: "valor_total",
       textoPlanilha: String(linha.valorTotal ?? ""),
-      mensagem: "Valor total não pode ser maior que o valor (bruto).",
+      mensagem: mensagemValorTotalMaiorQueBrutoImportacao({
+        valorBruto: valor_bruto,
+        valorTotal: valor_total,
+        qtdProcedimentos: nomesProc.length,
+        listaValores,
+        valoresPorProc,
+        celulaValor: linha.valor,
+        celulaValorTotal: linha.valorTotal,
+      }),
     });
   }
 
@@ -651,8 +772,8 @@ export function montarPreviewLinha(
     id_paciente != null &&
     id_usuario != null &&
     id_sala != null &&
-    procedimentos.length > 0 &&
-    procedimentos.every((p) => p.id_procedimento != null) &&
+    procedimentosFinal.length > 0 &&
+    procedimentosFinal.every((p) => p.id_procedimento != null) &&
     valor_bruto != null &&
     valor_total != null;
 
@@ -666,7 +787,7 @@ export function montarPreviewLinha(
     id_paciente,
     id_usuario,
     id_sala,
-    procedimentos,
+    procedimentos: procedimentosFinal,
     observacoes: obs,
     valor_bruto,
     valor_total,
@@ -756,9 +877,6 @@ async function validarLinhaExecutarImportacao(
   }
 
   const procIds = [...new Set(linha.procedimentos.map((p) => p.id_procedimento))];
-  if (procIds.length !== linha.procedimentos.length) {
-    return "Procedimento duplicado na linha.";
-  }
   if (procIds.length > 0) {
     const { data: procRows, error: procErr } = await supabase
       .from("procedimentos")
@@ -836,8 +954,13 @@ export async function executarImportacaoAgendamentos(
   );
   const { ids: grupoIds } = await resolveGruposCalendario(supabase, empresaId);
 
-  const errosPorIndice: (string | null)[] = new Array(linhas.length).fill(null);
-  for (let i = 0; i < linhas.length; i++) {
+  const linhasNormalizadas = linhas.map((l) => ({
+    ...l,
+    procedimentos: dedupeProcedimentosImportacaoExecutar(l.procedimentos),
+  }));
+
+  const errosPorIndice: (string | null)[] = new Array(linhasNormalizadas.length).fill(null);
+  for (let i = 0; i < linhasNormalizadas.length; i++) {
     errosPorIndice[i] = await validarLinhaExecutarImportacao(
       supabase,
       empresaId,
@@ -846,7 +969,7 @@ export async function executarImportacaoAgendamentos(
       podeVerTodos,
       somentePropriaColuna,
       podeAgendarRetroativo,
-      linhas[i],
+      linhasNormalizadas[i],
     );
   }
 
@@ -854,7 +977,7 @@ export async function executarImportacaoAgendamentos(
   if (temErro) {
     return {
       salvou: false,
-      resultados: linhas.map((l, i) =>
+      resultados: linhasNormalizadas.map((l, i) =>
         errosPorIndice[i]
           ? { numeroLinha: l.numeroLinha, ok: false, error: errosPorIndice[i]! }
           : { numeroLinha: l.numeroLinha, ok: false, error: MSG_NAO_SALVO_POR_ERRO_EM_OUTRA },
@@ -867,8 +990,8 @@ export async function executarImportacaoAgendamentos(
   let falhaInsertIdx: number | null = null;
   let falhaInsertMsg: string | null = null;
 
-  for (let i = 0; i < linhas.length; i++) {
-    const linha = linhas[i];
+  for (let i = 0; i < linhasNormalizadas.length; i++) {
+    const linha = linhasNormalizadas[i];
     const vb = Math.round(linha.valor_bruto * 100) / 100;
     const vt = Math.round(linha.valor_total * 100) / 100;
     const desconto = descontoPctEntreValores(vb, vt);
@@ -924,7 +1047,7 @@ export async function executarImportacaoAgendamentos(
     }
     return {
       salvou: false,
-      resultados: linhas.map((l, i) => {
+      resultados: linhasNormalizadas.map((l, i) => {
         if (i < falhaInsertIdx!) {
           return { numeroLinha: l.numeroLinha, ok: false, error: MSG_NAO_SALVO_ROLLBACK };
         }

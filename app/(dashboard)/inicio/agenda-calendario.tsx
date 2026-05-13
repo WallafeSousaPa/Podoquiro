@@ -484,9 +484,6 @@ export function AgendaCalendario({
   const [salvandoStatusMenuAgId, setSalvandoStatusMenuAgId] = useState<number | null>(
     null,
   );
-  const [finalizarAposProntuarioId, setFinalizarAposProntuarioId] = useState<
-    number | null
-  >(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
 
@@ -1006,7 +1003,6 @@ export function AgendaCalendario({
   function abrirProntuarioFinalizarDesdeMenu(ag: AgendamentoDia) {
     if (ag.status !== "em_andamento") return;
     setMenuCardAbertoId(null);
-    setFinalizarAposProntuarioId(ag.id);
     setModalAtendimentoPodologo(ag);
   }
 
@@ -2282,42 +2278,9 @@ export function AgendaCalendario({
           ag={modalAtendimentoPodologo}
           onClose={() => {
             setModalAtendimentoPodologo(null);
-            setFinalizarAposProntuarioId(null);
           }}
           onSalvo={() => {
-            const alvo = modalAtendimentoPodologo;
             setModalAtendimentoPodologo(null);
-            if (alvo && finalizarAposProntuarioId === alvo.id) {
-              setFinalizarAposProntuarioId(null);
-              void (async () => {
-                try {
-                  const res = await fetch(`/api/agendamentos/${alvo.id}`, {
-                    method: "PATCH",
-                    headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({ status: "realizado" }),
-                  });
-                  const j = (await res.json()) as RespostaErroApiAgendamento;
-                  if (!res.ok) {
-                    logRespostaErroApiAgendamento(
-                      "PATCH finalizar após prontuário (agenda)",
-                      res,
-                      j,
-                      { status: "realizado" },
-                    );
-                    setErroModal(j.error ?? "Erro ao finalizar atendimento.");
-                    return;
-                  }
-                  router.refresh();
-                  void loadAgenda();
-                } catch (e) {
-                  setErroModal(
-                    e instanceof Error ? e.message : "Erro ao finalizar atendimento.",
-                  );
-                }
-              })();
-              return;
-            }
-            setFinalizarAposProntuarioId(null);
             router.refresh();
             void loadAgenda();
           }}
@@ -2328,7 +2291,6 @@ export function AgendaCalendario({
           onBackdropClick={() => {
             if (!iniciandoAtendimentoPodologo) {
               setModalAtendimentoPodologo(null);
-              setFinalizarAposProntuarioId(null);
             }
           }}
         >
@@ -2344,9 +2306,7 @@ export function AgendaCalendario({
                   disabled={iniciandoAtendimentoPodologo}
                   onClick={() => {
                     setModalAtendimentoPodologo(null);
-                    setFinalizarAposProntuarioId(null);
                   }}
-                  aria-label="Fechar"
                 >
                   <span aria-hidden="true">&times;</span>
                 </button>
@@ -2384,7 +2344,6 @@ export function AgendaCalendario({
                   disabled={iniciandoAtendimentoPodologo}
                   onClick={() => {
                     setModalAtendimentoPodologo(null);
-                    setFinalizarAposProntuarioId(null);
                   }}
                 >
                   Fechar

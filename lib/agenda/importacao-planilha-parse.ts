@@ -158,6 +158,51 @@ export function parseDecimalPlanilha(raw: unknown): number | null {
   return Math.round(n * 100) / 100;
 }
 
+/** Remove caracteres invisíveis e normaliza espaços na célula de valor (Excel às vezes insere ZWSP/NBSP). */
+function normalizarTextoCelulaValorImport(s: string): string {
+  return s
+    .replace(/[\u200B-\u200D\uFEFF]/g, "")
+    .replace(/\u00A0/g, " ")
+    .replace(/\u202F/g, " ")
+    .trim()
+    .replace(/\s+/g, " ");
+}
+
+/**
+ * Extrai trechos monetários em ordem: `R$20 R$20 R$201`, `20 30 R$40`, `R$ 1.234,56`.
+ * Retorna `null` se houver texto não reconhecido após os valores (fallback para split legado).
+ */
+function extrairTrechosValoresMonetariosPlanilha(s: string): string[] | null {
+  const t = normalizarTextoCelulaValorImport(s);
+  if (!t) return [];
+  const trechos: string[] = [];
+  let i = 0;
+  while (i < t.length) {
+    while (i < t.length && t[i] === " ") i++;
+    if (i >= t.length) break;
+
+    const start = i;
+    let digitStart: number;
+
+    if (t.slice(i, i + 2).toLowerCase() === "r$") {
+      digitStart = i + 2;
+      while (digitStart < t.length && t[digitStart] === " ") digitStart++;
+      if (digitStart >= t.length || t[digitStart] < "0" || t[digitStart] > "9") return null;
+    } else if (t[i] >= "0" && t[i] <= "9") {
+      digitStart = i;
+    } else {
+      return null;
+    }
+
+    let j = digitStart;
+    while (j < t.length && /[0-9.,]/.test(t[j])) j++;
+    if (j === digitStart) return null;
+    trechos.push(t.slice(start, j));
+    i = j;
+  }
+  return trechos;
+}
+
 /**
  * Junta tokens após split por espaço: "R$" + "120,00" → "R$ 120,00".
  * Aceita também "R$120,00" como token único.
@@ -192,20 +237,34 @@ export function parseListaValoresMonetariosPlanilha(raw: unknown): number[] | nu
   if (typeof raw === "number" && Number.isFinite(raw)) {
     return raw >= 0 ? [Math.round(raw * 100) / 100] : null;
   }
-  const tokens = String(raw)
-    .trim()
+
+  const texto = normalizarTextoCelulaValorImport(String(raw));
+  if (!texto) return [0];
+
+  const trechosScanner = extrairTrechosValoresMonetariosPlanilha(texto);
+  if (trechosScanner != null && trechosScanner.length > 0) {
+    const valores: number[] = [];
+    for (const frag of trechosScanner) {
+      const n = parseDecimalPlanilha(frag);
+      if (n == null) return null;
+      valores.push(n);
+    }
+    return valores;
+  }
+
+  const tokens = texto
     .split(/\s+/)
-    .map((x) => x.replace(/\u00A0/g, " ").trim())
+    .map((x) => x.trim())
     .filter((x) => x !== "");
   if (tokens.length === 0) return [0];
   const merged = mergeValorTokensPlanilha(tokens);
-  const valores: number[] = [];
+  const valoresLegacy: number[] = [];
   for (const m of merged) {
     const n = parseDecimalPlanilha(m);
     if (n == null) return null;
-    valores.push(n);
+    valoresLegacy.push(n);
   }
-  return valores;
+  return valoresLegacy;
 }
 
 /**

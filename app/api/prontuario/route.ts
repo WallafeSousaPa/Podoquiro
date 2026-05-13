@@ -43,6 +43,21 @@ function parseJsonArrayString(raw: string): string[] {
 }
 
 export async function POST(request: Request) {
+  try {
+    return await postProntuarioSalvar(request);
+  } catch (e) {
+    console.error("[POST /api/prontuario] erro não tratado", e);
+    return NextResponse.json(
+      {
+        error:
+          "Falha ao salvar o prontuário. Se você anexou fotos, tente sem imagens ou use JPEG/PNG.",
+      },
+      { status: 500 },
+    );
+  }
+}
+
+async function postProntuarioSalvar(request: Request) {
   const session = await getSession();
   if (!session) {
     return NextResponse.json({ error: "Não autorizado." }, { status: 401 });
@@ -70,7 +85,10 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Agendamento inválido." }, { status: 400 });
   }
 
-  const evolucao = String(formData.get("evolucao") ?? "").trim();
+  const evolucao = String(formData.get("evolucao") ?? "")
+    .replace(/\0/g, "")
+    .replace(/\uFEFF/g, "")
+    .trim();
   if (evolucao.length < 3) {
     return NextResponse.json(
       { error: "Informe a evolução (mínimo 3 caracteres)." },

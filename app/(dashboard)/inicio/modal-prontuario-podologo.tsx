@@ -266,14 +266,18 @@ export function ModalProntuarioPodologo({ ag, onClose, onSalvo }: Props) {
         setErro("Selecione ao menos um procedimento realizado.");
         return;
       }
-      if (evolucao.trim().length < 3) {
+      const evolucaoLimpa = evolucao
+        .trim()
+        .replace(/\0/g, "")
+        .replace(/\uFEFF/g, "");
+      if (evolucaoLimpa.length < 3) {
         setErro("Informe a evolução (mínimo 3 caracteres).");
         return;
       }
 
       const fd = new FormData();
       fd.append("id_agendamento", String(ag.id));
-      fd.append("evolucao", evolucao.trim());
+      fd.append("evolucao", evolucaoLimpa);
       fd.append(
         "procedimentos_ids",
         JSON.stringify([...selecionados]),
@@ -290,7 +294,22 @@ export function ModalProntuarioPodologo({ ag, onClose, onSalvo }: Props) {
         method: "POST",
         body: fd,
       });
-      const j = (await res.json()) as { error?: string };
+      const raw = await res.text();
+      let j: { error?: string; ok?: boolean } = {};
+      try {
+        j = raw ? (JSON.parse(raw) as { error?: string; ok?: boolean }) : {};
+      } catch {
+        if (!res.ok) {
+          setErro(
+            res.status >= 500
+              ? "O servidor retornou um erro ao salvar. Tente de novo em instantes ou sem anexar fotos."
+              : "Não foi possível ler a resposta do servidor. Verifique sua conexão e tente novamente.",
+          );
+          return;
+        }
+        setErro("Resposta do servidor em formato inesperado. Atualize a página e tente de novo.");
+        return;
+      }
       if (!res.ok) throw new Error(j.error ?? "Erro ao salvar.");
       onSalvo();
     } catch (err) {
