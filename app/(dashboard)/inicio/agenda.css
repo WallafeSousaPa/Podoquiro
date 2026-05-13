@@ -175,8 +175,77 @@
 }
 
 .agenda-appointment--compact {
-  padding: 3px 6px;
-  min-height: 30px;
+  padding: 2px 5px;
+}
+
+.agenda-appointment--micro.agenda-appointment--compact {
+  padding: 1px 4px;
+  line-height: 1.15;
+}
+
+.agenda-appointment--micro.agenda-appointment--compact .agenda-appointment-time {
+  font-size: 9px;
+  line-height: 1.1;
+  margin-bottom: 0;
+}
+
+.agenda-appointment--micro.agenda-appointment--compact .agenda-appointment-room-tag {
+  font-size: 8px;
+  padding: 0 4px;
+  line-height: 1.2;
+}
+
+.agenda-appointment--lane-split .agenda-appointment-name {
+  white-space: normal;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  word-break: break-word;
+}
+
+.agenda-appointment--lane-split .agenda-appointment-room-tag {
+  white-space: normal;
+  word-break: break-word;
+  line-height: 1.15;
+}
+
+/** Até ~45 min na grade: menos linhas (hora + sala na mesma faixa), nome um pouco menor. */
+.agenda-appointment--duracao-curta .agenda-appointment-name,
+.agenda-appointment--duracao-curta strong.agenda-appointment-name {
+  font-size: 10px;
+  line-height: 1.15;
+  margin-bottom: 1px;
+}
+
+.agenda-appointment-meta--inline {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 6px;
+  min-width: 0;
+  margin-top: 1px;
+}
+
+.agenda-appointment-meta--inline .agenda-appointment-time {
+  font-size: 10px;
+  color: #64748b;
+  font-weight: 500;
+  margin-bottom: 0;
+  flex: 1 1 6rem;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.agenda-appointment-meta--inline .agenda-appointment-room-tag {
+  flex: 0 1 auto;
+  max-width: 100%;
+  font-size: 8px;
+  padding: 1px 5px;
+  line-height: 1.2;
+  letter-spacing: 0.2px;
 }
 
 .agenda-appointment--compact .agenda-appointment-time {
@@ -204,6 +273,12 @@
 .agenda-appointment:hover {
   transform: translateY(-2px);
   box-shadow: 0 5px 10px rgb(0 0 0 / 0.1);
+  filter: brightness(0.98);
+}
+
+.agenda-appointment--compact:hover {
+  transform: none;
+  box-shadow: 0 3px 8px rgb(0 0 0 / 0.1);
   filter: brightness(0.98);
 }
 

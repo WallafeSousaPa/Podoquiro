@@ -2,6 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import {
+  type CSSProperties,
   type DragEvent,
   type FormEvent,
   type ReactNode,
@@ -34,8 +35,15 @@ import { normalizeCpfDigits } from "@/lib/pacientes";
 
 const HORA_INICIO = 8;
 const HORA_FIM = 20;
-const ALTURA_HORA_PX = 42;
+/** Altura de cada “hora” na grelha — define quantos px tem cada slot de 30 min (cards curtos). */
+const ALTURA_HORA_PX = 72;
 const MINUTOS_POR_LINHA = 30;
+/**
+ * Piso visual quando há espaço até ao próximo evento. Com vários blocos de 30 min seguidos,
+ * a altura fica limitada a uma linha da grelha — aí o que importa é `ALTURA_HORA_PX` e o layout
+ * `agenda-appointment--duracao-curta`, não aumentar só este número.
+ */
+const MIN_ALTURA_VISUAL_CARD_MINUTOS = 45;
 
 /** Instantâneo atual para validações (fora do componente — evita react-hooks/purity em handlers). */
 function msRelogioAgora(): number {
@@ -339,18 +347,199 @@ function fimAPartirDeInicioEHora(inicioLocal: string, horaFimHHmm: string): Date
 }
 
 function estiloEvento(inicioIso: string, fimIso: string): { top: string; height: string } {
+  const { sm, em } = minutosGradeAgendamentoVisivel(inicioIso, fimIso);
+  const span = HORA_FIM * 60 - HORA_INICIO * 60;
+  const top = (sm / span) * 100;
+  /** Proporção real na grade (sem teto — ver `estilosEventoColunaComAlturaMin` no calendário). */
+  const h = ((em - sm) / span) * 100;
+  return { top: `${top}%`, height: `${h}%` };
+}
+
+/**
+ * Altura visual com piso em `MIN_ALTURA_VISUAL_CARD_MINUTOS`, sem ultrapassar o topo do próximo
+ * agendamento na coluna.
+ */
+function estilosEventoColunaComAlturaMin(
+  ags: AgendamentoDia[],
+): Map<number, { top: string; height: string }> {
+  const span = HORA_FIM * 60 - HORA_INICIO * 60;
+  const minVis = Math.min(MIN_ALTURA_VISUAL_CARD_MINUTOS, span);
+  const minHPct = (minVis / span) * 100;
+  if (ags.length === 0) return new Map();
+
+  const items = ags.map((a) => {
+    const { sm, em } = minutosGradeAgendamentoVisivel(a.data_hora_inicio, a.data_hora_fim);
+    return {
+      id: a.id,
+      sm,
+      em,
+      topPct: (sm / span) * 100,
+      rawHPct: ((em - sm) / span) * 100,
+    };
+  });
+
+  items.sort((x, y) => x.sm - y.sm || y.em - x.em || x.id - y.id);
+
+  const out = new Map<number, { top: string; height: string }>();
+  for (const it of items) {
+    let nextStartSm: number | null = null;
+    for (const o of items) {
+      if (o.id === it.id) continue;
+      if (o.sm >= it.em - 1e-9) {
+        if (nextStartSm === null || o.sm < nextStartSm) nextStartSm = o.sm;
+      }
+    }
+    const nextTopPct = nextStartSm !== null ? (nextStartSm / span) * 100 : 100;
+    const hCap = Math.max(0, nextTopPct - it.topPct);
+    const h = Math.max(it.rawHPct, Math.min(Math.max(it.rawHPct, minHPct), hCap));
+    out.set(it.id, { top: `${it.topPct}%`, height: `${h}%` });
+  }
+  return out;
+}
+
+/**
+ * Mesma janela [HORA_INICIO, HORA_FIM] e mínimo de 15 min que `estiloEvento` — obrigatório para
+ * faixas: o layout horizontal tem de seguir o que o utilizador vê na coluna (evita “não sobrepõe”
+ * em ISO mas sobrepõe após clamp, ou o inverso).
+ */
+function minutosGradeAgendamentoVisivel(
+  inicioIso: string,
+  fimIso: string,
+): { sm: number; em: number } {
   const a = new Date(inicioIso);
   const b = new Date(fimIso);
   const base = HORA_INICIO * 60;
   const span = HORA_FIM * 60 - base;
   let sm = minutosDoDia(a) - base;
   let em = minutosDoDia(b) - base;
-  sm = Math.max(0, Math.min(span, sm));
-  em = Math.max(0, Math.min(span, em));
+  if (!Number.isFinite(sm) || !Number.isFinite(em)) {
+    sm = 0;
+    em = 15;
+  } else {
+    sm = Math.max(0, Math.min(span, sm));
+    em = Math.max(0, Math.min(span, em));
+  }
   if (em <= sm) em = sm + 15;
-  const top = (sm / span) * 100;
-  const h = Math.max(16.8, ((em - sm) / span) * 100);
-  return { top: `${top}%`, height: `${h}%` };
+  return { sm, em };
+}
+
+function duracaoMinutosNaGradeVisivel(a: AgendamentoDia): number {
+  const { sm, em } = minutosGradeAgendamentoVisivel(a.data_hora_inicio, a.data_hora_fim);
+  return Math.max(0, em - sm);
+}
+
+function segmentosGradeAgendaSobrepostos(
+  u: { sm: number; em: number },
+  v: { sm: number; em: number },
+): boolean {
+  return !(u.em <= v.sm || v.em <= u.sm);
+}
+
+/** Greedy por grupo: só eventos que se encadeiam por sobreposição na grade visível. */
+function layoutFaixasGreedyGrupo(
+  grupo: AgendamentoDia[],
+  gradePorId: Map<number, { sm: number; em: number }>,
+): Map<number, { lane: number; lanesTotal: number }> {
+  const sorted = [...grupo].sort(
+    (a, b) => gradePorId.get(a.id)!.sm - gradePorId.get(b.id)!.sm,
+  );
+  const fimUltimoPorFaixa: number[] = [];
+  const lanePorId = new Map<number, number>();
+  for (const a of sorted) {
+    const { sm, em } = gradePorId.get(a.id)!;
+    let lane = fimUltimoPorFaixa.findIndex((fim) => fim <= sm);
+    if (lane === -1) {
+      lane = fimUltimoPorFaixa.length;
+      fimUltimoPorFaixa.push(em);
+    } else {
+      fimUltimoPorFaixa[lane] = em;
+    }
+    lanePorId.set(a.id, lane);
+  }
+  const lanesTotal = Math.max(1, fimUltimoPorFaixa.length);
+  const out = new Map<number, { lane: number; lanesTotal: number }>();
+  for (const a of grupo) {
+    out.set(a.id, {
+      lane: lanePorId.get(a.id) ?? 0,
+      lanesTotal,
+    });
+  }
+  return out;
+}
+
+/** Divide horizontalmente cards que se sobrepõem no tempo (mesma coluna / mesmo dia). */
+function layoutSobrepostosColunaAgenda(
+  ags: AgendamentoDia[],
+): Map<number, { lane: number; lanesTotal: number }> {
+  if (ags.length === 0) return new Map();
+  const gradePorId = new Map<number, { sm: number; em: number }>();
+  for (const a of ags) {
+    gradePorId.set(a.id, minutosGradeAgendamentoVisivel(a.data_hora_inicio, a.data_hora_fim));
+  }
+
+  const n = ags.length;
+  const parent = Array.from({ length: n }, (_, i) => i);
+  function find(i: number): number {
+    if (parent[i] !== i) parent[i] = find(parent[i]!);
+    return parent[i]!;
+  }
+  function union(i: number, j: number): void {
+    const ri = find(i);
+    const rj = find(j);
+    if (ri !== rj) parent[ri] = rj;
+  }
+  for (let i = 0; i < n; i++) {
+    const gI = gradePorId.get(ags[i]!.id)!;
+    for (let j = i + 1; j < n; j++) {
+      if (segmentosGradeAgendaSobrepostos(gI, gradePorId.get(ags[j]!.id)!)) {
+        union(i, j);
+      }
+    }
+  }
+
+  const grupos = new Map<number, AgendamentoDia[]>();
+  for (let i = 0; i < n; i++) {
+    const r = find(i);
+    if (!grupos.has(r)) grupos.set(r, []);
+    grupos.get(r)!.push(ags[i]!);
+  }
+
+  const out = new Map<number, { lane: number; lanesTotal: number }>();
+  for (const g of grupos.values()) {
+    for (const [id, lay] of layoutFaixasGreedyGrupo(g, gradePorId)) {
+      out.set(id, lay);
+    }
+  }
+  return out;
+}
+
+/**
+ * Largura/posição horizontal quando há sobreposição (equivalente a um `display:flex; gap; flex:1`
+ * no eixo horizontal). Reserva margem esquerda/direita e um gap entre cada faixa, para não
+ * depender só de `100% - um gap` (que infla a largura de cada card e empurra faixas umas sobre as outras).
+ */
+function estiloFaixasSobreposicaoCard(
+  lay: { lane: number; lanesTotal: number },
+  modo: "dia" | "semana",
+): CSSProperties {
+  const { lane, lanesTotal: n } = lay;
+  if (n <= 1) {
+    return modo === "semana" ? { left: 2, right: 4 } : {};
+  }
+  const gapPx = modo === "dia" ? 4 : 3;
+  const insetLeftPx = modo === "dia" ? 3 : 2;
+  const insetRightPx = modo === "dia" ? 6 : 3;
+  const totalGapsPx = (n - 1) * gapPx;
+  const fixedPx = insetLeftPx + insetRightPx + totalGapsPx;
+  const slot = `((100% - ${fixedPx}px) / ${n})`;
+  return {
+    left: `calc(${insetLeftPx}px + ${lane} * (${slot} + ${gapPx}px))`,
+    width: `calc(${slot})`,
+    right: "auto",
+    boxSizing: "border-box",
+    minWidth: 0,
+    zIndex: 2 + lane,
+  };
 }
 
 type DensidadeCardAgenda = "compact" | "medium" | "full";
@@ -1444,8 +1633,8 @@ export function AgendaCalendario({
               {usuarios.map((u) => (
                 <div
                   key={u.id}
-                  className="flex-fill text-center py-2 font-weight-bold small border-left"
-                  style={{ minWidth: 120 }}
+                  className="text-center py-2 font-weight-bold small border-left"
+                  style={{ flex: "1 1 0%", minWidth: 176 }}
                 >
                   {u.nome}
                 </div>
@@ -1466,11 +1655,12 @@ export function AgendaCalendario({
               {usuarios.map((u) => (
                 <div
                   key={u.id}
-                  className={`flex-fill position-relative border-left agenda-cal-column ${
+                  className={`position-relative border-left agenda-cal-column ${
                     colunaDropHoverId === u.id ? "agenda-cal-column--drop-hover" : ""
                   }`}
                   style={{
-                    minWidth: 120,
+                    flex: "1 1 0%",
+                    minWidth: 176,
                     height: alturaColunaPx,
                     backgroundImage: `repeating-linear-gradient(to bottom, #fff 0, #fff ${alturaLinhaPx - 1}px, #e2e8f0 ${alturaLinhaPx}px)`,
                   }}
@@ -1505,24 +1695,43 @@ export function AgendaCalendario({
                     </button>
                   ) : null}
                   <div
-                    className="position-absolute w-100"
+                    className="position-absolute"
                     style={{
                       top: 0,
                       left: 0,
+                      right: 0,
+                      width: "auto",
                       height: "100%",
                       pointerEvents: "none",
                       zIndex: 2,
                     }}
                   >
-                    {agendamentos
-                      .filter((a) => a.id_usuario === u.id)
-                      .map((a) => {
-                        const st = estiloEvento(a.data_hora_inicio, a.data_hora_fim);
+                    {(() => {
+                      const listaCol = agendamentos.filter(
+                        (a) =>
+                          a.id_usuario === u.id &&
+                          toYmd(new Date(a.data_hora_inicio)) === dataDia,
+                      );
+                      const layoutCol = layoutSobrepostosColunaAgenda(listaCol);
+                      const estilosGrid = estilosEventoColunaComAlturaMin(listaCol);
+                      return listaCol.map((a) => {
+                        const st =
+                          estilosGrid.get(a.id) ??
+                          estiloEvento(a.data_hora_inicio, a.data_hora_fim);
                         const statusInfo = iconeStatusAgendamento(a.status);
                         const alturaPct = Number.parseFloat(st.height);
                         const densidade = densidadeCardPorAlturaPercent(
                           Number.isFinite(alturaPct) ? alturaPct : 11,
                         );
+                        const layFaixa =
+                          layoutCol.get(a.id) ?? { lane: 0, lanesTotal: 1 };
+                        const faixasEstreitas = layFaixa.lanesTotal > 1;
+                        const cardMicro =
+                          densidade === "compact" &&
+                          Number.isFinite(alturaPct) &&
+                          alturaPct < 3.3;
+                        const duracaoNaGradeMin = duracaoMinutosNaGradeVisivel(a);
+                        const slotCurto = duracaoNaGradeMin <= 45;
                         return (
                           <div
                             key={a.id}
@@ -1531,16 +1740,19 @@ export function AgendaCalendario({
                             draggable={!ocultarSecaoPagamentosAgenda}
                             title={
                               ocultarSecaoPagamentosAgenda
-                                ? `${a.paciente_nome} — ${rotuloStatusAgendamento(a.status)}`
-                                : `${a.paciente_nome} — ${a.status} — arraste para outro horário ou profissional, ou use o menu ⋮`
+                                ? `${a.paciente_nome} — ${rotuloStatusAgendamento(a.status)} — ${formatHoraLocal(new Date(a.data_hora_inicio))} às ${formatHoraLocal(new Date(a.data_hora_fim))} — ${a.nome_sala}`
+                                : `${a.paciente_nome} — ${a.status} — ${formatHoraLocal(new Date(a.data_hora_inicio))} às ${formatHoraLocal(new Date(a.data_hora_fim))} — ${a.nome_sala}. Arraste para outro horário ou profissional, ou use o menu ⋮`
                             }
                             className={`agenda-appointment agenda-appointment--${densidade} ${
                               menuCardAbertoId === a.id ? "agenda-appointment--menu-open" : ""
-                            } text-left ${classeStatus(a.status)}`}
+                            } ${faixasEstreitas ? "agenda-appointment--lane-split" : ""} ${
+                              cardMicro ? "agenda-appointment--micro" : ""
+                            } ${slotCurto ? "agenda-appointment--duracao-curta" : ""} text-left ${classeStatus(a.status)}`}
                             style={{
                               top: st.top,
                               height: st.height,
                               pointerEvents: "auto",
+                              ...estiloFaixasSobreposicaoCard(layFaixa, "dia"),
                               ["--card-destaque" as string]: corCardUsuario[a.id_usuario] ?? undefined,
                             }}
                             onDragStart={(ev) => {
@@ -1682,7 +1894,12 @@ export function AgendaCalendario({
                                 </ul>
                               ) : null}
                             </div>
-                            <strong className="d-block text-truncate pr-4" title={a.paciente_nome}>
+                            <strong
+                              className={`d-block pr-4 agenda-appointment-name ${
+                                faixasEstreitas ? "" : "text-truncate"
+                              }`}
+                              title={a.paciente_nome}
+                            >
                               {densidade !== "compact" ? (
                                 <span
                                   className={`agenda-status-badge ${statusInfo.badgeClass}`}
@@ -1693,13 +1910,27 @@ export function AgendaCalendario({
                               ) : null}{" "}
                               {a.paciente_nome}
                             </strong>
-                            <span className="agenda-appointment-time d-block text-truncate">
-                              {formatHoraLocal(new Date(a.data_hora_inicio))} às{" "}
-                              {formatHoraLocal(new Date(a.data_hora_fim))}
-                            </span>
-                            <span className="agenda-appointment-room-tag d-inline-block text-truncate">
-                              {a.nome_sala}
-                            </span>
+                            {slotCurto ? (
+                              <div className="agenda-appointment-meta agenda-appointment-meta--inline">
+                                <span className="agenda-appointment-time">
+                                  {formatHoraLocal(new Date(a.data_hora_inicio))}–
+                                  {formatHoraLocal(new Date(a.data_hora_fim))}
+                                </span>
+                                <span className="agenda-appointment-room-tag text-truncate">
+                                  {a.nome_sala}
+                                </span>
+                              </div>
+                            ) : (
+                              <>
+                                <span className="agenda-appointment-time d-block text-truncate">
+                                  {formatHoraLocal(new Date(a.data_hora_inicio))} às{" "}
+                                  {formatHoraLocal(new Date(a.data_hora_fim))}
+                                </span>
+                                <span className="agenda-appointment-room-tag d-inline-block text-truncate">
+                                  {a.nome_sala}
+                                </span>
+                              </>
+                            )}
                             {somenteMenuInicio ? (
                               <div className="mt-1">
                                 <button
@@ -1717,7 +1948,8 @@ export function AgendaCalendario({
                             ) : null}
                           </div>
                         );
-                      })}
+                      });
+                    })()}
                   </div>
                 </div>
               ))}
@@ -1739,8 +1971,8 @@ export function AgendaCalendario({
                   {diasSemanaYmd.map((ymd, idx) => (
                     <div
                       key={ymd}
-                      className="flex-fill text-center py-2 border-left small"
-                      style={{ minWidth: 100 }}
+                      className="text-center py-2 border-left small"
+                      style={{ flex: "1 1 0%", minWidth: 136 }}
                     >
                       <div className="font-weight-bold">{nomeDiaSemanaCurto(idx)}</div>
                       <div className="text-muted">
@@ -1777,34 +2009,53 @@ export function AgendaCalendario({
                   {diasSemanaYmd.map((ymd) => (
                     <div
                       key={ymd}
-                      className="flex-fill position-relative border-left agenda-cal-week-col"
+                      className="position-relative border-left agenda-cal-week-col"
                       style={{
-                        minWidth: 100,
+                        flex: "1 1 0%",
+                        minWidth: 136,
                         height: alturaColunaPx,
                         backgroundImage: `repeating-linear-gradient(to bottom, #fff 0, #fff ${alturaLinhaPx - 1}px, #e2e8f0 ${alturaLinhaPx}px)`,
                       }}
                     >
-                      {agFiltradosDia(ymd).map((a) => {
-                        const st = estiloEvento(a.data_hora_inicio, a.data_hora_fim);
+                      {(() => {
+                        const listaSem = agFiltradosDia(ymd);
+                        const layoutSem = layoutSobrepostosColunaAgenda(listaSem);
+                        const estilosGridSem = estilosEventoColunaComAlturaMin(listaSem);
+                        return listaSem.map((a) => {
+                        const st =
+                          estilosGridSem.get(a.id) ??
+                          estiloEvento(a.data_hora_inicio, a.data_hora_fim);
                         const statusInfo = iconeStatusAgendamento(a.status);
                         const alturaPct = Number.parseFloat(st.height);
                         const densidade = densidadeCardPorAlturaPercent(
                           Number.isFinite(alturaPct) ? alturaPct : 11,
                         );
+                        const layFaixaSem =
+                          layoutSem.get(a.id) ?? { lane: 0, lanesTotal: 1 };
+                        const faixasEstreitasSem = layFaixaSem.lanesTotal > 1;
+                        const cardMicroSem =
+                          densidade === "compact" &&
+                          Number.isFinite(alturaPct) &&
+                          alturaPct < 3.3;
+                        const duracaoNaGradeMinSem = duracaoMinutosNaGradeVisivel(a);
+                        const slotCurtoSem = duracaoNaGradeMinSem <= 45;
                         return (
                           <div
                             key={a.id}
                             role="button"
                             tabIndex={0}
-                            className={`agenda-appointment agenda-appointment--compact agenda-appointment--${densidade} text-left ${classeStatus(a.status)}`}
+                            className={`agenda-appointment agenda-appointment--compact agenda-appointment--${densidade} text-left ${classeStatus(a.status)} ${
+                              faixasEstreitasSem ? "agenda-appointment--lane-split" : ""
+                            } ${cardMicroSem ? "agenda-appointment--micro" : ""} ${
+                              slotCurtoSem ? "agenda-appointment--duracao-curta" : ""
+                            }`}
                             style={{
                               top: st.top,
                               height: st.height,
-                              left: 2,
-                              right: 4,
+                              ...estiloFaixasSobreposicaoCard(layFaixaSem, "semana"),
                               ["--card-destaque" as string]: corCardUsuario[a.id_usuario] ?? undefined,
                             }}
-                            title={a.paciente_nome}
+                            title={`${a.paciente_nome} — ${formatHoraLocal(new Date(a.data_hora_inicio))} às ${formatHoraLocal(new Date(a.data_hora_fim))} — ${a.nome_sala}`}
                             onKeyDown={(ev) => {
                               if (ev.key === "Enter" || ev.key === " ") {
                                 ev.preventDefault();
@@ -1813,7 +2064,12 @@ export function AgendaCalendario({
                             }}
                             onClick={() => void aoClicarCalendarioAgendamento(a)}
                           >
-                            <span className="d-block text-truncate small font-weight-bold">
+                            <span
+                              className={`d-block small font-weight-bold agenda-appointment-name ${
+                                faixasEstreitasSem ? "" : "text-truncate"
+                              }`}
+                              title={a.paciente_nome}
+                            >
                               {densidade !== "compact" ? (
                                 <span
                                   className={`agenda-status-badge ${statusInfo.badgeClass}`}
@@ -1824,13 +2080,27 @@ export function AgendaCalendario({
                               ) : null}{" "}
                               {a.paciente_nome}
                             </span>
-                            <span className="agenda-appointment-time d-block text-truncate">
-                              {formatHoraLocal(new Date(a.data_hora_inicio))} às{" "}
-                              {formatHoraLocal(new Date(a.data_hora_fim))}
-                            </span>
-                            <span className="agenda-appointment-room-tag d-inline-block text-truncate">
-                              {a.nome_sala}
-                            </span>
+                            {slotCurtoSem ? (
+                              <div className="agenda-appointment-meta agenda-appointment-meta--inline">
+                                <span className="agenda-appointment-time">
+                                  {formatHoraLocal(new Date(a.data_hora_inicio))}–
+                                  {formatHoraLocal(new Date(a.data_hora_fim))}
+                                </span>
+                                <span className="agenda-appointment-room-tag text-truncate">
+                                  {a.nome_sala}
+                                </span>
+                              </div>
+                            ) : (
+                              <>
+                                <span className="agenda-appointment-time d-block text-truncate">
+                                  {formatHoraLocal(new Date(a.data_hora_inicio))} às{" "}
+                                  {formatHoraLocal(new Date(a.data_hora_fim))}
+                                </span>
+                                <span className="agenda-appointment-room-tag d-inline-block text-truncate">
+                                  {a.nome_sala}
+                                </span>
+                              </>
+                            )}
                             {somenteMenuInicio ? (
                               <span className="d-block mt-1">
                                 <button
@@ -1848,7 +2118,8 @@ export function AgendaCalendario({
                             ) : null}
                           </div>
                         );
-                      })}
+                      });
+                    })()}
                     </div>
                   ))}
                 </div>
