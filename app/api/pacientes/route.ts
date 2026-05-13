@@ -6,6 +6,7 @@ import {
   PACIENTE_ESTADOS_CIVIS,
   PACIENTE_GENEROS,
 } from "@/lib/pacientes";
+import { buscarPacientesPorNomeEmpresa } from "@/lib/pacientes/buscar-pacientes-nome-empresa";
 import { carregarTodosPacientesEmpresa } from "@/lib/pacientes/carregar-todos-pacientes-empresa";
 import { createAdminClient } from "@/lib/supabase/admin";
 
@@ -25,7 +26,7 @@ function inList<T extends string>(val: string | null, list: readonly T[]): val i
   return val !== null && (list as readonly string[]).includes(val);
 }
 
-export async function GET() {
+export async function GET(request: Request) {
   const session = await getSession();
   if (!session) {
     return NextResponse.json({ error: "Não autorizado." }, { status: 401 });
@@ -36,13 +37,28 @@ export async function GET() {
     return NextResponse.json({ error: "Empresa inválida." }, { status: 400 });
   }
 
+  const url = new URL(request.url);
+  const busca =
+    url.searchParams.get("busca") ?? url.searchParams.get("q") ?? url.searchParams.get("search") ?? "";
+  const termo = busca.trim();
+
   const supabase = createAdminClient();
+
+  /** Busca parcial no servidor (evita depender só dos ~1000 primeiros do catálogo em memória). */
+  if (termo.length >= 2) {
+    const { data, error } = await buscarPacientesPorNomeEmpresa(supabase, empresaId, termo, 80);
+    if (error) {
+      return NextResponse.json({ error }, { status: 500 });
+    }
+    return NextResponse.json({ data, modo: "busca" as const });
+  }
+
   const { data: allRows, error } = await carregarTodosPacientesEmpresa(supabase, empresaId);
   if (error) {
     return NextResponse.json({ error }, { status: 500 });
   }
 
-  return NextResponse.json({ data: allRows });
+  return NextResponse.json({ data: allRows, modo: "completo" as const });
 }
 
 export async function POST(request: Request) {

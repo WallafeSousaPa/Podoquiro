@@ -14,6 +14,7 @@ import {
 } from "react";
 import "./agenda.css";
 import { ModalAnamneseAgenda } from "./modal-anamnese-agenda";
+import { ModalImportarAgendamentosPlanilha } from "./modal-importar-agendamentos-planilha";
 import { ModalProntuarioPodologo } from "./modal-prontuario-podologo";
 import {
   MSG_HORARIO_RETROATIVO,
@@ -493,6 +494,7 @@ export function AgendaCalendario({
   const [gruposSelecionados, setGruposSelecionados] = useState<Set<number>>(new Set());
   const [salvandoGrupos, setSalvandoGrupos] = useState(false);
   const [modalParametrizacaoOpen, setModalParametrizacaoOpen] = useState(false);
+  const [modalImportPlanilhaOpen, setModalImportPlanilhaOpen] = useState(false);
 
   const [modalOpen, setModalOpen] = useState(false);
   const [editingId, setEditingId] = useState<number | null>(null);
@@ -1061,9 +1063,12 @@ export function AgendaCalendario({
         data_hora_inicio: inicioIso,
         data_hora_fim: fimIso,
         status: statusAg,
-        desconto: Number(desconto.replace(",", ".")) || 0,
         observacoes: observacoes.trim() || null,
       };
+      /** Só envia desconto quando o perfil pode alterá-lo (alinhado ao PATCH em `/api/agendamentos/[id]`). Recepção e demais perfis não enviam o campo — evita 403 ao mudar status. */
+      if (perfilAdminAgenda) {
+        body.desconto = Number(desconto.replace(",", ".")) || 0;
+      }
 
       if (perfilAdminAgenda && procAgendaDirty) {
         if (editingId && modalProcLinhas.length === 0) {
@@ -1395,6 +1400,15 @@ export function AgendaCalendario({
                 onClick={() => setModalParametrizacaoOpen(true)}
               >
                 Parametrização
+              </button>
+              <button
+                type="button"
+                className="btn btn-outline-secondary btn-sm"
+                onClick={() => setModalImportPlanilhaOpen(true)}
+                title="Importar agendamentos a partir de uma planilha Excel"
+              >
+                <i className="fas fa-file-excel mr-1" aria-hidden />
+                Importar planilha
               </button>
               <button
                 type="button"
@@ -2153,6 +2167,12 @@ export function AgendaCalendario({
         />
       ) : null}
 
+      <ModalImportarAgendamentosPlanilha
+        open={modalImportPlanilhaOpen}
+        onClose={() => setModalImportPlanilhaOpen(false)}
+        onImported={() => void loadAgenda()}
+      />
+
       {atalhoMover ? (
         <ModalBackdrop zIndex={1075} onBackdropClick={() => setAtalhoMover(null)}>
           <div className="modal-dialog modal-dialog-centered" role="document">
@@ -2696,7 +2716,9 @@ export function AgendaCalendario({
                   </div>
 
                   <div className="form-row">
-                    <div className="form-group col-md-4">
+                    <div
+                      className={`form-group ${perfilAdminAgenda ? "col-md-4" : "col-md-12"}`}
+                    >
                       <label>Status</label>
                       <select
                         className="form-control"
@@ -2712,16 +2734,18 @@ export function AgendaCalendario({
                         <option value="adiado">Adiado</option>
                       </select>
                     </div>
-                    <div className="form-group col-md-4">
-                      <label>Desconto (%)</label>
-                      <input
-                        className="form-control bg-light"
-                        value={desconto}
-                        disabled
-                        readOnly
-                        title="Desconto fixo em 0% por enquanto."
-                      />
-                    </div>
+                    {perfilAdminAgenda ? (
+                      <div className="form-group col-md-4">
+                        <label>Desconto (%)</label>
+                        <input
+                          className="form-control bg-light"
+                          value={desconto}
+                          disabled
+                          readOnly
+                          title="Desconto fixo em 0% por enquanto."
+                        />
+                      </div>
+                    ) : null}
                   </div>
 
                   <div className="form-group">
