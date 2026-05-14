@@ -341,7 +341,12 @@ export function ModalImportarAgendamentosPlanilha({ open, onClose, onImported }:
       status: p.status as string,
       data_hora_inicio: p.data_hora_inicio as string,
       data_hora_fim: p.data_hora_fim as string,
-      id_paciente: p.id_paciente as number,
+      id_paciente:
+        p.id_paciente != null && p.id_paciente > 0 ? p.id_paciente : 0,
+      cadastrar_paciente_nome:
+        p.id_paciente != null && p.id_paciente > 0
+          ? null
+          : p.cadastrar_paciente_nome?.trim() || null,
       id_usuario: p.id_usuario as number,
       id_sala: p.id_sala as number,
       procedimentos: p.procedimentos.map((x) => ({

@@ -185,6 +185,8 @@ export type LinhaPreviewImport = {
   data_hora_inicio: string | null;
   data_hora_fim: string | null;
   id_paciente: number | null;
+  /** Nome na planilha: será criado cadastro na importação se ainda não existir. */
+  cadastrar_paciente_nome: string | null;
   id_usuario: number | null;
   id_sala: number | null;
   procedimentos: ProcedimentoResolvido[];
@@ -455,12 +457,7 @@ export function montarPreviewLinha(
       ? parseStatusPlanilha(linha.status_manual)
       : parseStatusPlanilha(linha.status);
   if (!status) {
-    pendencias.push({
-      campo: "status",
-      textoPlanilha: String(linha.status ?? ""),
-      mensagem:
-        "Status não reconhecido. Exemplos: Agendado / Curativo agendado → confirmado; Atendido → realizado; Não atendido → cancelado; ou: pendente, confirmado, em andamento, realizado, cancelado, faltou, adiado.",
-    });
+    status = "realizado";
   }
 
   const dIni = parseDataCivilPlanilha(linha.data);
@@ -525,6 +522,7 @@ export function montarPreviewLinha(
   }
 
   const pacNome = String(linha.paciente ?? "").trim();
+  let cadastrar_paciente_nome: string | null = null;
   let id_paciente: number | null =
     linha.id_paciente_manual != null && linha.id_paciente_manual > 0
       ? linha.id_paciente_manual
@@ -540,11 +538,7 @@ export function montarPreviewLinha(
     }
   } else if (!linha.id_paciente_manual) {
     if (!id_paciente && pacNome) {
-      pendencias.push({
-        campo: "paciente",
-        textoPlanilha: pacNome,
-        mensagem: "Nenhum paciente encontrado com esse nome.",
-      });
+      cadastrar_paciente_nome = pacNome;
     } else if (!pacNome) {
       pendencias.push({
         campo: "paciente",
@@ -764,12 +758,16 @@ export function montarPreviewLinha(
       ? linha.observacoes.trim()
       : null;
 
+  const pacienteOkParaImportar =
+    id_paciente != null ||
+    (cadastrar_paciente_nome != null && cadastrar_paciente_nome.trim() !== "");
+
   const pronto =
     pendencias.length === 0 &&
     status != null &&
     data_hora_inicio != null &&
     data_hora_fim != null &&
-    id_paciente != null &&
+    pacienteOkParaImportar &&
     id_usuario != null &&
     id_sala != null &&
     procedimentosFinal.length > 0 &&
@@ -785,6 +783,7 @@ export function montarPreviewLinha(
     data_hora_inicio,
     data_hora_fim,
     id_paciente,
+    cadastrar_paciente_nome,
     id_usuario,
     id_sala,
     procedimentos: procedimentosFinal,
@@ -799,7 +798,9 @@ export type LinhaExecutarImport = {
   status: string;
   data_hora_inicio: string;
   data_hora_fim: string;
+  /** Paciente já existente (> 0). Use 0 com `cadastrar_paciente_nome` para criar na importação. */
   id_paciente: number;
+  cadastrar_paciente_nome?: string | null;
   id_usuario: number;
   id_sala: number;
   procedimentos: { id_procedimento: number; valor_aplicado: number }[];
@@ -817,6 +818,127 @@ export type ResultadoLinhaExecutar = {
 
 const MSG_NAO_SALVO_POR_ERRO_EM_OUTRA =
   "Esta linha estaria correta, mas a importação não foi salva porque há erro em outra linha ou conflito entre linhas da planilha.";
+
+const PACIENTE_NOME_MAX_IMPORT = 240;
+
+async function criarOuObterPacientePorNomeImportacao(
+  supabase: SupabaseClient,
+  empresaId: number,
+  nomeCompleto: string,
+): Promise<{ id: number } | { error: string }> {
+  const nome = nomeCompleto.trim();
+  if (!nome) return { error: "Nome do paciente vazio." };
+  if (nome.length > PACIENTE_NOME_MAX_IMPORT) {
+    return { error: `Nome do paciente acima de ${PACIENTE_NOME_MAX_IMPORT} caracteres.` };
+  }
+
+  const { data: ex, error: qEx } = await supabase
+    .from("pacientes")
+    .select("id")
+    .eq("id_empresa", empresaId)
+    .eq("nome_completo", nome)
+    .maybeSingle();
+  if (qEx) return { error: qEx.message };
+  if (ex?.id != null) return { id: ex.id as number };
+
+  const insertRow = {
+    id_empresa: empresaId,
+    cpf: null as string | null,
+    nome_completo: nome,
+    nome_social: null as string | null,
+    genero: null as string | null,
+    data_nascimento: null as string | null,
+    estado_civil: null as string | null,
+    email: null as string | null,
+    telefone: null as string | null,
+    cep: null as string | null,
+    logradouro: null as string | null,
+    numero: null as string | null,
+    complemento: null as string | null,
+    bairro: null as string | null,
+    cidade: null as string | null,
+    uf: null as string | null,
+    ativo: true,
+  };
+
+  const { data: ins, error: insErr } = await supabase
+    .from("pacientes")
+    .insert(insertRow)
+    .select("id")
+    .single();
+  if (!insErr && ins?.id != null) return { id: ins.id as number };
+  if (insErr?.code === "23505") {
+    const { data: ex2 } = await supabase
+      .from("pacientes")
+      .select("id")
+      .eq("id_empresa", empresaId)
+      .eq("nome_completo", nome)
+      .maybeSingle();
+    if (ex2?.id != null) return { id: ex2.id as number };
+  }
+  return { error: insErr?.message ?? "Erro ao cadastrar paciente." };
+}
+
+async function resolverIdsPacientesNovosImportacao(
+  supabase: SupabaseClient,
+  empresaId: number,
+  linhas: LinhaExecutarImport[],
+): Promise<{ linhas: LinhaExecutarImport[]; erro: string | null }> {
+  const precisam = linhas.filter(
+    (l) =>
+      (!Number.isFinite(l.id_paciente) || l.id_paciente <= 0) &&
+      Boolean(l.cadastrar_paciente_nome?.trim()),
+  );
+  if (precisam.length === 0) {
+    const ok = linhas.every((l) => Number.isFinite(l.id_paciente) && l.id_paciente > 0);
+    if (!ok) {
+      return {
+        linhas,
+        erro: "Informe paciente existente (id) ou nome para cadastro automático.",
+      };
+    }
+    return { linhas, erro: null };
+  }
+
+  const unicosPorNorm = new Map<string, string>();
+  for (const l of precisam) {
+    const nome = String(l.cadastrar_paciente_nome).trim();
+    const k = normalizarNomePlanilha(nome);
+    if (k && !unicosPorNorm.has(k)) unicosPorNorm.set(k, nome);
+  }
+
+  const idPorNorm = new Map<string, number>();
+  for (const [, nome] of unicosPorNorm) {
+    const r = await criarOuObterPacientePorNomeImportacao(supabase, empresaId, nome);
+    if ("error" in r) {
+      return { linhas, erro: `Cadastro de paciente «${nome}»: ${r.error}` };
+    }
+    idPorNorm.set(normalizarNomePlanilha(nome), r.id);
+  }
+
+  const resolved = linhas.map((l) => {
+    if (Number.isFinite(l.id_paciente) && l.id_paciente > 0) {
+      return { ...l, cadastrar_paciente_nome: null };
+    }
+    const nome = l.cadastrar_paciente_nome?.trim();
+    if (!nome) return l;
+    const id = idPorNorm.get(normalizarNomePlanilha(nome));
+    if (id == null) return l;
+    return {
+      ...l,
+      id_paciente: id,
+      cadastrar_paciente_nome: null,
+    };
+  });
+
+  if (!resolved.every((l) => Number.isFinite(l.id_paciente) && l.id_paciente > 0)) {
+    return {
+      linhas: resolved,
+      erro: "Não foi possível associar paciente em uma ou mais linhas (id ou cadastro automático).",
+    };
+  }
+  return { linhas: resolved, erro: null };
+}
 
 const MSG_NAO_SALVO_ROLLBACK =
   "Não salvo: a importação foi cancelada por erro ao gravar; nenhum dado desta importação permaneceu na base.";
@@ -959,8 +1081,21 @@ export async function executarImportacaoAgendamentos(
     procedimentos: dedupeProcedimentosImportacaoExecutar(l.procedimentos),
   }));
 
-  const errosPorIndice: (string | null)[] = new Array(linhasNormalizadas.length).fill(null);
-  for (let i = 0; i < linhasNormalizadas.length; i++) {
+  const { linhas: linhasComPaciente, erro: erroPacientes } =
+    await resolverIdsPacientesNovosImportacao(supabase, empresaId, linhasNormalizadas);
+  if (erroPacientes) {
+    return {
+      salvou: false,
+      resultados: linhasComPaciente.map((l) => ({
+        numeroLinha: l.numeroLinha,
+        ok: false,
+        error: erroPacientes,
+      })),
+    };
+  }
+
+  const errosPorIndice: (string | null)[] = new Array(linhasComPaciente.length).fill(null);
+  for (let i = 0; i < linhasComPaciente.length; i++) {
     errosPorIndice[i] = await validarLinhaExecutarImportacao(
       supabase,
       empresaId,
@@ -969,7 +1104,7 @@ export async function executarImportacaoAgendamentos(
       podeVerTodos,
       somentePropriaColuna,
       podeAgendarRetroativo,
-      linhasNormalizadas[i],
+      linhasComPaciente[i],
     );
   }
 
@@ -977,7 +1112,7 @@ export async function executarImportacaoAgendamentos(
   if (temErro) {
     return {
       salvou: false,
-      resultados: linhasNormalizadas.map((l, i) =>
+      resultados: linhasComPaciente.map((l, i) =>
         errosPorIndice[i]
           ? { numeroLinha: l.numeroLinha, ok: false, error: errosPorIndice[i]! }
           : { numeroLinha: l.numeroLinha, ok: false, error: MSG_NAO_SALVO_POR_ERRO_EM_OUTRA },
@@ -990,8 +1125,8 @@ export async function executarImportacaoAgendamentos(
   let falhaInsertIdx: number | null = null;
   let falhaInsertMsg: string | null = null;
 
-  for (let i = 0; i < linhasNormalizadas.length; i++) {
-    const linha = linhasNormalizadas[i];
+  for (let i = 0; i < linhasComPaciente.length; i++) {
+    const linha = linhasComPaciente[i];
     const vb = Math.round(linha.valor_bruto * 100) / 100;
     const vt = Math.round(linha.valor_total * 100) / 100;
     const desconto = descontoPctEntreValores(vb, vt);
@@ -1047,7 +1182,7 @@ export async function executarImportacaoAgendamentos(
     }
     return {
       salvou: false,
-      resultados: linhasNormalizadas.map((l, i) => {
+      resultados: linhasComPaciente.map((l, i) => {
         if (i < falhaInsertIdx!) {
           return { numeroLinha: l.numeroLinha, ok: false, error: MSG_NAO_SALVO_ROLLBACK };
         }

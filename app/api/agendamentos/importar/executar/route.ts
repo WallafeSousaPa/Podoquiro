@@ -21,7 +21,13 @@ function linhaExecutarValida(x: unknown): x is LinhaExecutarImport {
   if (typeof o.status !== "string" || !o.status.trim()) return false;
   if (typeof o.data_hora_inicio !== "string" || !o.data_hora_inicio.trim()) return false;
   if (typeof o.data_hora_fim !== "string" || !o.data_hora_fim.trim()) return false;
-  if (!Number.isFinite(n("id_paciente")) || n("id_paciente") <= 0) return false;
+  const idPac = n("id_paciente");
+  const nomeCriar =
+    o.cadastrar_paciente_nome != null && typeof o.cadastrar_paciente_nome === "string"
+      ? o.cadastrar_paciente_nome.trim()
+      : "";
+  if ((!Number.isFinite(idPac) || idPac <= 0) && nomeCriar.length === 0) return false;
+  if (nomeCriar.length > 240) return false;
   if (!Number.isFinite(n("id_usuario")) || n("id_usuario") <= 0) return false;
   if (!Number.isFinite(n("id_sala")) || n("id_sala") <= 0) return false;
   if (!Number.isFinite(n("valor_bruto")) || n("valor_bruto") < 0) return false;
@@ -94,7 +100,14 @@ export async function POST(request: Request) {
       status: String(o.status).trim(),
       data_hora_inicio: String(o.data_hora_inicio).trim(),
       data_hora_fim: String(o.data_hora_fim).trim(),
-      id_paciente: Number(o.id_paciente),
+      id_paciente:
+        Number.isFinite(Number(o.id_paciente)) && Number(o.id_paciente) > 0
+          ? Number(o.id_paciente)
+          : 0,
+      cadastrar_paciente_nome:
+        typeof o.cadastrar_paciente_nome === "string" && o.cadastrar_paciente_nome.trim()
+          ? o.cadastrar_paciente_nome.trim()
+          : null,
       id_usuario: Number(o.id_usuario),
       id_sala: Number(o.id_sala),
       procedimentos: (o.procedimentos as { id_procedimento: number; valor_aplicado: number }[]).map(

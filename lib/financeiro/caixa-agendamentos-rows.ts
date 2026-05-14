@@ -41,7 +41,7 @@ export function intervaloDiaBrasiliaIso(dataYmd: string): {
 }
 
 /**
- * Agendamentos do dia `dataYmd` (qualquer status do agendamento), com todos os pagamentos
+ * Agendamentos do dia `dataYmd` com status **realizado**, com todos os pagamentos
  * vinculados (todos os status de pagamento), para a empresa e escopo do usuário.
  */
 export async function carregarCaixaAgendamentosRows(
@@ -85,6 +85,7 @@ export async function carregarCaixaAgendamentosRows(
       `,
     )
     .eq("id_empresa", empresaId)
+    .eq("status", "realizado")
     .gte("data_hora_inicio", inicioIso)
     .lte("data_hora_inicio", fimIso);
 

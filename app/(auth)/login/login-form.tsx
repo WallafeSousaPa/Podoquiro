@@ -1,10 +1,9 @@
 "use client";
 
-import { useRouter } from "next/navigation";
 import { FormEvent, useState } from "react";
+import { entrarComCredenciais } from "./actions";
 
 export function LoginForm() {
-  const router = useRouter();
   const [login, setLogin] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -15,18 +14,16 @@ export function LoginForm() {
     setError(null);
     setLoading(true);
     try {
-      const res = await fetch("/api/auth/login", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ login, password }),
-      });
-      const data = (await res.json().catch(() => ({}))) as { error?: string };
-      if (!res.ok) {
-        setError(data.error ?? "Não foi possível entrar.");
+      const r = await entrarComCredenciais(login, password);
+      if (!r.ok) {
+        setError(r.error);
         return;
       }
-      router.push("/inicio");
-      router.refresh();
+      window.location.assign("/inicio");
+    } catch (err) {
+      setError(
+        err instanceof Error ? err.message : "Não foi possível entrar.",
+      );
     } finally {
       setLoading(false);
     }

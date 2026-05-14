@@ -4,6 +4,8 @@ import { getNomesSaudacao } from "@/lib/dashboard/saudacao";
 import { DashboardShell } from "./dashboard-shell";
 import "./dashboard.css";
 
+export const dynamic = "force-dynamic";
+
 export default async function DashboardGroupLayout({
   children,
 }: {

@@ -118,10 +118,10 @@ export function CaixaClient({
           <h3 className="card-title mb-0">Agendamentos e pagamentos</h3>
           {dataRef ? (
             <p className="text-muted small mb-0 mt-1">
-              Dia <strong>{fmtDiaRef(dataRef)}</strong> — agendamentos com início
-              neste dia (todos os status), em ordem de horário; pagamentos listados com o
-              respectivo status. Clique no nome do paciente (em azul) para abrir o
-              agendamento.
+              Dia <strong>{fmtDiaRef(dataRef)}</strong> — apenas agendamentos com status{" "}
+              <strong>realizado</strong>, com início neste dia, em ordem de horário;
+              pagamentos listados com o respectivo status. Clique no nome do paciente (em
+              azul) para abrir o agendamento.
             </p>
           ) : null}
         </div>
@@ -168,7 +168,7 @@ export function CaixaClient({
             ) : rows.length === 0 ? (
               <tr>
                 <td colSpan={9} className="text-center text-muted py-4">
-                  Nenhum agendamento neste dia.
+                  Nenhum agendamento realizado neste dia.
                 </td>
               </tr>
             ) : (

@@ -72,10 +72,10 @@ export function CaixaPaginaClient() {
     <>
       <CaixaSessaoClient dataRef={dataRef} onDataRefChange={setDataRef} />
       <p className="text-muted small mb-3">
-        Abaixo: todos os agendamentos do dia selecionado em <strong>Data</strong>{" "}
-        (qualquer status do agendamento), com os pagamentos vinculados em todos os
-        status. Abra e feche o caixa por dia na sessão acima; o relatório de
-        fechamento consolida apenas valores quitados no sistema.
+        Abaixo: agendamentos com status <strong>realizado</strong> no dia selecionado em{" "}
+        <strong>Data</strong>, com os pagamentos vinculados em todos os status. Abra e
+        feche o caixa por dia na sessão acima; o relatório de fechamento consolida apenas
+        valores quitados no sistema.
       </p>
       <div className="row">
         <div className="col-12">
