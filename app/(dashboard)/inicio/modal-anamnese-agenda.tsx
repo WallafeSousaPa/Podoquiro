@@ -8,6 +8,7 @@ import {
   useState,
 } from "react";
 import { DropdownCheckboxMultiselect } from "@/components/dropdown-checkbox-multiselect";
+import { mensagemErroAnamneseComCodigo } from "@/lib/aplicacao/mensagem-erro-anamnese";
 import "./agenda.css";
 
 function ModalBackdrop({
@@ -54,6 +55,40 @@ type AvaliacaoOptionItem = {
   condicao?: string | null;
   ativo: boolean;
 };
+
+type ApiSalvarAnamneseJson = {
+  error?: string;
+  codigo_erro?: number;
+  data?: unknown;
+};
+
+function mensagemDeErroApiSalvar(json: ApiSalvarAnamneseJson): string {
+  if (
+    json.codigo_erro != null &&
+    Number.isFinite(Number(json.codigo_erro)) &&
+    Number(json.codigo_erro) > 0
+  ) {
+    return mensagemErroAnamneseComCodigo(Number(json.codigo_erro));
+  }
+  return json.error?.trim() || "Erro ao salvar anamnese.";
+}
+
+async function registrarErroClienteNoServidor(payload: {
+  origem: string;
+  mensagem_curta: string;
+  detalhe: string;
+  id_paciente: number;
+}): Promise<number | null> {
+  const res = await fetch("/api/aplicacao/registrar-erro", {
+    method: "POST",
+    credentials: "include",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+  const j = (await res.json().catch(() => ({}))) as { codigo_erro?: number };
+  const id = j.codigo_erro;
+  return id != null && Number.isFinite(id) && id > 0 ? id : null;
+}
 
 /**
  * Dados mínimos do agendamento para abrir a anamnese (evolução / pacientes-evolucao).
@@ -186,13 +221,57 @@ export function ModalAnamneseAgenda({ ag, onClose, onSalvo }: Props) {
       if (fotoTermo) fd.append("foto_doc_termo_consentimento", fotoTermo);
 
       const res = await fetch("/api/pacientes-evolucao", { method: "POST", body: fd });
-      const json = (await res.json().catch(() => ({}))) as { error?: string };
-      if (!res.ok) throw new Error(json.error ?? "Erro ao salvar anamnese.");
+      const rawText = await res.text();
+      let json: ApiSalvarAnamneseJson;
+      try {
+        json = rawText ? (JSON.parse(rawText) as ApiSalvarAnamneseJson) : {};
+      } catch (parseErr) {
+        const codigo = await registrarErroClienteNoServidor({
+          origem: "modal-anamnese-agenda:resposta_nao_json",
+          mensagem_curta: "Resposta não JSON ao salvar anamnese",
+          detalhe: JSON.stringify({
+            status: res.status,
+            corpo: rawText.slice(0, 8000),
+            parse: parseErr instanceof Error ? parseErr.message : String(parseErr),
+          }),
+          id_paciente: ag.id_paciente,
+        });
+        setError(
+          codigo != null
+            ? mensagemErroAnamneseComCodigo(codigo)
+            : "Erro ao salvar anamnese.",
+        );
+        return;
+      }
+      if (!res.ok) {
+        setError(mensagemDeErroApiSalvar(json));
+        return;
+      }
       /* Só grava pacientes_evolucao; não altera status nem dados de agendamentos. */
       onClose();
       onSalvo?.();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Erro ao salvar anamnese.");
+      const detalhe =
+        err instanceof Error
+          ? JSON.stringify({
+              message: err.message,
+              stack: err.stack,
+              name: err.name,
+            })
+          : JSON.stringify({ erro: String(err) });
+      const codigo = await registrarErroClienteNoServidor({
+        origem: "modal-anamnese-agenda:excecao_fetch",
+        mensagem_curta: "Exceção ao enviar anamnese (rede, timeout ou limite)",
+        detalhe,
+        id_paciente: ag.id_paciente,
+      });
+      setError(
+        codigo != null
+          ? mensagemErroAnamneseComCodigo(codigo)
+          : err instanceof Error
+            ? err.message
+            : "Erro ao salvar anamnese.",
+      );
     } finally {
       setSaving(false);
     }

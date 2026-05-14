@@ -7,6 +7,7 @@ import {
   SELECT_PACIENTES_EVOLUCAO_VINCULOS,
 } from "@/lib/avaliacoes/evolucao";
 import { syncPacientesEvolucaoVinculos } from "@/lib/avaliacoes/sync-pacientes-evolucao-vinculos";
+import { jsonAnamneseErroComCodigo } from "@/lib/aplicacao/resposta-erro-anamnese";
 import { getSession } from "@/lib/auth/session";
 import { createAdminClient } from "@/lib/supabase/admin";
 
@@ -61,31 +62,51 @@ export async function GET(request: Request) {
 export async function POST(request: Request) {
   const session = await getSession();
   if (!session) return NextResponse.json({ error: "Não autorizado." }, { status: 401 });
+
+  const supabase = createAdminClient();
+
   const idResponsavelSessao = toPositiveNumber(session.sub);
   if (!idResponsavelSessao) {
-    return NextResponse.json({ error: "Sessão inválida." }, { status: 400 });
+    return jsonAnamneseErroComCodigo(request, supabase, session, {
+      status: 400,
+      idPaciente: null,
+      etapa: "sessao_invalida",
+      detalhe: { sub: session.sub },
+    });
   }
 
   let formData: FormData;
   try {
     formData = await request.formData();
-  } catch {
-    return NextResponse.json({ error: "Formulário inválido." }, { status: 400 });
+  } catch (e) {
+    return jsonAnamneseErroComCodigo(request, supabase, session, {
+      status: 400,
+      idPaciente: null,
+      etapa: "form_data_parse",
+      detalhe: e,
+    });
   }
 
   const idPaciente = toPositiveNumber(formData.get("id_paciente"));
   if (!idPaciente) {
-    return NextResponse.json({ error: "Paciente é obrigatório." }, { status: 400 });
+    return jsonAnamneseErroComCodigo(request, supabase, session, {
+      status: 400,
+      idPaciente: null,
+      etapa: "id_paciente_obrigatorio",
+      detalhe: { id_paciente_raw: String(formData.get("id_paciente") ?? "") },
+    });
   }
-
-  /* Campos opcionais no FormData (ex.: id_agendamento) são ignorados: não há escrita em agendamentos. */
 
   const formaContatoRaw = optText(formData.get("forma_contato"));
   if (formaContatoRaw && !isFormaContatoPaciente(formaContatoRaw)) {
-    return NextResponse.json({ error: "Forma de contato inválida." }, { status: 400 });
+    return jsonAnamneseErroComCodigo(request, supabase, session, {
+      status: 400,
+      idPaciente,
+      etapa: "forma_contato_invalida",
+      detalhe: { forma_contato: formaContatoRaw },
+    });
   }
 
-  const supabase = createAdminClient();
   const vinculos = {
     condicoes: parsePositiveIdsFromFormData(formData, "id_condicao"),
     tiposUnha: parsePositiveIdsFromFormData(formData, "id_tipo_unha"),
@@ -117,40 +138,67 @@ export async function POST(request: Request) {
     ativo: true,
   };
 
-  for (const campo of CAMPOS_FOTO_EVOLUCAO) {
-    const file = formData.get(campo);
-    if (!(file instanceof File) || file.size <= 0) {
-      row[campo] = null;
-      continue;
+  try {
+    for (const campo of CAMPOS_FOTO_EVOLUCAO) {
+      const file = formData.get(campo);
+      if (!(file instanceof File) || file.size <= 0) {
+        row[campo] = null;
+        continue;
+      }
+      const buffer = Buffer.from(await file.arrayBuffer());
+      const path = buildFotoPath(idPaciente, campo, file.name || `${campo}.jpg`);
+      const { error: uploadError } = await supabase.storage.from(BUCKET).upload(path, buffer, {
+        upsert: true,
+        contentType: file.type || "application/octet-stream",
+      });
+      if (uploadError) {
+        return jsonAnamneseErroComCodigo(request, supabase, session, {
+          status: 500,
+          idPaciente,
+          etapa: `upload_storage:${campo}`,
+          detalhe: uploadError,
+        });
+      }
+      row[campo] = path;
     }
-    const buffer = Buffer.from(await file.arrayBuffer());
-    const path = buildFotoPath(idPaciente, campo, file.name || `${campo}.jpg`);
-    const { error: uploadError } = await supabase.storage.from(BUCKET).upload(path, buffer, {
-      upsert: true,
-      contentType: file.type || "application/octet-stream",
-    });
-    if (uploadError) {
-      return NextResponse.json({ error: uploadError.message }, { status: 500 });
+
+    const { data, error } = await supabase
+      .from("pacientes_evolucao")
+      .insert(row)
+      .select("id")
+      .single();
+    if (error) {
+      return jsonAnamneseErroComCodigo(request, supabase, session, {
+        status: 500,
+        idPaciente,
+        etapa: "insert_pacientes_evolucao",
+        detalhe: error,
+      });
     }
-    row[campo] = path;
-  }
+    const novoId = toPositiveNumber(data?.id);
+    if (!novoId) {
+      return jsonAnamneseErroComCodigo(request, supabase, session, {
+        status: 500,
+        idPaciente,
+        etapa: "insert_sem_id",
+        detalhe: { data },
+      });
+    }
 
-  const { data, error } = await supabase
-    .from("pacientes_evolucao")
-    .insert(row)
-    .select("id")
-    .single();
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-  const novoId = toPositiveNumber(data?.id);
-  if (!novoId) return NextResponse.json({ error: "Falha ao obter ID da evolução." }, { status: 500 });
+    const syncErr = await syncPacientesEvolucaoVinculos(supabase, novoId, vinculos);
+    if (syncErr.error) {
+      return jsonAnamneseErroComCodigo(request, supabase, session, {
+        status: 500,
+        idPaciente,
+        etapa: "sync_vinculos",
+        detalhe: { mensagem: syncErr.error, novoId },
+      });
+    }
 
-  const syncErr = await syncPacientesEvolucaoVinculos(supabase, novoId, vinculos);
-  if (syncErr.error) return NextResponse.json({ error: syncErr.error }, { status: 500 });
-
-  const { data: completo, error: loadErr } = await supabase
-    .from("pacientes_evolucao")
-    .select(
-      `
+    const { data: completo, error: loadErr } = await supabase
+      .from("pacientes_evolucao")
+      .select(
+        `
       id, id_paciente, id_responsavel,
       pressao_arterial, glicemia, atividade_fisica, tipo_calcado, alergias,
       id_pe_esquerdo, id_pe_direito, id_lesoes_mecanicas,
@@ -160,9 +208,24 @@ export async function POST(request: Request) {
       ativo, data,
       ${SELECT_PACIENTES_EVOLUCAO_VINCULOS}
     `,
-    )
-    .eq("id", novoId)
-    .maybeSingle();
-  if (loadErr) return NextResponse.json({ error: loadErr.message }, { status: 500 });
-  return NextResponse.json({ data: completo });
+      )
+      .eq("id", novoId)
+      .maybeSingle();
+    if (loadErr) {
+      return jsonAnamneseErroComCodigo(request, supabase, session, {
+        status: 500,
+        idPaciente,
+        etapa: "load_completo",
+        detalhe: loadErr,
+      });
+    }
+    return NextResponse.json({ data: completo });
+  } catch (e) {
+    return jsonAnamneseErroComCodigo(request, supabase, session, {
+      status: 500,
+      idPaciente,
+      etapa: "excecao_inesperada",
+      detalhe: e,
+    });
+  }
 }
