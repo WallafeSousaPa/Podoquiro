@@ -495,12 +495,14 @@ export function ModalCaixaAgendamento({
   async function salvar(e: FormEvent) {
     e.preventDefault();
     if (!row || !detalhe) return;
+    /** Fecha sobre valor estável: TS não estreita `detalhe` dentro de closures assíncronas. */
+    const detalheAg = detalhe;
     const podeIgnorarSomenteVisualizarSalvar =
-      detalhe.mostrar_desconto_produtos_modal_caixa === true ||
-      detalhe.permite_editar_produtos_modal_caixa === true;
+      detalheAg.mostrar_desconto_produtos_modal_caixa === true ||
+      detalheAg.permite_editar_produtos_modal_caixa === true;
     if (somenteVisualizar && !podeIgnorarSomenteVisualizarSalvar) return;
     if (
-      !detalhe.permite_editar_procedimentos_e_pagamentos &&
+      !detalheAg.permite_editar_procedimentos_e_pagamentos &&
       !modoAdminCaixaCompleto &&
       !modoRecepcaoProdutos
     ) {
@@ -519,7 +521,7 @@ export function ModalCaixaAgendamento({
           origem: "modal-caixa-agendamento:resposta_nao_json",
           mensagem_curta: "PATCH agendamento — resposta não JSON",
           detalhe: JSON.stringify({ status: res.status, corpo: raw.slice(0, 8000) }),
-          id_paciente: detalhe.id_paciente,
+          id_paciente: detalheAg.id_paciente,
         });
         return {
           ok: false,
@@ -535,7 +537,7 @@ export function ModalCaixaAgendamento({
           origem: "modal-caixa-agendamento:patch_erro_http",
           mensagem_curta: msgApi,
           detalhe: JSON.stringify({ status: res.status, body: j }),
-          id_paciente: detalhe.id_paciente,
+          id_paciente: detalheAg.id_paciente,
         });
         return {
           ok: false,
@@ -573,7 +575,7 @@ export function ModalCaixaAgendamento({
           ) * 100,
         ) / 100;
 
-      if (detalhe.status === "realizado") {
+      if (detalheAg.status === "realizado") {
         if (Math.abs(somaPg - totalEsperado) > 0.02) {
           setErro(
             `A soma dos pagamentos (${fmtBrl(somaPg)}) deve ser igual ao total do agendamento (${fmtBrl(totalEsperado)}): soma dos procedimentos e produtos${
@@ -602,7 +604,7 @@ export function ModalCaixaAgendamento({
         if (mostrarDescontoProdutosCaixa) {
           body.desconto = descontoAgendamentoNum;
         }
-        if (detalhe.status === "realizado") {
+        if (detalheAg.status === "realizado") {
           body.pagamentos = pagamentos.map(
             ({ id_forma_pagamento, id_maquineta, valor_pago }) => ({
               id_forma_pagamento,
@@ -633,7 +635,7 @@ export function ModalCaixaAgendamento({
             err instanceof Error
               ? JSON.stringify({ message: err.message, stack: err.stack })
               : String(err),
-          id_paciente: detalhe.id_paciente,
+          id_paciente: detalheAg.id_paciente,
         });
         setErro(
           cod != null
@@ -666,8 +668,8 @@ export function ModalCaixaAgendamento({
       const brutoAg = Math.round((vbProc + vbProd) * 100) / 100;
       const totalEsp = calcularValorTotal(brutoAg, descontoAgendamentoNum);
 
-      if (detalhe.status === "realizado") {
-        if (detalhe.pagamentos_nao_carregados_por_perfil) {
+      if (detalheAg.status === "realizado") {
+        if (detalheAg.pagamentos_nao_carregados_por_perfil) {
           setErro(
             "Não há alterações permitidas para salvar com seu perfil neste agendamento.",
           );
@@ -728,7 +730,7 @@ export function ModalCaixaAgendamento({
               err instanceof Error
                 ? JSON.stringify({ message: err.message, stack: err.stack })
                 : String(err),
-            id_paciente: detalhe.id_paciente,
+            id_paciente: detalheAg.id_paciente,
           });
           setErro(
             cod != null
@@ -777,7 +779,7 @@ export function ModalCaixaAgendamento({
             err instanceof Error
               ? JSON.stringify({ message: err.message, stack: err.stack })
               : String(err),
-          id_paciente: detalhe.id_paciente,
+          id_paciente: detalheAg.id_paciente,
         });
         setErro(
           cod != null
@@ -796,7 +798,7 @@ export function ModalCaixaAgendamento({
     }
 
     /* Recepção etc.: só altera pagamentos; não enviar `procedimentos` (API exige admin). */
-    if (detalhe.status !== "realizado" || detalhe.pagamentos_nao_carregados_por_perfil) {
+    if (detalheAg.status !== "realizado" || detalheAg.pagamentos_nao_carregados_por_perfil) {
       setErro("Não há alterações permitidas para salvar com seu perfil neste agendamento.");
       return;
     }
@@ -861,7 +863,7 @@ export function ModalCaixaAgendamento({
           err instanceof Error
             ? JSON.stringify({ message: err.message, stack: err.stack })
             : String(err),
-        id_paciente: detalhe.id_paciente,
+        id_paciente: detalheAg.id_paciente,
       });
       setErro(
         cod != null
