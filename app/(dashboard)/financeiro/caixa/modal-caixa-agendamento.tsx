@@ -16,6 +16,8 @@ import {
   parseMoedaBrCliente,
 } from "@/lib/financeiro/moeda-br-input";
 import type { CaixaAgendamentoRow } from "./caixa-client";
+import { mensagemErroComCodigoSuporte } from "@/lib/aplicacao/mensagem-erro-com-codigo";
+import { registrarErroViaApi } from "@/lib/aplicacao/registrar-erro-via-api";
 
 type ProcLinha = { id_procedimento: number; valor_aplicado: number };
 
@@ -49,6 +51,7 @@ type PagLinha = {
 type AgDetail = {
   id: number;
   id_usuario: number;
+  id_paciente?: number;
   data_hora_inicio: string;
   data_hora_fim: string;
   status: string;
@@ -84,6 +87,8 @@ type AgDetail = {
    * no modal — mesmo critério do PATCH em `/api/agendamentos/[id]` para `procedimentos`.
    */
   mostrar_desconto_produtos_modal_caixa?: boolean;
+  /** Inclui Recepção: pode editar mercadorias no modal sem alterar procedimentos. */
+  permite_editar_produtos_modal_caixa?: boolean;
 };
 
 function fmtDataHora(iso: string) {
@@ -294,14 +299,35 @@ export function ModalCaixaAgendamento({
         }
       }
     } catch (e) {
-      setErro(e instanceof Error ? e.message : "Erro ao carregar.");
+      const cod = await registrarErroViaApi({
+        origem: "modal-caixa-agendamento:carregar",
+        mensagem_curta: "Erro ao carregar modal caixa",
+        detalhe:
+          e instanceof Error
+            ? JSON.stringify({ message: e.message, stack: e.stack })
+            : String(e),
+      });
+      setErro(
+        cod != null
+          ? mensagemErroComCodigoSuporte(
+              e instanceof Error ? e.message : "Erro ao carregar.",
+              cod,
+            )
+          : e instanceof Error
+            ? e.message
+            : "Erro ao carregar.",
+      );
     } finally {
       setLoading(false);
     }
   }, [row]);
 
   useEffect(() => {
-    if (row) void carregarTudo();
+    if (!row) return;
+    const id = window.setTimeout(() => {
+      void carregarTudo();
+    }, 0);
+    return () => window.clearTimeout(id);
   }, [row, carregarTudo]);
 
   useEffect(() => {
@@ -345,10 +371,6 @@ export function ModalCaixaAgendamento({
         desconto_texto: fmtMoedaBrCampo(0),
       },
     ]);
-  }
-
-  function nomeProdutoCat(idProd: string) {
-    return produtosCat.find((x) => x.id === idProd)?.produto ?? "Produto";
   }
 
   function unProdutoCat(idProd: string) {
@@ -445,6 +467,15 @@ export function ModalCaixaAgendamento({
     return n;
   }, [detalhe, mostrarDescontoProdutosCaixa, descontoAgendamentoTexto]);
 
+  const podeEditarProcedimentosCaixa =
+    detalhe?.mostrar_desconto_produtos_modal_caixa === true;
+  const podeEditarProdutosCaixa =
+    detalhe?.permite_editar_produtos_modal_caixa === true;
+  const modoAdminCaixaCompleto =
+    podeEditarProcedimentosCaixa && podeEditarProdutosCaixa;
+  const modoRecepcaoProdutos =
+    podeEditarProdutosCaixa && !podeEditarProcedimentosCaixa;
+
   async function addPagLinha() {
     const primeira = formasPg[0];
     if (!primeira) return;
@@ -463,12 +494,59 @@ export function ModalCaixaAgendamento({
 
   async function salvar(e: FormEvent) {
     e.preventDefault();
-    if (!row || !detalhe || somenteVisualizar) return;
-    if (!detalhe.permite_editar_procedimentos_e_pagamentos) return;
+    if (!row || !detalhe) return;
+    const podeIgnorarSomenteVisualizarSalvar =
+      detalhe.mostrar_desconto_produtos_modal_caixa === true ||
+      detalhe.permite_editar_produtos_modal_caixa === true;
+    if (somenteVisualizar && !podeIgnorarSomenteVisualizarSalvar) return;
+    if (
+      !detalhe.permite_editar_procedimentos_e_pagamentos &&
+      !modoAdminCaixaCompleto &&
+      !modoRecepcaoProdutos
+    ) {
+      return;
+    }
 
-    const itensFaturamento = detalhe.mostrar_desconto_produtos_modal_caixa === true;
+    async function interpretarRespostaPatch(res: Response): Promise<
+      { ok: true } | { ok: false; msg: string }
+    > {
+      const raw = await res.text();
+      let j: { error?: string } = {};
+      try {
+        j = raw ? (JSON.parse(raw) as { error?: string }) : {};
+      } catch {
+        const cod = await registrarErroViaApi({
+          origem: "modal-caixa-agendamento:resposta_nao_json",
+          mensagem_curta: "PATCH agendamento — resposta não JSON",
+          detalhe: JSON.stringify({ status: res.status, corpo: raw.slice(0, 8000) }),
+          id_paciente: detalhe.id_paciente,
+        });
+        return {
+          ok: false,
+          msg:
+            cod != null
+              ? mensagemErroComCodigoSuporte("Erro ao salvar no caixa", cod)
+              : "Erro ao salvar.",
+        };
+      }
+      if (!res.ok) {
+        const msgApi = j.error ?? "Erro ao salvar.";
+        const cod = await registrarErroViaApi({
+          origem: "modal-caixa-agendamento:patch_erro_http",
+          mensagem_curta: msgApi,
+          detalhe: JSON.stringify({ status: res.status, body: j }),
+          id_paciente: detalhe.id_paciente,
+        });
+        return {
+          ok: false,
+          msg:
+            cod != null ? mensagemErroComCodigoSuporte(msgApi, cod) : msgApi,
+        };
+      }
+      return { ok: true };
+    }
 
-    if (itensFaturamento) {
+    if (modoAdminCaixaCompleto) {
       if (procedimentos.length === 0) {
         setErro("Informe ao menos um procedimento.");
         return;
@@ -537,14 +615,180 @@ export function ModalCaixaAgendamento({
         const res = await fetch(`/api/agendamentos/${row.id}`, {
           method: "PATCH",
           headers: { "Content-Type": "application/json" },
+          credentials: "include",
           body: JSON.stringify(body),
         });
-        const j = (await res.json()) as { error?: string };
-        if (!res.ok) throw new Error(j.error ?? "Erro ao salvar.");
+        const r = await interpretarRespostaPatch(res);
+        if (!r.ok) {
+          setErro(r.msg);
+          return;
+        }
         onSaved();
         onClose();
       } catch (err) {
-        setErro(err instanceof Error ? err.message : "Erro ao salvar.");
+        const cod = await registrarErroViaApi({
+          origem: "modal-caixa-agendamento:excecao_admin",
+          mensagem_curta: "Exceção ao salvar (admin caixa)",
+          detalhe:
+            err instanceof Error
+              ? JSON.stringify({ message: err.message, stack: err.stack })
+              : String(err),
+          id_paciente: detalhe.id_paciente,
+        });
+        setErro(
+          cod != null
+            ? mensagemErroComCodigoSuporte(
+                err instanceof Error ? err.message : "Erro ao salvar.",
+                cod,
+              )
+            : err instanceof Error
+              ? err.message
+              : "Erro ao salvar.",
+        );
+      } finally {
+        setSalvando(false);
+      }
+      return;
+    }
+
+    if (modoRecepcaoProdutos) {
+      for (const l of produtosLinhas) {
+        if (!Number.isFinite(l.qtd) || l.qtd <= 0) {
+          setErro("Informe quantidade válida para todos os produtos.");
+          return;
+        }
+      }
+
+      const vbProc =
+        Math.round(procedimentos.reduce((s, p) => s + p.valor_aplicado, 0) * 100) /
+        100;
+      const vbProd = subtotalProdutosAgendamento(produtosLinhas, produtosCat);
+      const brutoAg = Math.round((vbProc + vbProd) * 100) / 100;
+      const totalEsp = calcularValorTotal(brutoAg, descontoAgendamentoNum);
+
+      if (detalhe.status === "realizado") {
+        if (detalhe.pagamentos_nao_carregados_por_perfil) {
+          setErro(
+            "Não há alterações permitidas para salvar com seu perfil neste agendamento.",
+          );
+          return;
+        }
+        const somaPgR =
+          Math.round(
+            pagamentos.reduce(
+              (s, p) => s + (Number.isFinite(p.valor_pago) ? p.valor_pago : 0),
+              0,
+            ) * 100,
+          ) / 100;
+        if (Math.abs(somaPgR - totalEsp) > 0.02) {
+          setErro(
+            `A soma dos pagamentos (${fmtBrl(somaPgR)}) deve ser igual ao total do agendamento (${fmtBrl(totalEsp)}). Ajuste os valores antes de salvar.`,
+          );
+          return;
+        }
+        const caixaOkR = await garantirCaixaHabilitadoParaPagamento();
+        if (!caixaOkR) return;
+
+        setSalvando(true);
+        setErro(null);
+        try {
+          const bodyR: Record<string, unknown> = {
+            produtos: produtosLinhas.map((l) => ({
+              id_produto: l.id_produto,
+              qtd: l.qtd,
+              valor_desconto: 0,
+            })),
+            pagamentos: pagamentos.map(
+              ({ id_forma_pagamento, id_maquineta, valor_pago }) => ({
+                id_forma_pagamento,
+                id_maquineta,
+                valor_pago,
+                status_pagamento: "pago",
+              }),
+            ),
+          };
+          const resR = await fetch(`/api/agendamentos/${row.id}`, {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json" },
+            credentials: "include",
+            body: JSON.stringify(bodyR),
+          });
+          const rr = await interpretarRespostaPatch(resR);
+          if (!rr.ok) {
+            setErro(rr.msg);
+            return;
+          }
+          onSaved();
+          onClose();
+        } catch (err) {
+          const cod = await registrarErroViaApi({
+            origem: "modal-caixa-agendamento:excecao_recepcao_produtos",
+            mensagem_curta: "Exceção ao salvar produtos (recepção)",
+            detalhe:
+              err instanceof Error
+                ? JSON.stringify({ message: err.message, stack: err.stack })
+                : String(err),
+            id_paciente: detalhe.id_paciente,
+          });
+          setErro(
+            cod != null
+              ? mensagemErroComCodigoSuporte(
+                  err instanceof Error ? err.message : "Erro ao salvar.",
+                  cod,
+                )
+              : err instanceof Error
+                ? err.message
+                : "Erro ao salvar.",
+          );
+        } finally {
+          setSalvando(false);
+        }
+        return;
+      }
+
+      setSalvando(true);
+      setErro(null);
+      try {
+        const bodyS = {
+          produtos: produtosLinhas.map((l) => ({
+            id_produto: l.id_produto,
+            qtd: l.qtd,
+            valor_desconto: 0,
+          })),
+        };
+        const resS = await fetch(`/api/agendamentos/${row.id}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          credentials: "include",
+          body: JSON.stringify(bodyS),
+        });
+        const rs = await interpretarRespostaPatch(resS);
+        if (!rs.ok) {
+          setErro(rs.msg);
+          return;
+        }
+        onSaved();
+        onClose();
+      } catch (err) {
+        const cod = await registrarErroViaApi({
+          origem: "modal-caixa-agendamento:excecao_recepcao_produtos_so",
+          mensagem_curta: "Exceção ao salvar só produtos (recepção)",
+          detalhe:
+            err instanceof Error
+              ? JSON.stringify({ message: err.message, stack: err.stack })
+              : String(err),
+          id_paciente: detalhe.id_paciente,
+        });
+        setErro(
+          cod != null
+            ? mensagemErroComCodigoSuporte(
+                err instanceof Error ? err.message : "Erro ao salvar.",
+                cod,
+              )
+            : err instanceof Error
+              ? err.message
+              : "Erro ao salvar.",
+        );
       } finally {
         setSalvando(false);
       }
@@ -599,33 +843,61 @@ export function ModalCaixaAgendamento({
       const res = await fetch(`/api/agendamentos/${row.id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
+        credentials: "include",
         body: JSON.stringify(body),
       });
-      const j = (await res.json()) as { error?: string };
-      if (!res.ok) throw new Error(j.error ?? "Erro ao salvar.");
+      const rOnly = await interpretarRespostaPatch(res);
+      if (!rOnly.ok) {
+        setErro(rOnly.msg);
+        return;
+      }
       onSaved();
       onClose();
     } catch (err) {
-      setErro(err instanceof Error ? err.message : "Erro ao salvar.");
+      const cod = await registrarErroViaApi({
+        origem: "modal-caixa-agendamento:excecao_só_pagamentos",
+        mensagem_curta: "Exceção ao salvar pagamentos",
+        detalhe:
+          err instanceof Error
+            ? JSON.stringify({ message: err.message, stack: err.stack })
+            : String(err),
+        id_paciente: detalhe.id_paciente,
+      });
+      setErro(
+        cod != null
+          ? mensagemErroComCodigoSuporte(
+              err instanceof Error ? err.message : "Erro ao salvar.",
+              cod,
+            )
+          : err instanceof Error
+            ? err.message
+            : "Erro ao salvar.",
+      );
     } finally {
       setSalvando(false);
     }
   }
 
+  const podeIgnorarSomenteVisualizar =
+    detalhe?.mostrar_desconto_produtos_modal_caixa === true ||
+    detalhe?.permite_editar_produtos_modal_caixa === true;
   const podeAcessarCaixaAgendamento =
-    detalhe?.permite_editar_procedimentos_e_pagamentos === true;
-  /** Alinhado ao PATCH: só Administrador/Administrativo alteram lista de procedimentos/produtos. */
-  const podeEditarItensFaturamentoCaixa =
-    detalhe?.mostrar_desconto_produtos_modal_caixa === true;
+    detalhe?.permite_editar_procedimentos_e_pagamentos === true ||
+    detalhe?.permite_editar_produtos_modal_caixa === true;
   const pagamentosOcultos = detalhe?.pagamentos_nao_carregados_por_perfil === true;
-  const somenteLeitura = !podeAcessarCaixaAgendamento || somenteVisualizar;
-  const podeEditarFormularioBase = podeAcessarCaixaAgendamento && !somenteVisualizar;
+  const somenteLeitura =
+    !podeAcessarCaixaAgendamento ||
+    (somenteVisualizar && !podeIgnorarSomenteVisualizar);
+  const podeEditarFormularioBase =
+    podeAcessarCaixaAgendamento &&
+    (!somenteVisualizar || podeIgnorarSomenteVisualizar);
   const agendamentoConcluido = detalhe?.status === "realizado";
   const podeEditarPagamentos =
     podeEditarFormularioBase && agendamentoConcluido && !pagamentosOcultos;
   const podeSalvarNoModal =
     podeEditarFormularioBase &&
-    (podeEditarItensFaturamentoCaixa ||
+    (modoAdminCaixaCompleto ||
+      modoRecepcaoProdutos ||
       (agendamentoConcluido && !pagamentosOcultos));
 
   const somaProcedimentos = useMemo(
@@ -739,7 +1011,9 @@ export function ModalCaixaAgendamento({
                       <li>Status: {badgeStatusAg(detalhe.status)}</li>
                     </ul>
 
-                    {podeAcessarCaixaAgendamento && somenteVisualizar ? (
+                    {podeAcessarCaixaAgendamento &&
+                    somenteVisualizar &&
+                    !podeIgnorarSomenteVisualizar ? (
                       <div className="alert alert-info py-2 small mb-3" role="status">
                         Todos os pagamentos deste agendamento estão quitados. Você pode
                         apenas visualizar os dados.
@@ -840,9 +1114,11 @@ export function ModalCaixaAgendamento({
 
                     {podeEditarFormularioBase ? (
                       <>
-                        {podeEditarItensFaturamentoCaixa ? (
+                        {modoAdminCaixaCompleto || modoRecepcaoProdutos ? (
                           <>
                         <hr />
+                        {modoAdminCaixaCompleto ? (
+                          <>
                         <div className="d-flex justify-content-between align-items-center mb-2">
                           <strong>Procedimentos</strong>
                           {mostrarDescontoProdutosCaixa ? (
@@ -919,6 +1195,24 @@ export function ModalCaixaAgendamento({
                               </div>
                             </div>
                           ))
+                        )}
+                        </>
+                        ) : (
+                          <>
+                            <strong className="d-block mb-2">Procedimentos</strong>
+                            <ul className="small mb-3">
+                              {detalhe.procedimentos.length === 0 ? (
+                                <li className="text-muted">—</li>
+                              ) : (
+                                detalhe.procedimentos.map((p) => (
+                                  <li key={p.id}>
+                                    {nomeProcedimento(p.id_procedimento)} —{" "}
+                                    {fmtBrl(Number(p.valor_aplicado))}
+                                  </li>
+                                ))
+                              )}
+                            </ul>
+                          </>
                         )}
 
                         <hr />

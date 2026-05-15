@@ -1,5 +1,11 @@
 "use client";
 
+import { MSG_ERRO_PAYLOAD_GRANDE_FOTOS_ATENDIMENTO } from "@/lib/aplicacao/mensagem-erro-anamnese";
+import {
+  comprimirImagemParaAnamnese,
+  MAX_TOTAL_ANEXOS_ANAMNESE_BYTES,
+  somaTamanhosArquivos,
+} from "@/lib/client/comprimir-imagem-anamnese";
 import {
   type FormEvent,
   useCallback,
@@ -50,10 +56,6 @@ function MiniaturaFotoProntuario({
   onRemove: () => void;
 }) {
   const [imagemCarregada, setImagemCarregada] = useState(false);
-
-  useEffect(() => {
-    setImagemCarregada(false);
-  }, [src]);
 
   return (
     <div
@@ -225,7 +227,8 @@ export function ModalProntuarioPodologo({ ag, onClose, onSalvo }: Props) {
   }, [ag.id]);
 
   useEffect(() => {
-    void carregar();
+    const t = window.setTimeout(() => void carregar(), 0);
+    return () => window.clearTimeout(t);
   }, [carregar]);
 
   function toggleProc(id: number) {
@@ -275,6 +278,17 @@ export function ModalProntuarioPodologo({ ag, onClose, onSalvo }: Props) {
         return;
       }
 
+      const fotosComprimidas = await Promise.all(
+        novosArquivos.map((file) => comprimirImagemParaAnamnese(file)),
+      );
+      const totalAnexos = somaTamanhosArquivos(fotosComprimidas);
+      if (totalAnexos > MAX_TOTAL_ANEXOS_ANAMNESE_BYTES) {
+        setErro(
+          `${MSG_ERRO_PAYLOAD_GRANDE_FOTOS_ATENDIMENTO} Tamanho total das fotos após compressão: ~${(totalAnexos / (1024 * 1024)).toFixed(1)} MB (máximo recomendado ~3,5 MB).`,
+        );
+        return;
+      }
+
       const fd = new FormData();
       fd.append("id_agendamento", String(ag.id));
       fd.append("evolucao", evolucaoLimpa);
@@ -286,19 +300,28 @@ export function ModalProntuarioPodologo({ ag, onClose, onSalvo }: Props) {
         "caminhos_manter",
         JSON.stringify(fotosExistentes.map((f) => f.path)),
       );
-      novosArquivos.forEach((file, i) => {
+      fotosComprimidas.forEach((file, i) => {
         fd.append(`foto_${i}`, file);
       });
 
       const res = await fetch("/api/prontuario", {
         method: "POST",
         body: fd,
+        credentials: "include",
       });
       const raw = await res.text();
       let j: { error?: string; ok?: boolean } = {};
       try {
         j = raw ? (JSON.parse(raw) as { error?: string; ok?: boolean }) : {};
       } catch {
+        const payloadGrande =
+          res.status === 413 ||
+          /FUNCTION_PAYLOAD_TOO_LARGE/i.test(raw) ||
+          /Request Entity Too Large/i.test(raw);
+        if (payloadGrande) {
+          setErro(MSG_ERRO_PAYLOAD_GRANDE_FOTOS_ATENDIMENTO);
+          return;
+        }
         if (!res.ok) {
           setErro(
             res.status >= 500
@@ -412,7 +435,9 @@ export function ModalProntuarioPodologo({ ag, onClose, onSalvo }: Props) {
                     <div className="form-group mb-0">
                       <label className="font-weight-bold d-block">Fotos (até {MAX_FOTOS})</label>
                       <p className="small text-muted mb-2">
-                        Anexe até {MAX_FOTOS} imagens no total (incluindo as já salvas).
+                        Anexe até {MAX_FOTOS} imagens no total (incluindo as já salvas). No envio,
+                        as fotos são comprimidas para caber no limite do servidor (útil em fotos do
+                        celular).
                       </p>
                       {podeMaisFotos ? (
                         <input
@@ -429,7 +454,7 @@ export function ModalProntuarioPodologo({ ag, onClose, onSalvo }: Props) {
                       <div className="d-flex flex-wrap mt-2">
                         {fotosExistentes.map((f) => (
                           <MiniaturaFotoProntuario
-                            key={f.path}
+                            key={f.url}
                             src={f.url}
                             onRemove={() => removerExistente(f.path)}
                           />

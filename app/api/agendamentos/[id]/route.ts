@@ -1,4 +1,8 @@
 import { NextResponse } from "next/server";
+import {
+  montarLinhasProdutosAgendamentoDoBody,
+  type RowAgProdInsert,
+} from "@/lib/agenda/agendamento-produtos-body";
 import { calcularValorTotal } from "@/lib/agenda/totais";
 import { resolveGruposCalendario } from "@/lib/agenda/grupos-calendario";
 import {
@@ -6,6 +10,7 @@ import {
   getUsuarioPodeAgendarRetroativo,
   getUsuarioAgendaSomentePropriaColuna,
   getNomeGrupoUsuariosDoUsuario,
+  grupoNomePermiteProdutosModalCaixaRecepcao,
   grupoNomeVisualizaDescontoProdutoModalCaixa,
   profissionalPodeNaAgenda,
 } from "@/lib/agenda/permissoes-calendario";
@@ -23,6 +28,7 @@ import {
 import { dataReferenciaBrasilia } from "@/lib/financeiro/data-referencia-brasilia";
 import { obterSituacaoCaixaDia } from "@/lib/financeiro/caixa-situacao-dia";
 import { getSession } from "@/lib/auth/session";
+import { tentarLogErroApi } from "@/lib/aplicacao/tentar-log-erro-api";
 import { createAdminClient } from "@/lib/supabase/admin";
 import {
   baixarOuEstornarEstoqueMercadorias,
@@ -58,7 +64,7 @@ function isPgStatus(s: string): boolean {
 
 type RouteContext = { params: Promise<{ id: string }> };
 
-export async function GET(_request: Request, context: RouteContext) {
+export async function GET(request: Request, context: RouteContext) {
   const session = await getSession();
   if (!session) {
     return NextResponse.json({ error: "Não autorizado." }, { status: 401 });
@@ -96,15 +102,31 @@ export async function GET(_request: Request, context: RouteContext) {
 
   if (error) {
     console.error(error);
+    await tentarLogErroApi(request, supabase, session, {
+      origem: `api:agendamentos:GET:${id}`,
+      status: 500,
+      mensagem: error.message,
+    });
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
   if (!row) {
+    await tentarLogErroApi(request, supabase, session, {
+      origem: `api:agendamentos:GET:${id}`,
+      status: 404,
+      mensagem: "Agendamento não encontrado.",
+    });
     return NextResponse.json({ error: "Agendamento não encontrado." }, { status: 404 });
   }
   if (
     (!podeVerTodosGet || somentePropriaColunaGet) &&
     (row.id_usuario as number) !== sessionUserId
   ) {
+    await tentarLogErroApi(request, supabase, session, {
+      origem: `api:agendamentos:GET:${id}`,
+      status: 403,
+      mensagem: "Não autorizado.",
+      idPaciente: row.id_paciente as number,
+    });
     return NextResponse.json({ error: "Não autorizado." }, { status: 403 });
   }
 
@@ -120,6 +142,16 @@ export async function GET(_request: Request, context: RouteContext) {
     )
     .eq("id_agendamento", id);
 
+  const nomeGrupoSessao = await getNomeGrupoUsuariosDoUsuario(supabase, sessionUserId);
+  const mostrar_desconto_produtos_modal_caixa =
+    grupoNomeVisualizaDescontoProdutoModalCaixa(nomeGrupoSessao);
+  const permite_editar_produtos_modal_caixa =
+    mostrar_desconto_produtos_modal_caixa ||
+    grupoNomePermiteProdutosModalCaixaRecepcao(nomeGrupoSessao);
+
+  const pagamentos_nao_carregados_por_perfil =
+    somentePropriaColunaGet && !permite_editar_produtos_modal_caixa;
+
   let pagamentosRes: {
     id: number;
     id_forma_pagamento: number;
@@ -128,7 +160,7 @@ export async function GET(_request: Request, context: RouteContext) {
     status_pagamento: string;
   }[] = [];
 
-  if (!somentePropriaColunaGet) {
+  if (!pagamentos_nao_carregados_por_perfil) {
     const { data: pags } = await supabase
       .from("pagamentos")
       .select(
@@ -148,10 +180,6 @@ export async function GET(_request: Request, context: RouteContext) {
   const podeEditarProcPag =
     !somentePropriaColunaGet &&
     (podeVerTodosGet || idUsuarioAg === sessionUserId);
-
-  const nomeGrupoSessao = await getNomeGrupoUsuariosDoUsuario(supabase, sessionUserId);
-  const mostrar_desconto_produtos_modal_caixa =
-    grupoNomeVisualizaDescontoProdutoModalCaixa(nomeGrupoSessao);
 
   return NextResponse.json({
     data: {
@@ -179,8 +207,9 @@ export async function GET(_request: Request, context: RouteContext) {
       }),
       pagamentos: pagamentosRes,
       permite_editar_procedimentos_e_pagamentos: podeEditarProcPag,
-      pagamentos_nao_carregados_por_perfil: somentePropriaColunaGet,
+      pagamentos_nao_carregados_por_perfil,
       mostrar_desconto_produtos_modal_caixa,
+      permite_editar_produtos_modal_caixa,
     },
   });
 }
@@ -247,12 +276,26 @@ export async function PATCH(request: Request, context: RouteContext) {
     );
   }
 
+  const nomeGrupoUsuarioPatch = await getNomeGrupoUsuariosDoUsuario(
+    supabase,
+    sessionUserId,
+  );
+  const usuarioFluxoCaixaProdutosOuAdmin =
+    grupoNomeVisualizaDescontoProdutoModalCaixa(nomeGrupoUsuarioPatch) ||
+    grupoNomePermiteProdutosModalCaixaRecepcao(nomeGrupoUsuarioPatch);
+
   if (somentePropriaColuna) {
     const chaves = Object.keys(body);
-    const soStatus =
+    const apenasStatus =
       chaves.length === 0 ||
       (chaves.length === 1 && chaves[0] === "status");
-    if (!soStatus) {
+    const apenasProdutosOpcionalPagamentos =
+      usuarioFluxoCaixaProdutosOuAdmin &&
+      chaves.length > 0 &&
+      chaves.every((k) => k === "produtos" || k === "pagamentos") &&
+      Object.prototype.hasOwnProperty.call(body, "produtos");
+
+    if (!apenasStatus && !apenasProdutosOpcionalPagamentos) {
       return NextResponse.json(
         {
           error:
@@ -261,7 +304,7 @@ export async function PATCH(request: Request, context: RouteContext) {
         { status: 403 },
       );
     }
-    if (typeof body.status === "string") {
+    if (apenasStatus && typeof body.status === "string") {
       const atual = String(existente.status);
       const novo = body.status;
       const transicaoPermitidaPodologo =
@@ -560,6 +603,9 @@ export async function PATCH(request: Request, context: RouteContext) {
   let valorBruto = Number(existente.valor_bruto);
 
   const trocaProcedimentos = Object.prototype.hasOwnProperty.call(body, "procedimentos");
+  const trocaProdutosRecepcao =
+    Object.prototype.hasOwnProperty.call(body, "produtos") &&
+    !Object.prototype.hasOwnProperty.call(body, "procedimentos");
   if (trocaProcedimentos) {
     const arr = body.procedimentos;
     if (!Array.isArray(arr) || arr.length === 0) {
@@ -631,101 +677,29 @@ export async function PATCH(request: Request, context: RouteContext) {
       );
     }
 
-    type RowAgProd = {
-      id_agendamento: number;
-      id_produto: string;
-      qtd: number;
-      valor_desconto: number;
-      valor_produto: number;
-      valor_final: number;
-    };
-    const produtosInsert: RowAgProd[] = [];
-
-    for (const item of body.produtos) {
-      if (!item || typeof item !== "object") {
-        return NextResponse.json({ error: "Item de produto inválido." }, { status: 400 });
+    const montadosProc = await montarLinhasProdutosAgendamentoDoBody(
+      supabase,
+      empresaId,
+      id,
+      body.produtos,
+      { forcarValorDescontoZero: false },
+    );
+    if (!montadosProc.ok) {
+      if (montadosProc.status >= 500) {
+        await tentarLogErroApi(request, supabase, session, {
+          origem: `api:agendamentos:PATCH:${id}:montar_produtos_admin`,
+          status: montadosProc.status,
+          mensagem: montadosProc.error,
+          idPaciente: existente.id_paciente as number,
+        });
       }
-      const o = item as { id_produto?: unknown; qtd?: unknown; valor_desconto?: unknown };
-      const idProd =
-        typeof o.id_produto === "string"
-          ? o.id_produto.trim()
-          : String(o.id_produto ?? "").trim();
-      if (!idProd) {
-        return NextResponse.json({ error: "Cada produto deve ter `id_produto`." }, { status: 400 });
-      }
-      const qtd = Number(o.qtd);
-      const vd =
-        o.valor_desconto === undefined || o.valor_desconto === null
-          ? 0
-          : Number(o.valor_desconto);
-      if (!Number.isFinite(qtd) || qtd <= 0) {
-        return NextResponse.json({ error: "Quantidade do produto inválida." }, { status: 400 });
-      }
-      if (!Number.isFinite(vd) || vd < 0) {
-        return NextResponse.json({ error: "Desconto do produto inválido." }, { status: 400 });
-      }
-      produtosInsert.push({
-        id_agendamento: id,
-        id_produto: idProd,
-        qtd,
-        valor_desconto: Math.round(vd * 100) / 100,
-        valor_produto: 0,
-        valor_final: 0,
-      });
-    }
-
-    if (produtosInsert.length > 0) {
-      const pids = [...new Set(produtosInsert.map((r) => r.id_produto))];
-      const { data: prodRows, error: prodErr } = await supabase
-        .from("produtos")
-        .select("id, id_empresa, servico, preco")
-        .in("id", pids);
-      if (prodErr) {
-        console.error(prodErr);
-        return NextResponse.json({ error: prodErr.message }, { status: 500 });
-      }
-      const prodMap = new Map(
-        (prodRows ?? []).map((r) => [
-          String(r.id),
-          {
-            id_empresa: r.id_empresa as number,
-            servico: Boolean(r.servico),
-            preco: Number(r.preco),
-          },
-        ]),
+      return NextResponse.json(
+        { error: montadosProc.error },
+        { status: montadosProc.status },
       );
-      for (const row of produtosInsert) {
-        const meta = prodMap.get(row.id_produto);
-        if (!meta || meta.id_empresa !== empresaId) {
-          return NextResponse.json(
-            { error: "Produto inválido ou de outra empresa." },
-            { status: 400 },
-          );
-        }
-        if (meta.servico) {
-          return NextResponse.json(
-            { error: "Use apenas mercadorias (produtos não marcados como serviço)." },
-            { status: 400 },
-          );
-        }
-        if (!Number.isFinite(meta.preco) || meta.preco < 0) {
-          return NextResponse.json({ error: "Preço do produto inválido no cadastro." }, { status: 400 });
-        }
-        const vUnit = Math.round(meta.preco * 100) / 100;
-        const brutoLinha = Math.round(row.qtd * vUnit * 100) / 100;
-        if (row.valor_desconto > brutoLinha + 0.001) {
-          return NextResponse.json(
-            { error: "Desconto do produto não pode ser maior que o subtotal (qtd × preço)." },
-            { status: 400 },
-          );
-        }
-        row.valor_produto = vUnit;
-        row.valor_final = Math.round((brutoLinha - row.valor_desconto) * 100) / 100;
-      }
     }
-
-    const somaProd =
-      Math.round(produtosInsert.reduce((s, r) => s + r.valor_final, 0) * 100) / 100;
+    const produtosInsert: RowAgProdInsert[] = montadosProc.produtosInsert;
+    const somaProd = montadosProc.somaProd;
     valorBruto = Math.round((somaProc + somaProd) * 100) / 100;
     patch.valor_bruto = valorBruto;
 
@@ -808,13 +782,154 @@ export async function PATCH(request: Request, context: RouteContext) {
     }
   }
 
-  if (trocaProcedimentos || typeof body.desconto !== "undefined") {
+  if (trocaProdutosRecepcao) {
+    const nomeGR = await getNomeGrupoUsuariosDoUsuario(supabase, sessionUserId);
+    if (!grupoNomePermiteProdutosModalCaixaRecepcao(nomeGR)) {
+      await tentarLogErroApi(request, supabase, session, {
+        origem: `api:agendamentos:PATCH:${id}:produtos_sem_procedimento`,
+        status: 403,
+        mensagem: "Sem permissão para alterar apenas mercadorias.",
+        detalhe: { grupo: nomeGR },
+        idPaciente: existente.id_paciente as number,
+      });
+      return NextResponse.json(
+        {
+          error:
+            "Sem permissão para alterar apenas mercadorias. Use o perfil Recepção ou envie procedimentos (Administrador/Administrativo).",
+        },
+        { status: 403 },
+      );
+    }
+
+    const { data: procLinhasPR, error: errPR } = await supabase
+      .from("agendamento_procedimentos")
+      .select("valor_aplicado")
+      .eq("id_agendamento", id);
+    if (errPR) {
+      console.error(errPR);
+      await tentarLogErroApi(request, supabase, session, {
+        origem: `api:agendamentos:PATCH:${id}:load_proc_recepcao`,
+        status: 500,
+        mensagem: errPR.message,
+        idPaciente: existente.id_paciente as number,
+      });
+      return NextResponse.json({ error: errPR.message }, { status: 500 });
+    }
+    const somaProcPR =
+      Math.round(
+        (procLinhasPR ?? []).reduce((s, r) => s + Number(r.valor_aplicado), 0) * 100,
+      ) / 100;
+
+    const montPR = await montarLinhasProdutosAgendamentoDoBody(
+      supabase,
+      empresaId,
+      id,
+      body.produtos,
+      { forcarValorDescontoZero: true },
+    );
+    if (!montPR.ok) {
+      if (montPR.status >= 500) {
+        await tentarLogErroApi(request, supabase, session, {
+          origem: `api:agendamentos:PATCH:${id}:montar_produtos_recepcao`,
+          status: montPR.status,
+          mensagem: montPR.error,
+          idPaciente: existente.id_paciente as number,
+        });
+      }
+      return NextResponse.json({ error: montPR.error }, { status: montPR.status });
+    }
+
+    const produtosInsertPR = montPR.produtosInsert;
+    const somaProdPR = montPR.somaProd;
+    valorBruto = Math.round((somaProcPR + somaProdPR) * 100) / 100;
+    patch.valor_bruto = valorBruto;
+
+    const { data: oldAprodsRowsPR, error: oldApErrPR } = await supabase
+      .from("agendamento_produtos")
+      .select("id_produto, qtd")
+      .eq("id_agendamento", id);
+    if (oldApErrPR) {
+      console.error(oldApErrPR);
+      await tentarLogErroApi(request, supabase, session, {
+        origem: `api:agendamentos:PATCH:${id}:old_ag_prod_recepcao`,
+        status: 500,
+        mensagem: oldApErrPR.message,
+        idPaciente: existente.id_paciente as number,
+      });
+      return NextResponse.json({ error: oldApErrPR.message }, { status: 500 });
+    }
+
+    const { error: delAgPrPR } = await supabase
+      .from("agendamento_produtos")
+      .delete()
+      .eq("id_agendamento", id);
+    if (delAgPrPR) {
+      console.error(delAgPrPR);
+      await tentarLogErroApi(request, supabase, session, {
+        origem: `api:agendamentos:PATCH:${id}:del_ag_prod_recepcao`,
+        status: 500,
+        mensagem: delAgPrPR.message,
+        idPaciente: existente.id_paciente as number,
+      });
+      return NextResponse.json({ error: delAgPrPR.message }, { status: 500 });
+    }
+
+    if (produtosInsertPR.length > 0) {
+      const { error: insAgPrPR } = await supabase.from("agendamento_produtos").insert(
+        produtosInsertPR.map((r) => ({
+          id_agendamento: r.id_agendamento,
+          id_produto: r.id_produto,
+          qtd: r.qtd,
+          valor_desconto: r.valor_desconto,
+          valor_produto: r.valor_produto,
+          valor_final: r.valor_final,
+        })),
+      );
+      if (insAgPrPR) {
+        console.error(insAgPrPR);
+        await tentarLogErroApi(request, supabase, session, {
+          origem: `api:agendamentos:PATCH:${id}:ins_ag_prod_recepcao`,
+          status: 500,
+          mensagem: insAgPrPR.message,
+          idPaciente: existente.id_paciente as number,
+        });
+        return NextResponse.json({ error: insAgPrPR.message }, { status: 500 });
+      }
+    }
+
+    const statusParaEstoquePR =
+      typeof patch.status === "string"
+        ? String(patch.status)
+        : String(existente.status);
+    if (statusParaEstoquePR === "realizado") {
+      const oldMapPR = somarQtdPorProduto(oldAprodsRowsPR ?? []);
+      const newMapPR = somarQtdPorProduto(
+        produtosInsertPR.map((r) => ({ id_produto: r.id_produto, qtd: r.qtd })),
+      );
+      const deltaPR = deltaVendaEntreMapas(oldMapPR, newMapPR);
+      const estPR = await baixarOuEstornarEstoqueMercadorias(supabase, empresaId, deltaPR);
+      if (!estPR.ok) {
+        await tentarLogErroApi(request, supabase, session, {
+          origem: `api:agendamentos:PATCH:${id}:estoque_recepcao`,
+          status: 500,
+          mensagem: estPR.message,
+          idPaciente: existente.id_paciente as number,
+        });
+        return NextResponse.json(
+          { error: `Não foi possível atualizar o estoque: ${estPR.message}` },
+          { status: 500 },
+        );
+      }
+    }
+  }
+
+  if (trocaProcedimentos || typeof body.desconto !== "undefined" || trocaProdutosRecepcao) {
     patch.valor_total = calcularValorTotal(valorBruto, desconto);
   }
 
   const trocaPagamentos =
     Object.prototype.hasOwnProperty.call(body, "pagamentos") &&
-    !somentePropriaColuna;
+    (!somentePropriaColuna || usuarioFluxoCaixaProdutosOuAdmin);
   if (trocaPagamentos) {
     if (String(existente.status) !== "realizado") {
       return NextResponse.json(

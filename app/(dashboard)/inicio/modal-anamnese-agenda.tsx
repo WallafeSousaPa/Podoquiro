@@ -8,7 +8,12 @@ import {
   useState,
 } from "react";
 import { DropdownCheckboxMultiselect } from "@/components/dropdown-checkbox-multiselect";
-import { mensagemErroAnamneseComCodigo } from "@/lib/aplicacao/mensagem-erro-anamnese";
+import { mensagemErroAnamneseComCodigo, MSG_ERRO_PAYLOAD_GRANDE_ANAMNESE } from "@/lib/aplicacao/mensagem-erro-anamnese";
+import {
+  comprimirImagemParaAnamnese,
+  MAX_TOTAL_ANEXOS_ANAMNESE_BYTES,
+  somaTamanhosArquivos,
+} from "@/lib/client/comprimir-imagem-anamnese";
 import "./agenda.css";
 
 function ModalBackdrop({
@@ -190,6 +195,42 @@ export function ModalAnamneseAgenda({ ag, onClose, onSalvo }: Props) {
     setSaving(true);
     setError(null);
     try {
+      const [
+        fPlantarDir,
+        fPlantarEsq,
+        fDorsoDir,
+        fDorsoEsq,
+        fTermo,
+      ] = await Promise.all([
+        fotoPlantarDireito
+          ? comprimirImagemParaAnamnese(fotoPlantarDireito)
+          : Promise.resolve<File | null>(null),
+        fotoPlantarEsquerdo
+          ? comprimirImagemParaAnamnese(fotoPlantarEsquerdo)
+          : Promise.resolve<File | null>(null),
+        fotoDorsoDireito
+          ? comprimirImagemParaAnamnese(fotoDorsoDireito)
+          : Promise.resolve<File | null>(null),
+        fotoDorsoEsquerdo
+          ? comprimirImagemParaAnamnese(fotoDorsoEsquerdo)
+          : Promise.resolve<File | null>(null),
+        fotoTermo ? comprimirImagemParaAnamnese(fotoTermo) : Promise.resolve<File | null>(null),
+      ]);
+
+      const totalAnexos = somaTamanhosArquivos([
+        fPlantarDir,
+        fPlantarEsq,
+        fDorsoDir,
+        fDorsoEsq,
+        fTermo,
+      ]);
+      if (totalAnexos > MAX_TOTAL_ANEXOS_ANAMNESE_BYTES) {
+        setError(
+          `${MSG_ERRO_PAYLOAD_GRANDE_ANAMNESE} Tamanho total dos anexos após compressão: ~${(totalAnexos / (1024 * 1024)).toFixed(1)} MB (máximo recomendado ~3,5 MB).`,
+        );
+        return;
+      }
+
       const fd = new FormData();
       fd.append("id_paciente", String(ag.id_paciente));
       for (const id of idsCondicao) fd.append("id_condicao", String(id));
@@ -214,18 +255,30 @@ export function ModalAnamneseAgenda({ ag, onClose, onSalvo }: Props) {
       fd.append("id_formato_pe", idFormatoPe);
       fd.append("forma_contato", formaContato);
       fd.append("tratamento_sugerido", tratamento);
-      if (fotoPlantarDireito) fd.append("foto_plantar_direito", fotoPlantarDireito);
-      if (fotoPlantarEsquerdo) fd.append("foto_plantar_esquerdo", fotoPlantarEsquerdo);
-      if (fotoDorsoDireito) fd.append("foto_dorso_direito", fotoDorsoDireito);
-      if (fotoDorsoEsquerdo) fd.append("foto_dorso_esquerdo", fotoDorsoEsquerdo);
-      if (fotoTermo) fd.append("foto_doc_termo_consentimento", fotoTermo);
+      if (fPlantarDir) fd.append("foto_plantar_direito", fPlantarDir);
+      if (fPlantarEsq) fd.append("foto_plantar_esquerdo", fPlantarEsq);
+      if (fDorsoDir) fd.append("foto_dorso_direito", fDorsoDir);
+      if (fDorsoEsq) fd.append("foto_dorso_esquerdo", fDorsoEsq);
+      if (fTermo) fd.append("foto_doc_termo_consentimento", fTermo);
 
-      const res = await fetch("/api/pacientes-evolucao", { method: "POST", body: fd });
+      const res = await fetch("/api/pacientes-evolucao", {
+        method: "POST",
+        body: fd,
+        credentials: "include",
+      });
       const rawText = await res.text();
       let json: ApiSalvarAnamneseJson;
       try {
         json = rawText ? (JSON.parse(rawText) as ApiSalvarAnamneseJson) : {};
       } catch (parseErr) {
+        const payloadGrande =
+          res.status === 413 ||
+          /FUNCTION_PAYLOAD_TOO_LARGE/i.test(rawText) ||
+          /Request Entity Too Large/i.test(rawText);
+        if (payloadGrande) {
+          setError(MSG_ERRO_PAYLOAD_GRANDE_ANAMNESE);
+          return;
+        }
         const codigo = await registrarErroClienteNoServidor({
           origem: "modal-anamnese-agenda:resposta_nao_json",
           mensagem_curta: "Resposta não JSON ao salvar anamnese",

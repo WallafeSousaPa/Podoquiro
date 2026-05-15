@@ -27,6 +27,21 @@ export function grupoNomeContemRecepcao(nome: string | null | undefined): boolea
   return c.includes("recepcao");
 }
 
+/**
+ * Perfis que podem lançar mercadorias no modal do caixa sem ser Administrador/Administrativo.
+ * Inclui grafias comuns ("Receção" → rececao) e papéis de balcão ("Secretaria").
+ */
+export function grupoNomePermiteProdutosModalCaixaRecepcao(
+  nome: string | null | undefined,
+): boolean {
+  if (grupoNomeContemRecepcao(nome)) return true;
+  if (nome == null || String(nome).trim() === "") return false;
+  const c = normalizarNomeGrupoAgenda(String(nome));
+  if (c.includes("rececao")) return true;
+  if (c.includes("secretaria") || c.includes("secretario")) return true;
+  return false;
+}
+
 /** Grupos administrativos (ex.: Administrador, Administrativo) podem retroagir agenda. */
 export function grupoNomePermiteAgendarRetroativo(
   nome: string | null | undefined,
