@@ -102,13 +102,25 @@ export async function adicionarRetanguloAssinaturaDigitalPdf(
 
   let cursorY = y2 - PADDING_INTERNO_PT - FONTE_PT;
   for (const linha of linhas) {
-    page.drawText(linha.texto, {
-      x: x1 + PADDING_INTERNO_PT,
-      y: cursorY,
-      size: FONTE_PT,
-      font: linha.negrito ? fontBold : font,
-      color: rgb(0.12, 0.12, 0.12),
-    });
+    try {
+      page.drawText(linha.texto, {
+        x: x1 + PADDING_INTERNO_PT,
+        y: cursorY,
+        size: FONTE_PT,
+        font: linha.negrito ? fontBold : font,
+        color: rgb(0.12, 0.12, 0.12),
+      });
+    } catch {
+      // WinAnsi não suporta alguns caracteres do CN — fallback ASCII.
+      const ascii = linha.texto.replace(/[^\x20-\x7E]/g, "?");
+      page.drawText(ascii, {
+        x: x1 + PADDING_INTERNO_PT,
+        y: cursorY,
+        size: FONTE_PT,
+        font: linha.negrito ? fontBold : font,
+        color: rgb(0.12, 0.12, 0.12),
+      });
+    }
     cursorY -= ENTRE_LINHAS_PT;
   }
 

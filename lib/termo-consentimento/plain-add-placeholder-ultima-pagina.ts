@@ -1,12 +1,17 @@
 /**
- * Igual ao @signpdf/placeholder-plain, mas coloca o widget na última página
- * (página do retângulo de assinatura digital da clínica).
+ * Igual ao @signpdf/placeholder-plain, mas coloca o widget na página indicada
+ * (abaixo da assinatura do paciente no termo).
  */
 
-import { createRequire } from "node:module";
-import fs from "node:fs";
-import path from "node:path";
 import { pdfkitAddPlaceholder } from "@signpdf/placeholder-pdfkit010";
+// Imports diretos do dist (evita createRequire que quebra no deploy Vercel/Turbopack).
+import readPdf from "@signpdf/placeholder-plain/dist/readPdf";
+import getIndexFromRef from "@signpdf/placeholder-plain/dist/getIndexFromRef";
+import findObject from "@signpdf/placeholder-plain/dist/findObject";
+import getPagesDictionaryRef from "@signpdf/placeholder-plain/dist/getPagesDictionaryRef";
+import createBufferRootWithAcroform from "@signpdf/placeholder-plain/dist/createBufferRootWithAcroform";
+import createBufferPageWithAnnotation from "@signpdf/placeholder-plain/dist/createBufferPageWithAnnotation";
+import createBufferTrailer from "@signpdf/placeholder-plain/dist/createBufferTrailer";
 import {
   DEFAULT_SIGNATURE_LENGTH,
   PDFKitReferenceMock,
@@ -23,48 +28,21 @@ type PdfInfo = {
   trailerStart: number;
 };
 
-/** Caminho absoluto real (compatível com Turbopack/Next.js). */
-function criarRequirePlaceholderPlain(): NodeRequire {
-  const pkgJson = path.join(
-    process.cwd(),
-    "node_modules",
-    "@signpdf",
-    "placeholder-plain",
-    "package.json",
-  );
-  if (!fs.existsSync(pkgJson)) {
-    throw new Error(
-      "Dependência @signpdf/placeholder-plain não encontrada em node_modules.",
-    );
-  }
-  return createRequire(pkgJson);
-}
-
-const requireSignpdfPlain = criarRequirePlaceholderPlain();
-
-const readPdf = requireSignpdfPlain("./dist/readPdf").default as (pdf: Buffer) => PdfInfo;
-const getIndexFromRef = requireSignpdfPlain("./dist/getIndexFromRef").default as (
-  xref: { offsets: Map<number, number> },
-  ref: string,
-) => number;
-const findObject = requireSignpdfPlain("./dist/findObject").default as (
-  pdf: Buffer,
-  xref: { offsets: Map<number, number> },
-  ref: string,
-) => Buffer;
-const getPagesDictionaryRef = requireSignpdfPlain("./dist/getPagesDictionaryRef").default as (
-  info: { root: Buffer },
-) => string;
-const createBufferRootWithAcroform = requireSignpdfPlain("./dist/createBufferRootWithAcroform")
-  .default as (pdf: Buffer, info: unknown, form: unknown) => Buffer;
-const createBufferPageWithAnnotation = requireSignpdfPlain(
-  "./dist/createBufferPageWithAnnotation",
-).default as (pdf: Buffer, info: unknown, pageRef: string, widget: unknown) => Buffer;
-const createBufferTrailer = requireSignpdfPlain("./dist/createBufferTrailer").default as (
-  pdf: Buffer,
-  info: unknown,
-  addedReferences: Map<number, number>,
-) => Buffer;
+const readPdfFn = (readPdf as { default?: (pdf: Buffer) => PdfInfo }).default ?? readPdf;
+const getIndexFromRefFn =
+  (getIndexFromRef as { default?: typeof getIndexFromRef }).default ?? getIndexFromRef;
+const findObjectFn = (findObject as { default?: typeof findObject }).default ?? findObject;
+const getPagesDictionaryRefFn =
+  (getPagesDictionaryRef as { default?: typeof getPagesDictionaryRef }).default ??
+  getPagesDictionaryRef;
+const createBufferRootWithAcroformFn =
+  (createBufferRootWithAcroform as { default?: typeof createBufferRootWithAcroform }).default ??
+  createBufferRootWithAcroform;
+const createBufferPageWithAnnotationFn =
+  (createBufferPageWithAnnotation as { default?: typeof createBufferPageWithAnnotation }).default ??
+  createBufferPageWithAnnotation;
+const createBufferTrailerFn =
+  (createBufferTrailer as { default?: typeof createBufferTrailer }).default ?? createBufferTrailer;
 
 function getAcroFormRef(slice: string): string | undefined {
   const match = /\/AcroForm\s+(\d+\s\d+\s+R)/g.exec(slice);
@@ -72,8 +50,8 @@ function getAcroFormRef(slice: string): string | undefined {
 }
 
 function obterRefPagina(pdfBuffer: Buffer, info: PdfInfo, pageIndex?: number): string {
-  const pagesRef = getPagesDictionaryRef(info);
-  const pagesDictionary = findObject(pdfBuffer, info.xref, pagesRef);
+  const pagesRef = getPagesDictionaryRefFn(info);
+  const pagesDictionary = findObjectFn(pdfBuffer, info.xref as never, pagesRef);
   const kidsPosition = pagesDictionary.indexOf("/Kids");
   const kidsStart = pagesDictionary.indexOf("[", kidsPosition) + 1;
   const kidsEnd = pagesDictionary.indexOf("]", kidsPosition);
@@ -100,7 +78,6 @@ export type PlainAddPlaceholderUltimaPaginaOpts = {
   subFilter?: string;
   widgetRect?: [number, number, number, number];
   appName?: string;
-  /** Página do widget (0 = primeira). Padrão: última. */
   pageIndex?: number;
 };
 
@@ -118,9 +95,9 @@ export function plainAddPlaceholderUltimaPagina({
   pageIndex: pageIndexOpt,
 }: PlainAddPlaceholderUltimaPaginaOpts): Buffer {
   let pdf = removeTrailingNewLine(pdfBuffer);
-  const info = readPdf(pdf);
+  const info = readPdfFn(pdf);
   const pageRef = obterRefPagina(pdf, info, pageIndexOpt);
-  const pageIndex = getIndexFromRef(info.xref, pageRef);
+  const pageIndex = getIndexFromRefFn(info.xref, pageRef);
   const addedReferences = new Map<number, number>();
 
   const pdfKitMock = {
@@ -165,12 +142,12 @@ export function plainAddPlaceholderUltimaPagina({
   });
 
   if (!getAcroFormRef(pdf.toString())) {
-    const rootIndex = getIndexFromRef(info.xref, info.rootRef);
+    const rootIndex = getIndexFromRefFn(info.xref, info.rootRef);
     addedReferences.set(rootIndex, pdf.length + 1);
     pdf = Buffer.concat([
       pdf,
       Buffer.from("\n"),
-      createBufferRootWithAcroform(pdf, info, form),
+      createBufferRootWithAcroformFn(pdf, info as never, form),
     ]);
   }
 
@@ -178,12 +155,12 @@ export function plainAddPlaceholderUltimaPagina({
   pdf = Buffer.concat([
     pdf,
     Buffer.from("\n"),
-    createBufferPageWithAnnotation(pdf, info, pageRef, widget),
+    createBufferPageWithAnnotationFn(pdf, info as never, pageRef, widget),
   ]);
   pdf = Buffer.concat([
     pdf,
     Buffer.from("\n"),
-    createBufferTrailer(pdf, info, addedReferences),
+    createBufferTrailerFn(pdf, info as never, addedReferences),
   ]);
   return pdf;
 }

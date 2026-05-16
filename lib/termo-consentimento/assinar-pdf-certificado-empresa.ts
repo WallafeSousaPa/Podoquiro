@@ -63,7 +63,20 @@ export async function assinarPdfTermoComCertificadoEmpresa(
     throw new ErroCertificadoTermoConsentimento("PDF do termo vazio.");
   }
 
-  const material = await carregarCertificadoEmpresa(supabase, idEmpresa);
+  let material: Awaited<ReturnType<typeof carregarCertificadoEmpresa>>;
+  try {
+    material = await carregarCertificadoEmpresa(supabase, idEmpresa);
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    if (/NFE_CERT_MASTER_KEY/i.test(msg)) {
+      throw new ErroCertificadoTermoConsentimento(
+        "Servidor sem NFE_CERT_MASTER_KEY configurada. Adicione a variável no ambiente de produção (Vercel/host) igual ao .env.local.",
+      );
+    }
+    throw new ErroCertificadoTermoConsentimento(
+      `Erro ao carregar certificado digital: ${msg}`,
+    );
+  }
   if (!material) {
     throw new ErroCertificadoTermoConsentimento(
       "Certificado digital não configurado. Cadastre o arquivo .pfx e a senha em Financeiro → Nota fiscal → Parâmetros.",
@@ -72,7 +85,14 @@ export async function assinarPdfTermoComCertificadoEmpresa(
 
   const meta = await metadadosAssinaturaEmpresa(supabase, idEmpresa);
   const signingTime = new Date();
-  const nomeTitularCert = obterNomeTitularCertificadoPfx(material.pfx, material.senha);
+  let nomeTitularCert: string;
+  try {
+    nomeTitularCert = obterNomeTitularCertificadoPfx(material.pfx, material.senha);
+  } catch (e) {
+    throw new ErroCertificadoTermoConsentimento(
+      `Não foi possível ler o titular do certificado: ${e instanceof Error ? e.message : String(e)}`,
+    );
+  }
 
   let pdfPreparado: Buffer;
   let widgetRect: [number, number, number, number];

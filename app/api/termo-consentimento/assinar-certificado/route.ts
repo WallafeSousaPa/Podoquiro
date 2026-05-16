@@ -89,9 +89,20 @@ export async function POST(request: Request) {
     if (e instanceof ErroCertificadoTermoConsentimento) {
       return NextResponse.json({ error: e.message }, { status: 400 });
     }
-    console.error(e);
+    const msg = e instanceof Error ? e.message : String(e);
+    console.error("[assinar-certificado]", e);
+    const erroConfig =
+      /NFE_CERT_MASTER_KEY|placeholder-plain|node_modules|certificado cifrado/i.test(msg);
+    if (erroConfig) {
+      return NextResponse.json({ error: msg }, { status: 400 });
+    }
     return NextResponse.json(
-      { error: "Erro interno ao assinar o termo com certificado digital." },
+      {
+        error:
+          process.env.NODE_ENV === "development"
+            ? msg
+            : "Erro interno ao assinar o termo com certificado digital. Tente no computador ou contate o suporte.",
+      },
       { status: 500 },
     );
   }
