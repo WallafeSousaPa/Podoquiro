@@ -32,6 +32,12 @@ import {
   rotuloSemanaPt,
 } from "@/lib/agenda/datas-agenda";
 import { normalizeCpfDigits } from "@/lib/pacientes";
+import {
+  agendamentoTemProcedimentoCorteTecnico,
+  corCorteTecnicoAgendaResolvida,
+  COR_CORTE_TECNICO_AGENDA_PADRAO,
+  parseHexCorAgenda,
+} from "@/lib/agenda/cor-corte-tecnico-agenda";
 
 const HORA_INICIO = 8;
 const HORA_FIM = 20;
@@ -171,7 +177,21 @@ type AgendamentoDia = {
   desconto: number;
   valor_total: number;
   observacoes: string | null;
+  /** Quando verdadeiro, bloqueia nova anamnese até cumprido o intervalo da empresa. */
+  anamnese_bloqueada?: boolean;
+  anamnese_bloqueio_texto?: string | null;
+  procedimentos?: { procedimento?: string | null }[];
 };
+
+function bloqueadaAnamneseAgendaCard(ag: AgendamentoDia): boolean {
+  return ag.anamnese_bloqueada === true;
+}
+
+function textoBloqueioAnamneseAgenda(ag: AgendamentoDia): string {
+  const t = ag.anamnese_bloqueio_texto?.trim();
+  if (t) return t;
+  return "Nova anamnese ainda não liberada conforme o intervalo definido pela clínica.";
+}
 
 type ProcCatalogoAgendaItem = {
   id: number;
@@ -684,6 +704,10 @@ export function AgendaCalendario({
   const [salvandoGrupos, setSalvandoGrupos] = useState(false);
   const [modalParametrizacaoOpen, setModalParametrizacaoOpen] = useState(false);
   const [modalImportPlanilhaOpen, setModalImportPlanilhaOpen] = useState(false);
+  /** Valor em `empresas.agenda_cor_corte_tecnico` (null = usar padrão #7105ab na UI). */
+  const [agendaCorCorteTecnicoRaw, setAgendaCorCorteTecnicoRaw] = useState<string | null>(null);
+  /** Rascunho hex no modal Parametrização (#RRGGBB). */
+  const [corCorteTecnicoModal, setCorCorteTecnicoModal] = useState(COR_CORTE_TECNICO_AGENDA_PADRAO);
 
   const [modalOpen, setModalOpen] = useState(false);
   const [editingId, setEditingId] = useState<number | null>(null);
@@ -791,6 +815,18 @@ export function AgendaCalendario({
       ) as Record<number, string | null>,
     [usuarios],
   );
+  const corCorteTecnicoResolvida = useMemo(
+    () => corCorteTecnicoAgendaResolvida(agendaCorCorteTecnicoRaw),
+    [agendaCorCorteTecnicoRaw],
+  );
+
+  const corDestaqueCard = useCallback(
+    (a: AgendamentoDia): string | undefined => {
+      if (agendamentoTemProcedimentoCorteTecnico(a)) return corCorteTecnicoResolvida;
+      return corCardUsuario[a.id_usuario] ?? undefined;
+    },
+    [corCorteTecnicoResolvida, corCardUsuario],
+  );
 
   const pacientesFiltrados = useMemo(() => {
     const raw = pacienteBusca.trim();
@@ -857,6 +893,7 @@ export function AgendaCalendario({
         agendaGruposConfigurados?: boolean;
         ocultarSecaoPagamentosAgenda?: boolean;
         perfil_admin_agenda?: boolean;
+        agenda_cor_corte_tecnico?: string | null;
       };
       if (!res.ok) throw new Error(json.error ?? "Erro ao carregar agenda.");
       setUsuarios(json.usuarios ?? []);
@@ -864,6 +901,7 @@ export function AgendaCalendario({
       setAgendaGruposConfigurados(!!json.agendaGruposConfigurados);
       setOcultarSecaoPagamentosAgenda(!!json.ocultarSecaoPagamentosAgenda);
       setPerfilAdminAgenda(json.perfil_admin_agenda === true);
+      setAgendaCorCorteTecnicoRaw(json.agenda_cor_corte_tecnico ?? null);
     } catch (e) {
       setLoadError(e instanceof Error ? e.message : "Erro ao carregar.");
     } finally {
@@ -941,7 +979,17 @@ export function AgendaCalendario({
 
   async function salvarGruposAgenda() {
     setSalvandoGrupos(true);
+    setLoadError(null);
     try {
+      const corParsed = parseHexCorAgenda(corCorteTecnicoModal.trim());
+      if (!corParsed) {
+        throw new Error(
+          "Informe uma cor hexadecimal válida (#RRGGBB) para o card de Corte técnico.",
+        );
+      }
+      const corParaApi =
+        corParsed === COR_CORTE_TECNICO_AGENDA_PADRAO.toLowerCase() ? null : corParsed;
+
       const res = await fetch("/api/empresa-agenda-grupos", {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
@@ -949,11 +997,24 @@ export function AgendaCalendario({
       });
       const json = (await res.json()) as { error?: string };
       if (!res.ok) throw new Error(json.error ?? "Erro ao salvar grupos.");
+
+      const resCor = await fetch("/api/empresa/parametros-agenda", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ agenda_cor_corte_tecnico: corParaApi }),
+      });
+      const jCor = (await resCor.json()) as {
+        error?: string;
+        agenda_cor_corte_tecnico?: string | null;
+      };
+      if (!resCor.ok) throw new Error(jCor.error ?? "Erro ao salvar cor da agenda.");
+      setAgendaCorCorteTecnicoRaw(jCor.agenda_cor_corte_tecnico ?? null);
+
       setModalParametrizacaoOpen(false);
       router.refresh();
       void loadAgenda();
     } catch (e) {
-      setLoadError(e instanceof Error ? e.message : "Erro ao salvar grupos.");
+      setLoadError(e instanceof Error ? e.message : "Erro ao salvar parametrização.");
     } finally {
       setSalvandoGrupos(false);
     }
@@ -967,6 +1028,11 @@ export function AgendaCalendario({
       return n;
     });
   }
+
+  useEffect(() => {
+    if (!modalParametrizacaoOpen) return;
+    setCorCorteTecnicoModal(corCorteTecnicoAgendaResolvida(agendaCorCorteTecnicoRaw));
+  }, [modalParametrizacaoOpen, agendaCorCorteTecnicoRaw]);
 
   async function carregarListasAuxiliares() {
     const [pr, sa] = await Promise.all([fetch("/api/pacientes"), fetch("/api/salas")]);
@@ -1423,6 +1489,10 @@ export function AgendaCalendario({
 
   function abrirAnamnese(ag: AgendamentoDia) {
     setMenuCardAbertoId(null);
+    if (bloqueadaAnamneseAgendaCard(ag)) {
+      setErroModal(textoBloqueioAnamneseAgenda(ag));
+      return;
+    }
     setAnamneseAgModal(ag);
   }
 
@@ -1884,7 +1954,11 @@ export function AgendaCalendario({
                               !ocultarSecaoPagamentosAgenda || somenteMenuInicio
                                 ? "agenda-appointment--com-menu-card"
                                 : ""
-                            } text-left ${classeStatus(a.status)}`}
+                            } text-left ${
+                              agendamentoTemProcedimentoCorteTecnico(a)
+                                ? "agenda-appointment--corte-tecnico-fundo "
+                                : ""
+                            }${classeStatus(a.status)}`}
                             style={{
                               top: st.top,
                               height: st.height,
@@ -1893,7 +1967,7 @@ export function AgendaCalendario({
                               ...(menuCardAbertoId === a.id
                                 ? { zIndex: 80 }
                                 : {}),
-                              ["--card-destaque" as string]: corCardUsuario[a.id_usuario] ?? undefined,
+                              ["--card-destaque" as string]: corDestaqueCard(a),
                             }}
                             onDragStart={(ev) => {
                               ev.dataTransfer.setData(
@@ -2018,7 +2092,15 @@ export function AgendaCalendario({
                                     <button
                                       type="button"
                                       role="menuitem"
-                                      className="dropdown-item"
+                                      className={`dropdown-item${
+                                        bloqueadaAnamneseAgendaCard(a) ? " disabled" : ""
+                                      }`}
+                                      disabled={bloqueadaAnamneseAgendaCard(a)}
+                                      title={
+                                        bloqueadaAnamneseAgendaCard(a)
+                                          ? textoBloqueioAnamneseAgenda(a)
+                                          : undefined
+                                      }
                                       onClick={(ev) => {
                                         ev.stopPropagation();
                                         setMenuCardAbertoId(null);
@@ -2073,7 +2155,15 @@ export function AgendaCalendario({
                               <div className="mt-1">
                                 <button
                                   type="button"
-                                  className="btn btn-link btn-sm p-0"
+                                  className={`btn btn-link btn-sm p-0 ${
+                                    bloqueadaAnamneseAgendaCard(a) ? "text-muted" : ""
+                                  }`}
+                                  disabled={bloqueadaAnamneseAgendaCard(a)}
+                                  title={
+                                    bloqueadaAnamneseAgendaCard(a)
+                                      ? textoBloqueioAnamneseAgenda(a)
+                                      : undefined
+                                  }
                                   onClick={(ev) => {
                                     ev.stopPropagation();
                                     void abrirAnamnese(a);
@@ -2182,7 +2272,11 @@ export function AgendaCalendario({
                             key={a.id}
                             role="button"
                             tabIndex={0}
-                            className={`agenda-appointment agenda-appointment--compact agenda-appointment--${densidade} text-left ${classeStatus(a.status)} ${
+                            className={`agenda-appointment agenda-appointment--compact agenda-appointment--${densidade} text-left ${
+                              agendamentoTemProcedimentoCorteTecnico(a)
+                                ? "agenda-appointment--corte-tecnico-fundo "
+                                : ""
+                            }${classeStatus(a.status)} ${
                               faixasEstreitasSem ? "agenda-appointment--lane-split" : ""
                             } ${cardMicroSem ? "agenda-appointment--micro" : ""} ${
                               slotCurtoSem ? "agenda-appointment--duracao-curta" : ""
@@ -2191,7 +2285,7 @@ export function AgendaCalendario({
                               top: st.top,
                               height: st.height,
                               ...estiloFaixasSobreposicaoCard(layFaixaSem, "semana"),
-                              ["--card-destaque" as string]: corCardUsuario[a.id_usuario] ?? undefined,
+                              ["--card-destaque" as string]: corDestaqueCard(a),
                             }}
                             title={`${a.paciente_nome} — ${formatHoraLocal(new Date(a.data_hora_inicio))} às ${formatHoraLocal(new Date(a.data_hora_fim))} — ${a.nome_sala}`}
                             onKeyDown={(ev) => {
@@ -2243,7 +2337,15 @@ export function AgendaCalendario({
                               <span className="d-block mt-1">
                                 <button
                                   type="button"
-                                  className="btn btn-link btn-sm p-0"
+                                  className={`btn btn-link btn-sm p-0 ${
+                                    bloqueadaAnamneseAgendaCard(a) ? "text-muted" : ""
+                                  }`}
+                                  disabled={bloqueadaAnamneseAgendaCard(a)}
+                                  title={
+                                    bloqueadaAnamneseAgendaCard(a)
+                                      ? textoBloqueioAnamneseAgenda(a)
+                                      : undefined
+                                  }
                                   onClick={(ev) => {
                                     ev.stopPropagation();
                                     void abrirAnamnese(a);
@@ -2316,10 +2418,13 @@ export function AgendaCalendario({
                                     key={a.id}
                                     role="button"
                                     tabIndex={0}
-                                    className={`agenda-cal-month-chip agenda-cal-month-chip--${densidade} w-100 text-left ${classeStatus(a.status)}`}
+                                    className={`agenda-cal-month-chip agenda-cal-month-chip--${densidade} w-100 text-left ${classeStatus(a.status)}${
+                                      agendamentoTemProcedimentoCorteTecnico(a)
+                                        ? " agenda-cal-month-chip--corte-tecnico-fundo"
+                                        : ""
+                                    }`}
                                     style={{
-                                      ["--card-destaque" as string]:
-                                        corCardUsuario[a.id_usuario] ?? undefined,
+                                      ["--card-destaque" as string]: corDestaqueCard(a),
                                     }}
                                     onKeyDown={(ev) => {
                                       if (ev.key === "Enter" || ev.key === " ") {
@@ -2351,7 +2456,15 @@ export function AgendaCalendario({
                                       <span className="d-block mt-1">
                                         <button
                                           type="button"
-                                          className="btn btn-link btn-sm p-0"
+                                          className={`btn btn-link btn-sm p-0 ${
+                                            bloqueadaAnamneseAgendaCard(a) ? "text-muted" : ""
+                                          }`}
+                                          disabled={bloqueadaAnamneseAgendaCard(a)}
+                                          title={
+                                            bloqueadaAnamneseAgendaCard(a)
+                                              ? textoBloqueioAnamneseAgenda(a)
+                                              : undefined
+                                          }
                                           onClick={(ev) => {
                                             ev.stopPropagation();
                                             void abrirAnamnese(a);
@@ -2438,6 +2551,51 @@ export function AgendaCalendario({
                     </div>
                   ))}
                 </div>
+                <hr className="my-4" />
+                <p className="font-weight-bold mb-2">Cor do card — Corte técnico</p>
+                <p className="text-muted small mb-3">
+                  Aplica-se apenas quando o agendamento tem <strong>um único</strong> procedimento e ele é{" "}
+                  <strong>Corte técnico</strong>. Com mais de um procedimento na mesma marcação, o card mantém
+                  a cor do profissional.
+                </p>
+                <div className="form-row align-items-end">
+                  <div className="form-group col-auto mb-0">
+                    <label className="small text-muted d-block mb-1">Amostra</label>
+                    <input
+                      type="color"
+                      className="form-control p-1"
+                      style={{ width: 48, height: 38, cursor: "pointer" }}
+                      value={
+                        parseHexCorAgenda(corCorteTecnicoModal) ?? COR_CORTE_TECNICO_AGENDA_PADRAO
+                      }
+                      onChange={(e) => setCorCorteTecnicoModal(e.target.value)}
+                    />
+                  </div>
+                  <div className="form-group col-sm mb-0">
+                    <label className="small text-muted d-block mb-1" htmlFor="agenda-cor-corte-hex">
+                      Hexadecimal (#RRGGBB)
+                    </label>
+                    <input
+                      id="agenda-cor-corte-hex"
+                      type="text"
+                      className="form-control form-control-sm"
+                      value={corCorteTecnicoModal}
+                      onChange={(e) => setCorCorteTecnicoModal(e.target.value)}
+                      placeholder={COR_CORTE_TECNICO_AGENDA_PADRAO}
+                      spellCheck={false}
+                      maxLength={7}
+                      autoComplete="off"
+                    />
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  className="btn btn-link btn-sm px-0 mb-0"
+                  disabled={salvandoGrupos}
+                  onClick={() => setCorCorteTecnicoModal(COR_CORTE_TECNICO_AGENDA_PADRAO)}
+                >
+                  Restaurar cor padrão ({COR_CORTE_TECNICO_AGENDA_PADRAO})
+                </button>
               </div>
               <div className="modal-footer">
                 <button
@@ -2454,7 +2612,7 @@ export function AgendaCalendario({
                   disabled={salvandoGrupos}
                   onClick={() => void salvarGruposAgenda()}
                 >
-                  {salvandoGrupos ? "Salvando..." : "Salvar grupos"}
+                  {salvandoGrupos ? "Salvando..." : "Salvar"}
                 </button>
               </div>
             </div>

@@ -12,6 +12,10 @@ export function parseEvolucaoHidroseIds(row: Record<string, unknown>): number[] 
   return parseFkColumn(row, "pacientes_evolucao_hidroses", "id_hidrose");
 }
 
+export function parseEvolucaoLesoesMecanicasIds(row: Record<string, unknown>): number[] {
+  return parseFkColumn(row, "pacientes_evolucao_lesoes_mecanicas", "id_lesoes_mecanicas");
+}
+
 function parseFkColumn(row: Record<string, unknown>, listKey: string, fkKey: string): number[] {
   const raw = row[listKey];
   if (!Array.isArray(raw)) return [];
@@ -49,6 +53,10 @@ export function resumoTextosTiposUnha(row: Record<string, unknown>): string {
 
 export function resumoTextosHidroses(row: Record<string, unknown>): string {
   return joinLabels(row, "pacientes_evolucao_hidroses", "hidroses", "tipo");
+}
+
+export function resumoTextosLesoesMecanicas(row: Record<string, unknown>): string {
+  return joinLabels(row, "pacientes_evolucao_lesoes_mecanicas", "lesoes_mecanicas", "tipo");
 }
 
 function joinLabels(

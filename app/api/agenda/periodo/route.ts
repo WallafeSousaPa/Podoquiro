@@ -10,6 +10,10 @@ import {
   carregarUsuariosColunasAgenda,
   filtrarColunasAgendaSomenteUsuarioPodoquiro,
 } from "@/lib/agenda/usuarios-colunas-agenda";
+import {
+  carregarGatesAnamnesePorPaciente,
+  type GateAnamneseAgendamento,
+} from "@/lib/avaliacoes/anamnese-intervalo";
 import { getSession } from "@/lib/auth/session";
 import { createAdminClient } from "@/lib/supabase/admin";
 
@@ -94,6 +98,13 @@ export async function GET(request: Request) {
   }
 
   const supabase = createAdminClient();
+
+  const { data: empCor } = await supabase
+    .from("empresas")
+    .select("agenda_cor_corte_tecnico")
+    .eq("id", empresaId)
+    .maybeSingle();
+  const agenda_cor_corte_tecnico = (empCor?.agenda_cor_corte_tecnico as string | null) ?? null;
 
   let grupoIds: number[] = [];
   let configuradoNaEmpresa = false;
@@ -298,7 +309,7 @@ export async function GET(request: Request) {
     (salaMap ?? []).map((s) => [s.id, { nome_sala: s.nome_sala as string }]),
   );
 
-  const agendamentos = (agRows ?? []).map((r) => {
+  let agendamentos = (agRows ?? []).map((r) => {
     const id = r.id as number;
     const pid = r.id_paciente as number;
     const sid = r.id_sala as number;
@@ -337,6 +348,28 @@ export async function GET(request: Request) {
     };
   });
 
+  const gatePadrao: GateAnamneseAgendamento = {
+    anamnese_bloqueada: false,
+    anamnese_bloqueio_texto: null,
+  };
+  try {
+    const gates = await carregarGatesAnamnesePorPaciente(
+      supabase,
+      empresaId,
+      agendamentos.map((x) => x.id_paciente),
+    );
+    agendamentos = agendamentos.map((a) => ({
+      ...a,
+      ...(gates[a.id_paciente] ?? gatePadrao),
+    }));
+  } catch (e) {
+    console.error(e);
+    agendamentos = agendamentos.map((a) => ({
+      ...a,
+      ...gatePadrao,
+    }));
+  }
+
   const usuarios = (usuariosRows ?? []).map((u) => ({
     id: u.id as number,
     nome:
@@ -351,6 +384,7 @@ export async function GET(request: Request) {
 
   return NextResponse.json({
     periodo: { inicio, fim },
+    agenda_cor_corte_tecnico,
     gruposCalendario: (gruposRows ?? []).map((g) => ({
       id: g.id,
       grupo_usuarios: g.grupo_usuarios as string,

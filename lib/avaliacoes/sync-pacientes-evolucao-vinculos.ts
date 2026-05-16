@@ -4,6 +4,7 @@ export type PacientesEvolucaoVinculosInput = {
   condicoes: number[];
   tiposUnha: number[];
   hidroses: number[];
+  lesoesMecanicas: number[];
 };
 
 function uniqPositiveIds(ids: number[]): number[] {
@@ -31,6 +32,11 @@ export async function syncPacientesEvolucaoVinculos(
     ["pacientes_evolucao_condicoes", "id_condicao", uniqPositiveIds(vinculos.condicoes)],
     ["pacientes_evolucao_tipos_unha", "id_tipo_unha", uniqPositiveIds(vinculos.tiposUnha)],
     ["pacientes_evolucao_hidroses", "id_hidrose", uniqPositiveIds(vinculos.hidroses)],
+    [
+      "pacientes_evolucao_lesoes_mecanicas",
+      "id_lesoes_mecanicas",
+      uniqPositiveIds(vinculos.lesoesMecanicas),
+    ],
   ];
 
   for (const [table, fkCol, ids] of grupos) {

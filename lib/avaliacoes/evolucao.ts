@@ -46,5 +46,6 @@ export function parsePositiveIdsFromFormData(formData: FormData, key: string): n
 export const SELECT_PACIENTES_EVOLUCAO_VINCULOS = `
   pacientes_evolucao_condicoes ( id_condicao, condicoes_saude ( condicao ) ),
   pacientes_evolucao_tipos_unha ( id_tipo_unha, tipos_unhas ( tipo ) ),
-  pacientes_evolucao_hidroses ( id_hidrose, hidroses ( tipo ) )
+  pacientes_evolucao_hidroses ( id_hidrose, hidroses ( tipo ) ),
+  pacientes_evolucao_lesoes_mecanicas ( id_lesoes_mecanicas, lesoes_mecanicas ( tipo ) )
 `.trim();

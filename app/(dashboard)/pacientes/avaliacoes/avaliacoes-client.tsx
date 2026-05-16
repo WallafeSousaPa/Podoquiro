@@ -3,13 +3,17 @@
 import { useRouter } from "next/navigation";
 import { type FormEvent, type ReactNode, useEffect, useMemo, useState } from "react";
 import { DropdownCheckboxMultiselect } from "@/components/dropdown-checkbox-multiselect";
+import { montarNomeArquivoTermoAssinatura } from "@/lib/client/render-termo-assinatura-pdf";
 import { FORMAS_CONTATO_PACIENTE } from "@/lib/avaliacoes/evolucao";
+import { nomeExibicaoPaciente } from "@/lib/pacientes";
 import {
   parseEvolucaoCondicaoIds,
   parseEvolucaoHidroseIds,
+  parseEvolucaoLesoesMecanicasIds,
   parseEvolucaoTipoUnhaIds,
   resumoTextosCondicoes,
   resumoTextosHidroses,
+  resumoTextosLesoesMecanicas,
   resumoTextosTiposUnha,
 } from "@/lib/avaliacoes/parse-evolucao-vinculos-from-row";
 
@@ -25,6 +29,24 @@ type CatalogKey =
   | "lesoes-mecanicas"
   | "formato-dedos"
   | "formato-pe";
+
+function nomePacienteDaLinhaEvolucao(row: Evolucao, pacientesById: Record<number, string>): string {
+  const pid = Number(row.id_paciente);
+  const nested = row.pacientes as
+    | { nome_completo?: string | null; nome_social?: string | null }
+    | { nome_completo?: string | null; nome_social?: string | null }[]
+    | null
+    | undefined;
+  const o = Array.isArray(nested) ? nested[0] : nested;
+  if (o && typeof o === "object") {
+    const n = nomeExibicaoPaciente({
+      nome_completo: o.nome_completo ?? null,
+      nome_social: o.nome_social ?? null,
+    }).trim();
+    if (n) return n;
+  }
+  return pacientesById[pid] ?? `Paciente #${pid}`;
+}
 
 function ModalBackdrop({ children, onBackdropClick }: { children: ReactNode; onBackdropClick: () => void }) {
   return (
@@ -60,11 +82,18 @@ type Props = {
   lesoesMecanicas: OptionItem[];
   formatosDedos: OptionItem[];
   formatosPe: OptionItem[];
+  /** Administrador / Administrativo: permite definir dias mínimos entre anamneses na clínica. */
+  podeParametrizarAnamnese?: boolean;
+  /** Administrador / Administrativo: excluir avaliação permanentemente (substitui inativar na lista). */
+  podeExcluirEvolucaoPacientes?: boolean;
+  diasEntreAnamnesesInicial?: number | null;
 };
 
 export function AvaliacoesClient(props: Props) {
   const router = useRouter();
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL ?? "";
+  const podeParamAnam = props.podeParametrizarAnamnese === true;
+  const podeExcluirEvolucaoPacientes = props.podeExcluirEvolucaoPacientes === true;
   const [rows, setRows] = useState<Evolucao[]>(props.evolucoesIniciais);
   const [loadingList, setLoadingList] = useState(false);
   const [listError, setListError] = useState<string | null>(null);
@@ -91,7 +120,7 @@ export function AvaliacoesClient(props: Props) {
   const [idPeEsquerdo, setIdPeEsquerdo] = useState("");
   const [idPeDireito, setIdPeDireito] = useState("");
   const [idsHidrose, setIdsHidrose] = useState<number[]>([]);
-  const [idLesoesMecanicas, setIdLesoesMecanicas] = useState("");
+  const [idsLesoesMecanicas, setIdsLesoesMecanicas] = useState<number[]>([]);
   const [digitoPressao, setDigitoPressao] = useState("");
   const [varizes, setVarizes] = useState("");
   const [claudicacao, setClaudicacao] = useState("");
@@ -126,6 +155,58 @@ export function AvaliacoesClient(props: Props) {
     error: string | null;
   } | null>(null);
 
+  const [modalParamAnamOpen, setModalParamAnamOpen] = useState(false);
+  const [paramAnamDias, setParamAnamDias] = useState("");
+  const [paramAnamSaving, setParamAnamSaving] = useState(false);
+  const [paramAnamError, setParamAnamError] = useState<string | null>(null);
+
+  const [excluirConfirmRow, setExcluirConfirmRow] = useState<Evolucao | null>(null);
+  const [excluindoEvolucao, setExcluindoEvolucao] = useState(false);
+  /** Modal após exclusão concluída na API. */
+  const [excluirSucessoModal, setExcluirSucessoModal] = useState<{
+    avaliacaoId: number;
+    pacienteNome: string;
+  } | null>(null);
+
+  function abrirModalParamAnam() {
+    const v = props.diasEntreAnamnesesInicial;
+    setParamAnamDias(v != null && v > 0 ? String(v) : "");
+    setParamAnamError(null);
+    setModalParamAnamOpen(true);
+  }
+
+  async function salvarModalParamAnam() {
+    setParamAnamSaving(true);
+    setParamAnamError(null);
+    try {
+      const raw = paramAnamDias.trim();
+      const body =
+        raw === ""
+          ? { dias_entre_anamneses: null as number | null }
+          : { dias_entre_anamneses: Math.trunc(Number(raw)) };
+      if (body.dias_entre_anamneses != null) {
+        if (!Number.isFinite(body.dias_entre_anamneses) || body.dias_entre_anamneses <= 0) {
+          throw new Error("Informe um número inteiro maior que zero ou deixe vazio para desativar.");
+        }
+      }
+      const res = await fetch("/api/empresa/parametros-anamnese", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      const json = (await res.json()) as { error?: string; dias_entre_anamneses?: number | null };
+      if (!res.ok) throw new Error(json.error ?? "Não foi possível salvar o parâmetro.");
+      const novo = json.dias_entre_anamneses;
+      setParamAnamDias(novo != null && novo > 0 ? String(novo) : "");
+      setModalParamAnamOpen(false);
+      router.refresh();
+    } catch (ex) {
+      setParamAnamError(ex instanceof Error ? ex.message : "Erro ao salvar.");
+    } finally {
+      setParamAnamSaving(false);
+    }
+  }
+
   const pacientesById = useMemo(
     () => Object.fromEntries(props.pacientes.map((p) => [p.id, p.nome])) as Record<number, string>,
     [props.pacientes],
@@ -139,7 +220,7 @@ export function AvaliacoesClient(props: Props) {
     const q = filtroPaciente.trim().toLowerCase();
     return rows.filter((r) => {
       const pid = Number(r.id_paciente);
-      const nome = pacientesById[pid] ?? "";
+      const nome = nomePacienteDaLinhaEvolucao(r, pacientesById);
       const okPaciente = !q || nome.toLowerCase().includes(q);
       let okData = true;
       if (filtroDataInicio || filtroDataFim) {
@@ -196,7 +277,7 @@ export function AvaliacoesClient(props: Props) {
     setIdPeEsquerdo("");
     setIdPeDireito("");
     setIdsHidrose([]);
-    setIdLesoesMecanicas("");
+    setIdsLesoesMecanicas([]);
     setDigitoPressao("");
     setVarizes("");
     setClaudicacao("");
@@ -231,7 +312,7 @@ export function AvaliacoesClient(props: Props) {
     setEditingId(Number(row.id));
     setIdPaciente(String(row.id_paciente ?? ""));
     const pid = Number(row.id_paciente ?? 0);
-    setPacienteBusca(pacientesById[pid] ?? "");
+    setPacienteBusca(nomePacienteDaLinhaEvolucao(row, pacientesById));
     setPacienteListaAberta(false);
     const rec = row as Record<string, unknown>;
     setIdsCondicao(parseEvolucaoCondicaoIds(rec));
@@ -244,7 +325,7 @@ export function AvaliacoesClient(props: Props) {
     setIdPeEsquerdo(String(row.id_pe_esquerdo ?? ""));
     setIdPeDireito(String(row.id_pe_direito ?? ""));
     setIdsHidrose(parseEvolucaoHidroseIds(rec));
-    setIdLesoesMecanicas(String(row.id_lesoes_mecanicas ?? ""));
+    setIdsLesoesMecanicas(parseEvolucaoLesoesMecanicasIds(rec));
     setDigitoPressao(toNullableString(row.digito_pressao));
     setVarizes(toNullableString(row.varizes));
     setClaudicacao(toNullableString(row.claudicacao));
@@ -286,7 +367,7 @@ export function AvaliacoesClient(props: Props) {
       appendText("id_pe_esquerdo", idPeEsquerdo);
       appendText("id_pe_direito", idPeDireito);
       for (const id of idsHidrose) fd.append("id_hidrose", String(id));
-      appendText("id_lesoes_mecanicas", idLesoesMecanicas);
+      for (const id of idsLesoesMecanicas) fd.append("id_lesoes_mecanicas", String(id));
       appendText("digito_pressao", digitoPressao);
       appendText("varizes", varizes);
       appendText("claudicacao", claudicacao);
@@ -338,6 +419,12 @@ export function AvaliacoesClient(props: Props) {
     return `${supabaseUrl}/storage/v1/object/public/evolucao_analise/${path}`;
   }
 
+  /** PDF do termo com assinatura virtual (bucket próprio no Storage). */
+  function urlTermoAssinaturaVirtualPublica(path: unknown): string | null {
+    if (typeof path !== "string" || !path.trim() || !supabaseUrl) return null;
+    return `${supabaseUrl}/storage/v1/object/public/termo_assinatura_virtual/${path}`;
+  }
+
   async function toggleAtivo(row: Evolucao, ativo: boolean) {
     setListError(null);
     const res = await fetch(`/api/pacientes-evolucao/${row.id}`, {
@@ -351,6 +438,38 @@ export function AvaliacoesClient(props: Props) {
       return;
     }
     await reloadList();
+  }
+
+  function solicitarExclusaoEvolucao(row: Evolucao) {
+    setExcluirConfirmRow(row);
+  }
+
+  async function confirmarExclusaoEvolucao() {
+    const row = excluirConfirmRow;
+    if (!row) return;
+    const id = Number(row.id);
+    if (!Number.isFinite(id) || id <= 0) return;
+    setExcluindoEvolucao(true);
+    setListError(null);
+    try {
+      const res = await fetch(`/api/pacientes-evolucao/${id}`, { method: "DELETE" });
+      const json = (await res.json().catch(() => ({}))) as { error?: string };
+      if (!res.ok) throw new Error(json.error ?? "Não foi possível excluir a avaliação.");
+      const nomePacienteRef = nomePacienteDaLinhaEvolucao(row, pacientesById);
+      setExcluirConfirmRow(null);
+      if (consultaRow && Number(consultaRow.id) === id) setConsultaRow(null);
+      if (modalOpen && editingId === id) {
+        setModalOpen(false);
+        resetForm();
+      }
+      await reloadList();
+      router.refresh();
+      setExcluirSucessoModal({ avaliacaoId: id, pacienteNome: nomePacienteRef });
+    } catch (e) {
+      setListError(e instanceof Error ? e.message : "Erro ao excluir.");
+    } finally {
+      setExcluindoEvolucao(false);
+    }
   }
 
   const catalogConfigs = useMemo(
@@ -440,11 +559,24 @@ export function AvaliacoesClient(props: Props) {
     <>
       {listError ? <div className="alert alert-warning">{listError}</div> : null}
       <div className="card card-outline card-primary">
-        <div className="card-header d-flex flex-wrap justify-content-between align-items-center">
+        <div className="card-header d-flex flex-wrap justify-content-between align-items-center gap-2">
           <h3 className="card-title mb-2 mb-sm-0">Evolução dos pacientes</h3>
-          <button type="button" className="btn btn-primary btn-sm" onClick={openCreate}>
-            <i className="fas fa-plus mr-1" aria-hidden /> Nova avaliação
-          </button>
+          <div className="d-flex flex-wrap align-items-center" style={{ gap: 8 }}>
+            {podeParamAnam ? (
+              <button
+                type="button"
+                className="btn btn-outline-secondary btn-sm"
+                onClick={abrirModalParamAnam}
+                title="Define quantos dias devem passar após a última anamnese para liberar nova ficha na agenda e no atendimento."
+              >
+                <i className="fas fa-sliders-h mr-1" aria-hidden />
+                Periodicidade da anamnese
+              </button>
+            ) : null}
+            <button type="button" className="btn btn-primary btn-sm" onClick={openCreate}>
+              <i className="fas fa-plus mr-1" aria-hidden /> Nova avaliação
+            </button>
+          </div>
         </div>
         <div className="card-body border-bottom">
           <div className="form-row">
@@ -527,7 +659,7 @@ export function AvaliacoesClient(props: Props) {
                         onClick={() => setConsultaRow(row)}
                         title="Consultar avaliação"
                       >
-                        {pacientesById[pid] ?? `Paciente #${pid}`}
+                        {nomePacienteDaLinhaEvolucao(row, pacientesById)}
                       </button>
                     </td>
                     <td>{responsavelById[uid] ?? `Usuário #${uid}`}</td>
@@ -539,10 +671,22 @@ export function AvaliacoesClient(props: Props) {
                         <i className="fas fa-edit" aria-hidden /> Editar
                       </button>
                       {row.ativo === false ? (
-                        <button className="btn btn-sm btn-outline-success" onClick={() => void toggleAtivo(row, true)}>Ativar</button>
-                      ) : (
-                        <button className="btn btn-sm btn-outline-danger" onClick={() => void toggleAtivo(row, false)}>Inativar</button>
-                      )}
+                        <button
+                          type="button"
+                          className="btn btn-sm btn-outline-success"
+                          onClick={() => void toggleAtivo(row, true)}
+                        >
+                          Ativar
+                        </button>
+                      ) : podeExcluirEvolucaoPacientes ? (
+                        <button
+                          type="button"
+                          className="btn btn-sm btn-outline-danger"
+                          onClick={() => solicitarExclusaoEvolucao(row)}
+                        >
+                          Excluir
+                        </button>
+                      ) : null}
                     </td>
                   </tr>
                 );
@@ -680,7 +824,17 @@ export function AvaliacoesClient(props: Props) {
                           disabled={saving}
                         />
                       </div>
-                      <div className="form-group col-md-6"><label>Lesões mecânicas</label><select className="form-control" value={idLesoesMecanicas} onChange={(e) => setIdLesoesMecanicas(e.target.value)}><option value="">—</option>{props.lesoesMecanicas.filter((x) => x.ativo).map((x) => <option key={x.id} value={x.id}>{x.tipo}</option>)}</select></div>
+                      <div className="form-group col-md-6">
+                        <DropdownCheckboxMultiselect
+                          label="Lesões mecânicas"
+                          options={props.lesoesMecanicas
+                            .filter((x) => x.ativo)
+                            .map((x) => ({ id: x.id, label: x.tipo?.trim() || `ID ${x.id}` }))}
+                          value={idsLesoesMecanicas}
+                          onChange={setIdsLesoesMecanicas}
+                          disabled={saving}
+                        />
+                      </div>
                     </div>
                     <div className="form-row">
                       <div className="form-group col-md-4"><label>Dígito pressão</label><input className="form-control" value={digitoPressao} onChange={(e) => setDigitoPressao(e.target.value)} /></div>
@@ -801,7 +955,7 @@ export function AvaliacoesClient(props: Props) {
                 <div className="form-row">
                   <div className="form-group col-md-6">
                     <label className="mb-1 text-muted">Paciente</label>
-                    <div className="font-weight-bold">{pacientesById[Number(consultaRow.id_paciente)] ?? `Paciente #${consultaRow.id_paciente}`}</div>
+                    <div className="font-weight-bold">{nomePacienteDaLinhaEvolucao(consultaRow, pacientesById)}</div>
                   </div>
                   <div className="form-group col-md-6">
                     <label className="mb-1 text-muted">Responsável</label>
@@ -918,8 +1072,8 @@ export function AvaliacoesClient(props: Props) {
                     <div>{resumoTextosHidroses(consultaRow as Record<string, unknown>)}</div>
                   </div>
                   <div className="form-group col-md-6">
-                    <label className="mb-1 text-muted">Lesões mecânicas (ID)</label>
-                    <div>{String(consultaRow.id_lesoes_mecanicas ?? "-")}</div>
+                    <label className="mb-1 text-muted">Lesões mecânicas</label>
+                    <div>{resumoTextosLesoesMecanicas(consultaRow as Record<string, unknown>)}</div>
                   </div>
                 </div>
                 <div className="form-row">
@@ -936,6 +1090,56 @@ export function AvaliacoesClient(props: Props) {
                   <label className="mb-1 text-muted">Observação</label>
                   <div>{String(consultaRow.observacao ?? "-")}</div>
                 </div>
+
+                <hr />
+                <h6 className="text-primary mb-3">Termo com assinatura virtual (PDF)</h6>
+                {(() => {
+                  const pathTermo = consultaRow.arquivo_termo_assinatura_virtual;
+                  const urlPdf = urlTermoAssinaturaVirtualPublica(pathTermo);
+                  const dataAval =
+                    consultaRow.data != null ? new Date(String(consultaRow.data)) : new Date();
+                  const downloadName = montarNomeArquivoTermoAssinatura(
+                    nomePacienteDaLinhaEvolucao(consultaRow, pacientesById),
+                    dataAval,
+                  );
+                  if (!urlPdf) {
+                    return <p className="text-muted small mb-0">Nenhum PDF de termo com assinatura virtual foi anexado a esta avaliação.</p>;
+                  }
+                  return (
+                    <div className="mb-3 d-flex justify-content-center">
+                      <div
+                        className="border rounded bg-white shadow-sm position-relative"
+                        style={{ width: "100%", maxWidth: 280, padding: "1rem 1rem 1.5rem" }}
+                      >
+                        <div className="d-flex justify-content-between align-items-center mb-3">
+                          <a
+                            href={urlPdf}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="text-secondary"
+                            title="Visualizar PDF"
+                            aria-label="Visualizar PDF em nova aba"
+                          >
+                            <i className="fas fa-eye fa-lg" aria-hidden />
+                          </a>
+                          <a
+                            href={urlPdf}
+                            download={downloadName}
+                            className="text-secondary"
+                            title="Baixar PDF"
+                            aria-label="Baixar PDF"
+                          >
+                            <i className="fas fa-download fa-lg" aria-hidden />
+                          </a>
+                        </div>
+                        <div className="text-center pt-1">
+                          <i className="fas fa-file-pdf text-danger" style={{ fontSize: "3.25rem" }} aria-hidden />
+                          <div className="small text-muted font-weight-bold mt-2 mb-0">PDF</div>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })()}
 
                 <hr />
                 <h6 className="text-primary mb-3">Fotos</h6>
@@ -970,6 +1174,147 @@ export function AvaliacoesClient(props: Props) {
               </div>
               <div className="modal-footer">
                 <button type="button" className="btn btn-secondary" onClick={() => setConsultaRow(null)}>Fechar</button>
+              </div>
+            </div>
+          </div>
+        </ModalBackdrop>
+      ) : null}
+
+      {modalParamAnamOpen ? (
+        <ModalBackdrop onBackdropClick={() => !paramAnamSaving && setModalParamAnamOpen(false)}>
+          <div className="modal-dialog modal-dialog-centered" role="document">
+            <div className="modal-content">
+              <div className="modal-header py-3">
+                <h5 className="modal-title">Periodicidade da anamnese (clínica)</h5>
+                <button type="button" className="close" onClick={() => !paramAnamSaving && setModalParamAnamOpen(false)}>
+                  <span aria-hidden="true">&times;</span>
+                </button>
+              </div>
+              <div className="modal-body">
+                <p className="small text-muted mb-3">
+                  Quando preenchido, a opção para registrar nova anamnese fica disponível apenas após o número indicado de
+                  dias corridos (fuso Brasília) desde a data da última ficha do paciente, nos cards da agenda (
+                  Início), na fila de Atendimento e ao cadastrar avaliações. Deixe vazio para não exigir intervalo.
+                </p>
+                {paramAnamError ? (
+                  <div className="alert alert-danger py-2 small">{paramAnamError}</div>
+                ) : null}
+                <div className="form-group mb-0">
+                  <label htmlFor="param-anam-dias">Dias mínimos desde a última anamnese</label>
+                  <input
+                    id="param-anam-dias"
+                    type="number"
+                    inputMode="numeric"
+                    min={1}
+                    className="form-control"
+                    placeholder="Ex.: 60 (vazio = desativado)"
+                    value={paramAnamDias}
+                    disabled={paramAnamSaving}
+                    onChange={(e) => setParamAnamDias(e.target.value)}
+                  />
+                  <small className="form-text text-muted">Somente usuários Administrador ou Administrativo veem esta tela.</small>
+                </div>
+              </div>
+              <div className="modal-footer">
+                <button
+                  type="button"
+                  className="btn btn-secondary"
+                  disabled={paramAnamSaving}
+                  onClick={() => setModalParamAnamOpen(false)}
+                >
+                  Cancelar
+                </button>
+                <button type="button" className="btn btn-primary" disabled={paramAnamSaving} onClick={() => void salvarModalParamAnam()}>
+                  {paramAnamSaving ? "Salvando…" : "Salvar"}
+                </button>
+              </div>
+            </div>
+          </div>
+        </ModalBackdrop>
+      ) : null}
+
+      {excluirConfirmRow ? (
+        <ModalBackdrop
+          onBackdropClick={() => {
+            if (!excluindoEvolucao) setExcluirConfirmRow(null);
+          }}
+        >
+          <div className="modal-dialog modal-dialog-centered" role="document">
+            <div className="modal-content">
+              <div className="modal-header py-3">
+                <h5 className="modal-title">Confirmar exclusão</h5>
+                <button
+                  type="button"
+                  className="close"
+                  disabled={excluindoEvolucao}
+                  onClick={() => setExcluirConfirmRow(null)}
+                  aria-label="Fechar"
+                >
+                  <span aria-hidden="true">&times;</span>
+                </button>
+              </div>
+              <div className="modal-body">
+                <p className="mb-2">
+                  Excluir permanentemente a avaliação <strong>#{String(excluirConfirmRow.id)}</strong> do paciente{" "}
+                  <strong>{nomePacienteDaLinhaEvolucao(excluirConfirmRow, pacientesById)}</strong>?
+                </p>
+                <p className="small text-muted mb-0">
+                  Os anexos no armazenamento (fotos e termo em PDF) também serão removidos. Esta ação não pode ser
+                  desfeita.
+                </p>
+              </div>
+              <div className="modal-footer">
+                <button
+                  type="button"
+                  className="btn btn-secondary"
+                  disabled={excluindoEvolucao}
+                  onClick={() => setExcluirConfirmRow(null)}
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="button"
+                  className="btn btn-danger"
+                  disabled={excluindoEvolucao}
+                  onClick={() => void confirmarExclusaoEvolucao()}
+                >
+                  {excluindoEvolucao ? "Excluindo…" : "Excluir"}
+                </button>
+              </div>
+            </div>
+          </div>
+        </ModalBackdrop>
+      ) : null}
+
+      {excluirSucessoModal ? (
+        <ModalBackdrop onBackdropClick={() => setExcluirSucessoModal(null)}>
+          <div className="modal-dialog modal-dialog-centered" role="document">
+            <div className="modal-content">
+              <div className="modal-header py-3">
+                <h5 className="modal-title text-success">
+                  <i className="fas fa-check-circle mr-2" aria-hidden />
+                  Exclusão concluída
+                </h5>
+                <button
+                  type="button"
+                  className="close"
+                  onClick={() => setExcluirSucessoModal(null)}
+                  aria-label="Fechar"
+                >
+                  <span aria-hidden="true">&times;</span>
+                </button>
+              </div>
+              <div className="modal-body">
+                <p className="mb-0">
+                  A avaliação <strong>#{excluirSucessoModal.avaliacaoId}</strong> do paciente{" "}
+                  <strong>{excluirSucessoModal.pacienteNome}</strong> foi excluída com sucesso. Os anexos associados
+                  foram removidos do armazenamento.
+                </p>
+              </div>
+              <div className="modal-footer">
+                <button type="button" className="btn btn-primary" onClick={() => setExcluirSucessoModal(null)}>
+                  OK
+                </button>
               </div>
             </div>
           </div>

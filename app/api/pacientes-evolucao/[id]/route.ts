@@ -6,10 +6,12 @@ import {
   parsePositiveIdsFromFormData,
 } from "@/lib/avaliacoes/evolucao";
 import { syncPacientesEvolucaoVinculos } from "@/lib/avaliacoes/sync-pacientes-evolucao-vinculos";
+import { getUsuarioPodeRelatorioCaixa } from "@/lib/dashboard/menu-grupo";
 import { getSession } from "@/lib/auth/session";
 import { createAdminClient } from "@/lib/supabase/admin";
 
 const BUCKET = "evolucao_analise";
+const BUCKET_TERMO_ASSINATURA = "termo_assinatura_virtual";
 type RouteContext = { params: Promise<{ id: string }> };
 
 function toPositiveNumber(value: unknown): number | null {
@@ -21,6 +23,63 @@ function buildFotoPath(idPaciente: number, campo: string, fileName: string): str
   const safeBase = fileName.replace(/[^\w.\-]+/g, "_");
   const ts = Date.now();
   return `paciente_${idPaciente}/${campo}/${ts}_${safeBase}`;
+}
+
+async function removerArquivosEvolucaoDoStorage(
+  supabase: ReturnType<typeof createAdminClient>,
+  row: Record<string, unknown>,
+): Promise<void> {
+  const fotoPaths: string[] = [];
+  for (const campo of CAMPOS_FOTO_EVOLUCAO) {
+    const p = row[campo];
+    if (typeof p === "string" && p.trim()) fotoPaths.push(p.trim());
+  }
+  if (fotoPaths.length > 0) {
+    await supabase.storage.from(BUCKET).remove(fotoPaths);
+  }
+  const termo = row.arquivo_termo_assinatura_virtual;
+  if (typeof termo === "string" && termo.trim()) {
+    await supabase.storage.from(BUCKET_TERMO_ASSINATURA).remove([termo.trim()]);
+  }
+}
+
+export async function DELETE(_request: Request, context: RouteContext) {
+  const session = await getSession();
+  if (!session) return NextResponse.json({ error: "Não autorizado." }, { status: 401 });
+
+  const idUsuarioSessao = toPositiveNumber(session.sub);
+  if (!idUsuarioSessao) {
+    return NextResponse.json({ error: "Sessão inválida." }, { status: 400 });
+  }
+
+  const { id: idParam } = await context.params;
+  const id = toPositiveNumber(idParam);
+  if (!id) return NextResponse.json({ error: "ID inválido." }, { status: 400 });
+
+  const supabase = createAdminClient();
+  const podeExcluir = await getUsuarioPodeRelatorioCaixa(supabase, idUsuarioSessao);
+  if (!podeExcluir) {
+    return NextResponse.json(
+      { error: "Somente usuários dos grupos Administrador ou Administrativo podem excluir avaliações." },
+      { status: 403 },
+    );
+  }
+
+  const { data: existente, error: exErr } = await supabase
+    .from("pacientes_evolucao")
+    .select("*")
+    .eq("id", id)
+    .maybeSingle();
+  if (exErr) return NextResponse.json({ error: exErr.message }, { status: 500 });
+  if (!existente) return NextResponse.json({ error: "Registro não encontrado." }, { status: 404 });
+
+  const rowObj = existente as Record<string, unknown>;
+  await removerArquivosEvolucaoDoStorage(supabase, rowObj);
+
+  const { error: delErr } = await supabase.from("pacientes_evolucao").delete().eq("id", id);
+  if (delErr) return NextResponse.json({ error: delErr.message }, { status: 500 });
+
+  return NextResponse.json({ ok: true });
 }
 
 export async function PATCH(request: Request, context: RouteContext) {
@@ -77,6 +136,7 @@ export async function PATCH(request: Request, context: RouteContext) {
     condicoes: parsePositiveIdsFromFormData(formData, "id_condicao"),
     tiposUnha: parsePositiveIdsFromFormData(formData, "id_tipo_unha"),
     hidroses: parsePositiveIdsFromFormData(formData, "id_hidrose"),
+    lesoesMecanicas: parsePositiveIdsFromFormData(formData, "id_lesoes_mecanicas"),
   };
 
   const patch: Record<string, unknown> = {
@@ -89,7 +149,6 @@ export async function PATCH(request: Request, context: RouteContext) {
     alergias: optText(formData.get("alergias")),
     id_pe_esquerdo: toPositiveNumber(formData.get("id_pe_esquerdo")),
     id_pe_direito: toPositiveNumber(formData.get("id_pe_direito")),
-    id_lesoes_mecanicas: toPositiveNumber(formData.get("id_lesoes_mecanicas")),
     digito_pressao: optText(formData.get("digito_pressao")),
     varizes: optText(formData.get("varizes")),
     claudicacao: optText(formData.get("claudicacao")),

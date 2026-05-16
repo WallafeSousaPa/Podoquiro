@@ -26,6 +26,8 @@ type AgendamentoDia = {
   data_hora_inicio: string;
   data_hora_fim: string;
   status: string;
+  anamnese_bloqueada?: boolean;
+  anamnese_bloqueio_texto?: string | null;
 };
 
 type UsuarioCol = {
@@ -334,6 +336,8 @@ export function AtendimentoFila() {
               const statusClass = classeStatus(ag.status);
               const isPendente = ag.status === "pendente" || ag.status === "confirmado";
               const isAndamento = ag.status === "em_andamento";
+              const isRealizado = ag.status === "realizado";
+              const bloqueiaAnamnese = !isRealizado && ag.anamnese_bloqueada === true;
               const cardHabilitado = isActive;
               const responsavel = usuarios.find((u) => u.id === ag.id_usuario);
               const nomeResponsavel = responsavel?.nome ?? "Responsável";
@@ -365,7 +369,7 @@ export function AtendimentoFila() {
                       className="btn btn-anamnese"
                       onClick={(e) => {
                         e.stopPropagation();
-                        if (ag.status === "realizado") {
+                        if (isRealizado) {
                           setProntuarioAg(ag);
                         } else {
                           setAnamneseAg({
@@ -376,9 +380,15 @@ export function AtendimentoFila() {
                         }
                       }}
                       onMouseDown={(e) => e.stopPropagation()}
-                      disabled={salvandoId === ag.id || !cardHabilitado}
+                      disabled={salvandoId === ag.id || !cardHabilitado || bloqueiaAnamnese}
+                      title={
+                        bloqueiaAnamnese
+                          ? ag.anamnese_bloqueio_texto?.trim() ??
+                            "Aguarde o intervalo mínimo entre anamneses."
+                          : undefined
+                      }
                     >
-                      {ag.status === "realizado" ? "Ver ficha" : "Anamnese"}
+                      {isRealizado ? "Ver ficha" : "Anamnese"}
                     </button>
                     {isPendente ? (
                       <button

@@ -472,6 +472,36 @@
   --card-destaque: #f59e0b;
 }
 
+/* Card com procedimento Corte técnico: fundo = cor da parametrização (--card-destaque no inline). */
+.agenda-appointment.agenda-appointment--corte-tecnico-fundo {
+  background-color: var(--card-destaque) !important;
+  color: #fff !important;
+  border-left-color: var(--card-destaque) !important;
+}
+
+.agenda-appointment.agenda-appointment--corte-tecnico-fundo .agenda-appointment-time {
+  color: rgba(255, 255, 255, 0.92) !important;
+}
+
+.agenda-appointment.agenda-appointment--corte-tecnico-fundo .agenda-appointment-room-tag {
+  background-color: rgba(0, 0, 0, 0.22);
+  color: #fff !important;
+}
+
+.agenda-cal-month-chip.agenda-cal-month-chip--corte-tecnico-fundo {
+  background: var(--card-destaque) !important;
+  color: #fff !important;
+  border-left-color: var(--card-destaque) !important;
+}
+
+.agenda-cal-month-chip.agenda-cal-month-chip--corte-tecnico-fundo .agenda-cal-month-chip-time {
+  color: rgba(255, 255, 255, 0.9) !important;
+}
+
+.agenda-cal-month-chip.agenda-cal-month-chip--corte-tecnico-fundo .agenda-cal-month-chip-room {
+  color: rgba(255, 255, 255, 0.88) !important;
+}
+
 /* Modal agendamento: corpo rolável; cabeçalho e rodapé fixos */
 .modal-agenda-form .modal-content {
   max-height: min(92vh, 720px);

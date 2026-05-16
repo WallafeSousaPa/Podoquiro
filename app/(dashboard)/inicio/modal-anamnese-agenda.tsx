@@ -8,10 +8,14 @@ import {
   useState,
 } from "react";
 import { DropdownCheckboxMultiselect } from "@/components/dropdown-checkbox-multiselect";
+import { ModalTermoAssinaturaVirtual } from "@/components/modal-termo-assinatura-virtual";
 import { mensagemErroAnamneseComCodigo, MSG_ERRO_PAYLOAD_GRANDE_ANAMNESE } from "@/lib/aplicacao/mensagem-erro-anamnese";
 import {
   comprimirImagemParaAnamnese,
+  MAX_BYTES_PDF_TERMO_ASSINATURA,
   MAX_TOTAL_ANEXOS_ANAMNESE_BYTES,
+  mensagemAnexosGrandesDemais,
+  mensagemPdfTermoGrandeDemais,
   somaTamanhosArquivos,
 } from "@/lib/client/comprimir-imagem-anamnese";
 import "./agenda.css";
@@ -97,7 +101,7 @@ async function registrarErroClienteNoServidor(payload: {
 
 /**
  * Dados mínimos do agendamento para abrir a anamnese (evolução / pacientes-evolucao).
- * Condição de saúde, tipo de unha e hidrose: multiseleção (vários `id_*` no FormData).
+ * Condição de saúde, tipo de unha, hidrose e lesões mecânicas: multiseleção (vários `id_*` no FormData).
  */
 export type AnamneseAgendamentoContext = {
   /** ID do agendamento (para reabrir o mesmo fluxo com formulário limpo). */
@@ -127,7 +131,7 @@ export function ModalAnamneseAgenda({ ag, onClose, onSalvo }: Props) {
   const [idPeEsquerdo, setIdPeEsquerdo] = useState("");
   const [idPeDireito, setIdPeDireito] = useState("");
   const [idsHidrose, setIdsHidrose] = useState<number[]>([]);
-  const [idLesoes, setIdLesoes] = useState("");
+  const [idsLesoesMecanicas, setIdsLesoesMecanicas] = useState<number[]>([]);
   const [digitoPressao, setDigitoPressao] = useState("");
   const [varizes, setVarizes] = useState("");
   const [claudicacao, setClaudicacao] = useState("");
@@ -144,6 +148,10 @@ export function ModalAnamneseAgenda({ ag, onClose, onSalvo }: Props) {
   const [fotoDorsoDireito, setFotoDorsoDireito] = useState<File | null>(null);
   const [fotoDorsoEsquerdo, setFotoDorsoEsquerdo] = useState<File | null>(null);
   const [fotoTermo, setFotoTermo] = useState<File | null>(null);
+
+  const [assinaturaVirtual, setAssinaturaVirtual] = useState(false);
+  const [arquivoTermoAssinatura, setArquivoTermoAssinatura] = useState<File | null>(null);
+  const [modalTermoAssinaturaAberto, setModalTermoAssinaturaAberto] = useState(false);
 
   const [condicoes, setCondicoes] = useState<AvaliacaoOptionItem[]>([]);
   const [tiposUnhas, setTiposUnhas] = useState<AvaliacaoOptionItem[]>([]);
@@ -192,6 +200,10 @@ export function ModalAnamneseAgenda({ ag, onClose, onSalvo }: Props) {
   async function salvar(e: FormEvent) {
     e.preventDefault();
     if (saving) return;
+    if (assinaturaVirtual && !arquivoTermoAssinatura) {
+      setError("Marque a assinatura virtual e confirme o termo assinado, ou desmarque a opção.");
+      return;
+    }
     setSaving(true);
     setError(null);
     try {
@@ -217,17 +229,24 @@ export function ModalAnamneseAgenda({ ag, onClose, onSalvo }: Props) {
         fotoTermo ? comprimirImagemParaAnamnese(fotoTermo) : Promise.resolve<File | null>(null),
       ]);
 
+      if (
+        arquivoTermoAssinatura &&
+        arquivoTermoAssinatura.size > MAX_BYTES_PDF_TERMO_ASSINATURA
+      ) {
+        setError(mensagemPdfTermoGrandeDemais(arquivoTermoAssinatura.size));
+        return;
+      }
+
       const totalAnexos = somaTamanhosArquivos([
         fPlantarDir,
         fPlantarEsq,
         fDorsoDir,
         fDorsoEsq,
         fTermo,
+        arquivoTermoAssinatura,
       ]);
       if (totalAnexos > MAX_TOTAL_ANEXOS_ANAMNESE_BYTES) {
-        setError(
-          `${MSG_ERRO_PAYLOAD_GRANDE_ANAMNESE} Tamanho total dos anexos após compressão: ~${(totalAnexos / (1024 * 1024)).toFixed(1)} MB (máximo recomendado ~3,5 MB).`,
-        );
+        setError(mensagemAnexosGrandesDemais(totalAnexos));
         return;
       }
 
@@ -243,7 +262,7 @@ export function ModalAnamneseAgenda({ ag, onClose, onSalvo }: Props) {
       fd.append("id_pe_esquerdo", idPeEsquerdo);
       fd.append("id_pe_direito", idPeDireito);
       for (const id of idsHidrose) fd.append("id_hidrose", String(id));
-      fd.append("id_lesoes_mecanicas", idLesoes);
+      for (const id of idsLesoesMecanicas) fd.append("id_lesoes_mecanicas", String(id));
       fd.append("digito_pressao", digitoPressao);
       fd.append("varizes", varizes);
       fd.append("claudicacao", claudicacao);
@@ -260,6 +279,9 @@ export function ModalAnamneseAgenda({ ag, onClose, onSalvo }: Props) {
       if (fDorsoDir) fd.append("foto_dorso_direito", fDorsoDir);
       if (fDorsoEsq) fd.append("foto_dorso_esquerdo", fDorsoEsq);
       if (fTermo) fd.append("foto_doc_termo_consentimento", fTermo);
+      if (arquivoTermoAssinatura) {
+        fd.append("arquivo_termo_assinatura_virtual", arquivoTermoAssinatura);
+      }
 
       const res = await fetch("/api/pacientes-evolucao", {
         method: "POST",
@@ -331,6 +353,7 @@ export function ModalAnamneseAgenda({ ag, onClose, onSalvo }: Props) {
   }
 
   return (
+    <>
     <ModalBackdrop onBackdropClick={() => !saving && onClose()}>
       <div
         className="modal-dialog modal-xl modal-dialog-centered"
@@ -503,21 +526,15 @@ export function ModalAnamneseAgenda({ ag, onClose, onSalvo }: Props) {
                     />
                   </div>
                   <div className="form-group col-md-6">
-                    <label>Lesões mecânicas</label>
-                    <select
-                      className="form-control"
-                      value={idLesoes}
-                      onChange={(e) => setIdLesoes(e.target.value)}
-                    >
-                      <option value="">—</option>
-                      {lesoes
+                    <DropdownCheckboxMultiselect
+                      label="Lesões mecânicas"
+                      options={lesoes
                         .filter((x) => x.ativo)
-                        .map((x) => (
-                          <option key={x.id} value={x.id}>
-                            {x.tipo}
-                          </option>
-                        ))}
-                    </select>
+                        .map((x) => ({ id: x.id, label: x.tipo?.trim() || `ID ${x.id}` }))}
+                      value={idsLesoesMecanicas}
+                      onChange={setIdsLesoesMecanicas}
+                      disabled={saving}
+                    />
                   </div>
                 </div>
                 <div className="form-row">
@@ -625,6 +642,53 @@ export function ModalAnamneseAgenda({ ag, onClose, onSalvo }: Props) {
                   />
                 </div>
               </div>
+              <div className="border rounded p-3 mb-3">
+                <h6 className="text-primary mb-3">Termo — assinatura virtual</h6>
+                <div className="form-check mb-2">
+                  <input
+                    type="checkbox"
+                    className="form-check-input"
+                    id="anamnese-assinatura-virtual"
+                    checked={assinaturaVirtual}
+                    disabled={saving}
+                    onChange={(e) => {
+                      const ck = e.target.checked;
+                      setAssinaturaVirtual(ck);
+                      if (ck) {
+                        setModalTermoAssinaturaAberto(true);
+                      } else {
+                        setArquivoTermoAssinatura(null);
+                      }
+                    }}
+                  />
+                  <label className="form-check-label" htmlFor="anamnese-assinatura-virtual">
+                    Assinatura virtual (termo de consentimento Podoquiro)
+                  </label>
+                </div>
+                {assinaturaVirtual ? (
+                  <div className="mb-0">
+                    <button
+                      type="button"
+                      className="btn btn-outline-primary btn-sm mr-2"
+                      disabled={saving}
+                      onClick={() => setModalTermoAssinaturaAberto(true)}
+                    >
+                      {arquivoTermoAssinatura
+                        ? "Alterar termo assinado"
+                        : "Abrir termo para leitura e assinatura"}
+                    </button>
+                    {arquivoTermoAssinatura ? (
+                      <span className="small text-success">
+                        Anexo: {arquivoTermoAssinatura.name}
+                      </span>
+                    ) : (
+                      <span className="small text-warning">
+                        Leia o termo na tela cheia e assine abaixo do texto.
+                      </span>
+                    )}
+                  </div>
+                ) : null}
+              </div>
               <div className="border rounded p-3">
                 <h6 className="text-primary mb-3">Analise visual</h6>
                 <div className="form-row">
@@ -695,5 +759,17 @@ export function ModalAnamneseAgenda({ ag, onClose, onSalvo }: Props) {
         </div>
       </div>
     </ModalBackdrop>
+    <ModalTermoAssinaturaVirtual
+      key={modalTermoAssinaturaAberto ? `termo-virt-${ag.id_paciente}` : "termo-virt-fechado"}
+      open={modalTermoAssinaturaAberto}
+      idPaciente={ag.id_paciente}
+      nomeDisplayPaciente={ag.paciente_nome}
+      onClose={() => setModalTermoAssinaturaAberto(false)}
+      onConfirm={(file) => {
+        setArquivoTermoAssinatura(file);
+        setModalTermoAssinaturaAberto(false);
+      }}
+    />
+    </>
   );
 }

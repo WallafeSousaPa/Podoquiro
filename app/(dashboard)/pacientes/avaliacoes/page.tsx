@@ -1,6 +1,8 @@
 import { redirect } from "next/navigation";
+import { diasEntreAnamnesesDoValorDb } from "@/lib/avaliacoes/anamnese-intervalo";
 import { SELECT_PACIENTES_EVOLUCAO_VINCULOS } from "@/lib/avaliacoes/evolucao";
 import { getSession } from "@/lib/auth/session";
+import { getUsuarioPodeRelatorioCaixa } from "@/lib/dashboard/menu-grupo";
 import { nomeExibicaoPaciente } from "@/lib/pacientes";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { AvaliacoesClient } from "./avaliacoes-client";
@@ -12,6 +14,7 @@ export default async function PacientesAvaliacoesPage() {
   if (!session) redirect("/login");
 
   const supabase = createAdminClient();
+  const idUsuarioSessao = Number(session.sub);
   let loadError: string | null = null;
   let pacientes: { id: number; nome: string }[] = [];
   let responsaveis: { id: number; nome: string }[] = [];
@@ -23,6 +26,8 @@ export default async function PacientesAvaliacoesPage() {
   let lesoes: ItemRef[] = [];
   let formatosDedos: ItemRef[] = [];
   let formatosPe: ItemRef[] = [];
+  let podeParametrizarAnamnese = false;
+  let diasEntreAnamnesesInicial: number | null = null;
 
   try {
     const evolucaoSelect =
@@ -40,6 +45,7 @@ export default async function PacientesAvaliacoesPage() {
       lesRes,
       fdRes,
       fpRes,
+      empresaRes,
     ] = await Promise.all([
       supabase.from("pacientes").select("id, nome_completo, nome_social, telefone").order("id", { ascending: false }),
       supabase.from("usuarios").select("id, usuario, nome_completo").eq("ativo", true).order("nome_completo", { ascending: true }),
@@ -51,11 +57,33 @@ export default async function PacientesAvaliacoesPage() {
       supabase.from("lesoes_mecanicas").select("id, tipo, ativo").order("tipo", { ascending: true }),
       supabase.from("formato_dedos").select("id, tipo, ativo").order("tipo", { ascending: true }),
       supabase.from("formato_pe").select("id, tipo, ativo").order("tipo", { ascending: true }),
+      supabase
+        .from("empresas")
+        .select("dias_entre_anamneses")
+        .eq("id", Number(session.idEmpresa))
+        .maybeSingle(),
     ]);
 
-    const all = [pacientesRes, usuariosRes, evolRes, condRes, unhaRes, peRes, hidRes, lesRes, fdRes, fpRes];
+    const all = [
+      pacientesRes,
+      usuariosRes,
+      evolRes,
+      condRes,
+      unhaRes,
+      peRes,
+      hidRes,
+      lesRes,
+      fdRes,
+      fpRes,
+      empresaRes,
+    ];
     const err = all.find((x) => x.error)?.error;
     if (err) throw new Error(err.message);
+
+    if (Number.isFinite(idUsuarioSessao) && idUsuarioSessao > 0) {
+      podeParametrizarAnamnese = await getUsuarioPodeRelatorioCaixa(supabase, idUsuarioSessao);
+    }
+    diasEntreAnamnesesInicial = diasEntreAnamnesesDoValorDb(empresaRes.data?.dias_entre_anamneses);
 
     pacientes = (pacientesRes.data ?? []).map((p) => ({
       id: Number(p.id),
@@ -116,6 +144,9 @@ export default async function PacientesAvaliacoesPage() {
                 lesoesMecanicas={lesoes}
                 formatosDedos={formatosDedos}
                 formatosPe={formatosPe}
+                podeParametrizarAnamnese={podeParametrizarAnamnese}
+                podeExcluirEvolucaoPacientes={podeParametrizarAnamnese}
+                diasEntreAnamnesesInicial={diasEntreAnamnesesInicial}
               />
             </div>
           </div>

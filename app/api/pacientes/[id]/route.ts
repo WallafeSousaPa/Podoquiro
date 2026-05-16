@@ -26,6 +26,56 @@ function inList<T extends string>(val: string | null, list: readonly T[]): val i
   return val !== null && (list as readonly string[]).includes(val);
 }
 
+export async function GET(_request: Request, context: RouteContext) {
+  const session = await getSession();
+  if (!session) {
+    return NextResponse.json({ error: "Não autorizado." }, { status: 401 });
+  }
+
+  const empresaId = parseEmpresaId(session.idEmpresa);
+  if (!empresaId) {
+    return NextResponse.json({ error: "Empresa inválida." }, { status: 400 });
+  }
+
+  const { id: idParam } = await context.params;
+  const id = Number(idParam);
+  if (!Number.isFinite(id) || id <= 0) {
+    return NextResponse.json({ error: "ID inválido." }, { status: 400 });
+  }
+
+  const supabase = createAdminClient();
+  const { data: paciente, error: ePac } = await supabase
+    .from("pacientes")
+    .select(
+      "id, nome_completo, nome_social, cpf, email, telefone, cep, logradouro, numero, complemento, bairro, cidade, uf",
+    )
+    .eq("id", id)
+    .eq("id_empresa", empresaId)
+    .maybeSingle();
+  if (ePac) {
+    console.error(ePac);
+    return NextResponse.json({ error: ePac.message }, { status: 500 });
+  }
+  if (!paciente) {
+    return NextResponse.json({ error: "Paciente não encontrado." }, { status: 404 });
+  }
+
+  const { data: empresa, error: eEmp } = await supabase
+    .from("empresas")
+    .select("id, cidade, nome_fantasia")
+    .eq("id", empresaId)
+    .maybeSingle();
+  if (eEmp) {
+    console.error(eEmp);
+    return NextResponse.json({ error: eEmp.message }, { status: 500 });
+  }
+
+  return NextResponse.json({
+    paciente,
+    empresa: empresa ?? { id: empresaId, cidade: null, nome_fantasia: null },
+  });
+}
+
 export async function PATCH(request: Request, context: RouteContext) {
   const session = await getSession();
   if (!session) {
