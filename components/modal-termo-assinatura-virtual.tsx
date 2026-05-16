@@ -15,6 +15,10 @@ import {
 } from "@/lib/termo-consentimento/texto-podoquiro";
 import { TermoConsentimentoPreview } from "@/components/termo-consentimento-preview";
 import {
+  coordsCanvasAssinatura,
+  prepararCanvasAssinaturaTermo,
+} from "@/lib/client/canvas-assinatura-termo";
+import {
   gerarPdfTermoAssinatura,
   montarNomeArquivoTermoAssinatura,
 } from "@/lib/client/render-termo-assinatura-pdf";
@@ -84,18 +88,8 @@ export function ModalTermoAssinaturaVirtual({
 
   const iniciarCanvas = useCallback(() => {
     const c = canvasRef.current;
-    const ctx = c?.getContext("2d");
-    if (!c || !ctx) return;
-    const w = Math.min(880, typeof window !== "undefined" ? window.innerWidth - 48 : 880);
-    const h = 200;
-    c.width = w;
-    c.height = h;
-    ctx.fillStyle = "#ffffff";
-    ctx.fillRect(0, 0, w, h);
-    ctx.strokeStyle = "#111111";
-    ctx.lineWidth = 2.2;
-    ctx.lineCap = "round";
-    ctx.lineJoin = "round";
+    if (!c) return;
+    prepararCanvasAssinaturaTermo(c);
   }, []);
 
   useEffect(() => {
@@ -141,9 +135,7 @@ export function ModalTermoAssinaturaVirtual({
   }, [open, canvasKey, loading, loadErr, iniciarCanvas]);
 
   function coords(ev: React.PointerEvent<HTMLCanvasElement>) {
-    const el = ev.currentTarget;
-    const r = el.getBoundingClientRect();
-    return { x: ev.clientX - r.left, y: ev.clientY - r.top };
+    return coordsCanvasAssinatura(ev.currentTarget, ev.clientX, ev.clientY);
   }
 
   function onPointerDown(ev: React.PointerEvent<HTMLCanvasElement>) {
@@ -196,23 +188,47 @@ export function ModalTermoAssinaturaVirtual({
 
       setFaseGeracao("certificado");
       const fd = new FormData();
-      fd.append("pdf", new File([blob], nome, { type: "application/pdf" }));
+      // Blob + filename: compatível com Safari/iOS (evita File vazio).
+      fd.append("pdf", blob, nome);
+      fd.append("pdf_nome", nome);
       const resCert = await fetch("/api/termo-consentimento/assinar-certificado", {
         method: "POST",
         body: fd,
         credentials: "include",
       });
       if (!resCert.ok) {
-        let msg = "Não foi possível assinar o termo com o certificado digital da clínica.";
+        let msg = `Não foi possível assinar o termo com o certificado digital da clínica (erro ${resCert.status}).`;
+        const ct = resCert.headers.get("content-type") ?? "";
+        try {
+          if (ct.includes("application/json")) {
+            const j = (await resCert.json()) as { error?: string };
+            if (j.error?.trim()) msg = j.error.trim();
+          } else {
+            const txt = (await resCert.text()).trim();
+            if (txt && txt.length < 280) msg = txt;
+          }
+        } catch {
+          /* corpo ilegível */
+        }
+        throw new Error(msg);
+      }
+      const ctOk = resCert.headers.get("content-type") ?? "";
+      if (!ctOk.includes("application/pdf")) {
+        let msg = "Resposta inválida ao assinar o termo.";
         try {
           const j = (await resCert.json()) as { error?: string };
           if (j.error?.trim()) msg = j.error.trim();
         } catch {
-          /* resposta não JSON */
+          /* ignore */
         }
         throw new Error(msg);
       }
       const blobAssinado = await resCert.blob();
+      if (!blobAssinado.size) {
+        throw new Error(
+          "O PDF assinado voltou vazio. Verifique o certificado em Financeiro → Nota fiscal → Parâmetros.",
+        );
+      }
       const file = new File([blobAssinado], nome, { type: "application/pdf" });
       onConfirm(file);
       onClose();

@@ -1,5 +1,9 @@
 /** Gera PDF do termo (modelo Podoquiro) + assinatura — apenas no browser. */
 
+import {
+  dimensoesCanvasAssinaturaTermo,
+  exportarAssinaturaTermoJpeg,
+} from "@/lib/client/canvas-assinatura-termo";
 import { jsPDF } from "jspdf";
 import type { DadosPacienteTermo, RodapeDataLocal, SegmentoTextoTermoPdf } from "@/lib/termo-consentimento/texto-podoquiro";
 import {
@@ -382,10 +386,10 @@ export async function gerarPdfTermoAssinatura(
   doc.text(linhaData, margin + maxW, y, { align: "right" });
   y += 28;
 
-  const imgData = signatureCanvas.toDataURL("image/jpeg", 0.82);
+  const imgData = exportarAssinaturaTermoJpeg(signatureCanvas);
+  const { cssW: assW, cssH: assH } = dimensoesCanvasAssinaturaTermo();
   const sigW = Math.min(320, maxW);
-  const ratio = signatureCanvas.height / Math.max(signatureCanvas.width, 1);
-  const sigH = Math.min(140, sigW * ratio);
+  const sigH = Math.min(140, sigW * (assH / Math.max(assW, 1)));
 
   y = garantirEspaco(doc, y, 28 + sigH + 100, margin, pageH);
   y += 8;
@@ -437,11 +441,13 @@ export async function gerarPdfTermoAssinatura(
   );
   y += ALTURA_CAIXA_ASSINATURA_DIGITAL_PT + 18;
 
+  const metaPosicao = serializarMetadadosPosicaoAssinaturaDigital({
+    pageIndex: pageIndexAssinatura,
+    yTopCaixaPt: yTopCaixaDigital,
+  });
   doc.setProperties({
-    subject: serializarMetadadosPosicaoAssinaturaDigital({
-      pageIndex: pageIndexAssinatura,
-      yTopCaixaPt: yTopCaixaDigital,
-    }),
+    subject: metaPosicao,
+    keywords: metaPosicao,
   });
 
   const rodapeFont = 8;

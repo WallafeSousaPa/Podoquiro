@@ -35,25 +35,46 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Formulário inválido." }, { status: 400 });
   }
 
-  const arquivo = formData.get("pdf");
-  if (!(arquivo instanceof File) || arquivo.size <= 0) {
+  const entrada = formData.get("pdf");
+  // Safari/iOS costuma enviar Blob (não File) mesmo com nome no FormData.
+  if (!(entrada instanceof Blob) || entrada.size <= 0) {
     return NextResponse.json({ error: "Envie o arquivo PDF do termo (campo pdf)." }, { status: 400 });
   }
 
-  const tipo = (arquivo.type || "").toLowerCase();
+  const tipo = (entrada.type || "").toLowerCase();
   if (tipo && tipo !== "application/pdf") {
     return NextResponse.json({ error: "O arquivo deve ser um PDF." }, { status: 400 });
   }
 
-  const pdfEntrada = Buffer.from(await arquivo.arrayBuffer());
+  let pdfEntrada: Buffer;
+  try {
+    pdfEntrada = Buffer.from(await entrada.arrayBuffer());
+  } catch {
+    return NextResponse.json(
+      { error: "Não foi possível ler o PDF enviado. Tente novamente." },
+      { status: 400 },
+    );
+  }
+
+  if (!pdfEntrada.length) {
+    return NextResponse.json(
+      { error: "O PDF do termo chegou vazio. No celular, tente limpar a assinatura e confirmar de novo." },
+      { status: 400 },
+    );
+  }
 
   const supabase = createAdminClient();
 
   try {
     const pdfAssinado = await assinarPdfTermoComCertificadoEmpresa(supabase, idEmpresa, pdfEntrada);
 
-    const nomeSaida =
-      arquivo.name.replace(/\.pdf$/i, "").trim() || "termo";
+    const nomeOriginal =
+      entrada instanceof File && entrada.name.trim()
+        ? entrada.name
+        : typeof formData.get("pdf_nome") === "string"
+          ? String(formData.get("pdf_nome"))
+          : "termo";
+    const nomeSaida = nomeOriginal.replace(/\.pdf$/i, "").trim() || "termo";
     const filename = `${nomeSaida}_certificado.pdf`;
 
     return new NextResponse(new Uint8Array(pdfAssinado), {

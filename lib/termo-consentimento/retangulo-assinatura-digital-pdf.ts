@@ -60,7 +60,9 @@ export async function adicionarRetanguloAssinaturaDigitalPdf(
     throw new Error("PDF do termo sem páginas.");
   }
 
-  const meta = parsearMetadadosPosicaoAssinaturaDigital(pdfDoc.getSubject());
+  const meta = parsearMetadadosPosicaoAssinaturaDigital(
+    pdfDoc.getSubject() || pdfDoc.getKeywords(),
+  );
   const pageIndex =
     meta && meta.pageIndex >= 0 && meta.pageIndex < pages.length
       ? meta.pageIndex
