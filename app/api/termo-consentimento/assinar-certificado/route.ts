@@ -92,7 +92,9 @@ export async function POST(request: Request) {
     const msg = e instanceof Error ? e.message : String(e);
     console.error("[assinar-certificado]", e);
     const erroConfig =
-      /NFE_CERT_MASTER_KEY|placeholder-plain|node_modules|certificado cifrado/i.test(msg);
+      /CERTIFICADO_MASTER_KEY_AUSENTE|CERTIFICADO_CIFRADO_CHAVE_INVALIDA|placeholder-plain|node_modules/i.test(
+        msg,
+      );
     if (erroConfig) {
       return NextResponse.json({ error: msg }, { status: 400 });
     }

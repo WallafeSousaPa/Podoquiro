@@ -3,8 +3,10 @@ import { getSession } from "@/lib/auth/session";
 import { createAdminClient } from "@/lib/supabase/admin";
 import {
   bufferParaByteaPostgrest,
+  obterMaterialCertificadoNfe,
   prepararGravacaoCertificado,
 } from "@/lib/sefaz/nfe/certificado-db";
+import { nfeCertMasterKeyConfigurada } from "@/lib/sefaz/nfe/cert-master-key-env";
 
 function parseEmpresaId(idEmpresa: string) {
   const n = Number(idEmpresa);
@@ -12,6 +14,52 @@ function parseEmpresaId(idEmpresa: string) {
 }
 
 const MAX_BYTES = 5 * 1024 * 1024;
+
+/**
+ * Diagnóstico (produção): confere se NFE_CERT_MASTER_KEY está visível e se o .pfx no banco abre.
+ */
+export async function GET() {
+  const session = await getSession();
+  if (!session) {
+    return NextResponse.json({ error: "Não autorizado." }, { status: 401 });
+  }
+
+  const empresaId = parseEmpresaId(session.idEmpresa);
+  if (!empresaId) {
+    return NextResponse.json({ error: "Empresa inválida." }, { status: 400 });
+  }
+
+  const masterKeyPresente = nfeCertMasterKeyConfigurada();
+  let certificadoLegivel: boolean | null = null;
+  let erroLeitura: string | null = null;
+
+  if (masterKeyPresente) {
+    const supabase = createAdminClient();
+    try {
+      const material = await obterMaterialCertificadoNfe(supabase, empresaId);
+      certificadoLegivel = material != null;
+      if (!material) {
+        erroLeitura = "Nenhum certificado cadastrado para esta empresa.";
+      }
+    } catch (e) {
+      certificadoLegivel = false;
+      const msg = e instanceof Error ? e.message : String(e);
+      if (msg === "CERTIFICADO_CIFRADO_CHAVE_INVALIDA") {
+        erroLeitura =
+          "Chave NFE_CERT_MASTER_KEY diferente da usada ao enviar o .pfx. Reenvie o certificado em Parâmetros ou corrija a variável na Vercel.";
+      } else {
+        erroLeitura = msg;
+      }
+    }
+  }
+
+  return NextResponse.json({
+    masterKeyPresente,
+    certificadoLegivel,
+    erroLeitura,
+    ambiente: process.env.VERCEL_ENV ?? process.env.NODE_ENV ?? "desconhecido",
+  });
+}
 
 /** Upload certificado A1 (.pfx/.p12) + senha → gravados cifrados na tabela empresa_nfe_certificados. */
 export async function POST(request: Request) {

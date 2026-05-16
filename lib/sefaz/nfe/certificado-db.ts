@@ -60,9 +60,7 @@ export async function obterMaterialCertificadoNfe(
     const senha = decifrarSenhaUtf8(data.senha_cifrada as string, masterKey);
     return { pfx, senha };
   } catch {
-    throw new Error(
-      "Não foi possível ler o certificado cifrado. Confirme NFE_CERT_MASTER_KEY e envie o .pfx novamente em Parâmetros.",
-    );
+    throw new Error("CERTIFICADO_CIFRADO_CHAVE_INVALIDA");
   }
 }
 

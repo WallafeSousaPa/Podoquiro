@@ -14,9 +14,7 @@ const ALGO = "aes-256-gcm";
 export function deriveMasterKeyFromEnv(): Buffer {
   const secret = process.env.NFE_CERT_MASTER_KEY?.trim();
   if (!secret) {
-    throw new Error(
-      "Defina NFE_CERT_MASTER_KEY (string longa e secreta) para cifrar certificados no banco.",
-    );
+    throw new Error("CERTIFICADO_MASTER_KEY_AUSENTE");
   }
   return scryptSync(secret, SALT_DERIVE, 32);
 }

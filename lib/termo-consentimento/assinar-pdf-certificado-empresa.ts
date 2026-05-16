@@ -8,6 +8,7 @@ import { plainAddPlaceholderUltimaPagina } from "@/lib/termo-consentimento/plain
 import { P12Signer } from "@signpdf/signer-p12";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { carregarCertificadoEmpresa } from "@/lib/sefaz/nfe/carregar-certificado";
+import { nfeCertMasterKeyConfigurada } from "@/lib/sefaz/nfe/cert-master-key-env";
 import { obterNomeTitularCertificadoPfx } from "@/lib/termo-consentimento/nome-titular-certificado";
 import { adicionarRetanguloAssinaturaDigitalPdf } from "@/lib/termo-consentimento/retangulo-assinatura-digital-pdf";
 
@@ -68,9 +69,14 @@ export async function assinarPdfTermoComCertificadoEmpresa(
     material = await carregarCertificadoEmpresa(supabase, idEmpresa);
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
-    if (/NFE_CERT_MASTER_KEY/i.test(msg)) {
+    if (msg === "CERTIFICADO_MASTER_KEY_AUSENTE" || !nfeCertMasterKeyConfigurada()) {
       throw new ErroCertificadoTermoConsentimento(
-        "Servidor sem NFE_CERT_MASTER_KEY configurada. Adicione a variável no ambiente de produção (Vercel/host) igual ao .env.local.",
+        "NFE_CERT_MASTER_KEY não está disponível neste servidor. Na Vercel: Settings → Environment Variables → Production, cole o mesmo valor do .env.local e faça Redeploy (não basta salvar a variável).",
+      );
+    }
+    if (msg === "CERTIFICADO_CIFRADO_CHAVE_INVALIDA") {
+      throw new ErroCertificadoTermoConsentimento(
+        "A NFE_CERT_MASTER_KEY na Vercel não é a mesma usada quando o certificado .pfx foi enviado. Copie exatamente o valor do .env.local (sem aspas) ou envie o .pfx de novo em Financeiro → Nota fiscal → Parâmetros.",
       );
     }
     throw new ErroCertificadoTermoConsentimento(
