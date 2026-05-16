@@ -15,6 +15,16 @@ const allowedDevOrigins = parseAllowedDevOrigins();
 
 const nextConfig: NextConfig = {
   ...(allowedDevOrigins.length > 0 ? { allowedDevOrigins } : {}),
+  /** Evita bundling do signpdf/pdf-lib no servidor (API de assinatura do termo). */
+  serverExternalPackages: [
+    "@signpdf/signpdf",
+    "@signpdf/signer-p12",
+    "@signpdf/placeholder-plain",
+    "@signpdf/placeholder-pdfkit010",
+    "@signpdf/utils",
+    "pdf-lib",
+    "node-forge",
+  ],
 };
 
 export default nextConfig;

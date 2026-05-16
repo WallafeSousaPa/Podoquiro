@@ -10,6 +10,9 @@
     "lint": "eslint"
   },
   "dependencies": {
+    "@signpdf/placeholder-plain": "^3.3.0",
+    "@signpdf/signer-p12": "^3.3.0",
+    "@signpdf/signpdf": "^3.3.0",
     "@supabase/supabase-js": "^2.49.4",
     "@xmldom/xmldom": "^0.9.10",
     "bcryptjs": "^3.0.2",
@@ -17,6 +20,7 @@
     "jspdf": "^4.2.1",
     "next": "16.2.4",
     "node-forge": "^1.4.0",
+    "pdf-lib": "^1.17.1",
     "react": "19.2.4",
     "react-dom": "19.2.4",
     "xlsx": "^0.18.5",

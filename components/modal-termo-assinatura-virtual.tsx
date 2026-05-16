@@ -80,6 +80,7 @@ export function ModalTermoAssinaturaVirtual({
   const [loading, setLoading] = useState(false);
   const [nomeArquivoBase, setNomeArquivoBase] = useState("");
   const [gerando, setGerando] = useState(false);
+  const [faseGeracao, setFaseGeracao] = useState<"pdf" | "certificado" | null>(null);
 
   const iniciarCanvas = useCallback(() => {
     const c = canvasRef.current;
@@ -189,15 +190,37 @@ export function ModalTermoAssinaturaVirtual({
     setLoadErr(null);
     try {
       const { dadosP, rodape } = dadosPdfTermo;
+      setFaseGeracao("pdf");
       const blob = await gerarPdfTermoAssinatura(dadosP, rodape, c);
       const nome = montarNomeArquivoTermoAssinatura(nomeArquivoBase || nomeDisplayPaciente);
-      const file = new File([blob], nome, { type: "application/pdf" });
+
+      setFaseGeracao("certificado");
+      const fd = new FormData();
+      fd.append("pdf", new File([blob], nome, { type: "application/pdf" }));
+      const resCert = await fetch("/api/termo-consentimento/assinar-certificado", {
+        method: "POST",
+        body: fd,
+        credentials: "include",
+      });
+      if (!resCert.ok) {
+        let msg = "Não foi possível assinar o termo com o certificado digital da clínica.";
+        try {
+          const j = (await resCert.json()) as { error?: string };
+          if (j.error?.trim()) msg = j.error.trim();
+        } catch {
+          /* resposta não JSON */
+        }
+        throw new Error(msg);
+      }
+      const blobAssinado = await resCert.blob();
+      const file = new File([blobAssinado], nome, { type: "application/pdf" });
       onConfirm(file);
       onClose();
     } catch (e) {
       setLoadErr(e instanceof Error ? e.message : "Erro ao gerar PDF.");
     } finally {
       setGerando(false);
+      setFaseGeracao(null);
     }
   }
 
@@ -249,7 +272,10 @@ export function ModalTermoAssinaturaVirtual({
             </div>
 
             <div className="bg-white border rounded p-3 shadow-sm" style={{ maxWidth: 920, margin: "0 auto" }}>
-              <p className="small text-muted mb-2">Assine no campo abaixo com o dedo ou o mouse.</p>
+              <p className="small text-muted mb-2">
+                Assine no campo abaixo com o dedo ou o mouse. Ao confirmar, o termo será assinado
+                digitalmente com o certificado A1 cadastrado em Financeiro → Nota fiscal → Parâmetros.
+              </p>
               <canvas
                 key={canvasKey}
                 ref={canvasRef}
@@ -275,7 +301,11 @@ export function ModalTermoAssinaturaVirtual({
                   disabled={gerando || !!loadErr || !dadosPdfTermo}
                   onClick={() => void confirmar()}
                 >
-                  {gerando ? "Gerando PDF…" : "Confirmar e anexar à anamnese"}
+                  {gerando
+                    ? faseGeracao === "certificado"
+                      ? "Assinando com certificado digital…"
+                      : "Gerando PDF…"
+                    : "Confirmar e anexar à anamnese"}
                 </button>
               </div>
             </div>

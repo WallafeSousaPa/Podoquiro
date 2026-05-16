@@ -3,6 +3,14 @@
 import { jsPDF } from "jspdf";
 import type { DadosPacienteTermo, RodapeDataLocal, SegmentoTextoTermoPdf } from "@/lib/termo-consentimento/texto-podoquiro";
 import {
+  ALTURA_CAIXA_ASSINATURA_DIGITAL_PT,
+  ESPACO_APOS_ASSINATURA_PACIENTE_PT,
+  LARGURA_CAIXA_ASSINATURA_DIGITAL_PT,
+  MARGEM_ASSINATURA_DIGITAL_PT,
+  serializarMetadadosPosicaoAssinaturaDigital,
+  TITULO_ASSINATURA_DIGITAL_PT,
+} from "@/lib/termo-consentimento/layout-assinatura-digital-termo";
+import {
   CLAUSULAS_TERMO_MODELO,
   formatarLinhaDataLocalTermo,
   RODAPE_CLINICA_PDF_LINHAS,
@@ -402,7 +410,39 @@ export async function gerarPdfTermoAssinatura(
   doc.setDrawColor(178, 178, 178);
   doc.roundedRect(margin, y, sigW, sigH, 2, 2);
   doc.addImage(imgData, "JPEG", margin + 4, y + 4, sigW - 8, sigH - 8);
-  y += sigH + 18;
+  y += sigH + ESPACO_APOS_ASSINATURA_PACIENTE_PT;
+
+  const alturaBlocoDigital =
+    TITULO_ASSINATURA_DIGITAL_PT + ALTURA_CAIXA_ASSINATURA_DIGITAL_PT + 18;
+  y = garantirEspaco(doc, y, alturaBlocoDigital + 40, margin, pageH);
+
+  const pageIndexAssinatura = doc.getCurrentPageInfo().pageNumber - 1;
+  const yTopCaixaDigital = y + TITULO_ASSINATURA_DIGITAL_PT;
+
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(9);
+  doc.setTextColor(C_MUDO.r, C_MUDO.g, C_MUDO.b);
+  doc.text("Assinatura digital da clínica", margin, y);
+  y += TITULO_ASSINATURA_DIGITAL_PT;
+
+  doc.setDrawColor(210, 210, 210);
+  doc.setLineWidth(0.5);
+  doc.roundedRect(
+    margin,
+    y,
+    LARGURA_CAIXA_ASSINATURA_DIGITAL_PT,
+    ALTURA_CAIXA_ASSINATURA_DIGITAL_PT,
+    2,
+    2,
+  );
+  y += ALTURA_CAIXA_ASSINATURA_DIGITAL_PT + 18;
+
+  doc.setProperties({
+    subject: serializarMetadadosPosicaoAssinaturaDigital({
+      pageIndex: pageIndexAssinatura,
+      yTopCaixaPt: yTopCaixaDigital,
+    }),
+  });
 
   const rodapeFont = 8;
   const rodapeLh = 11;
