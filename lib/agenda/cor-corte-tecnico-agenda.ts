@@ -1,6 +1,9 @@
 /** Cor padrão para cards de agendamento com procedimento "Corte técnico". */
 export const COR_CORTE_TECNICO_AGENDA_PADRAO = "#7105ab";
 
+/** Status em que o card usa `empresas.agenda_cor_corte_tecnico` (ex.: retorno/curativo agendado). */
+export const STATUS_AGENDAMENTO_CURATIVO_AGENDADO = "curativo_agendado";
+
 const NOME_CORTE_TECNICO_NORMALIZADO = "CORTE TECNICO";
 
 function normalizarNomeProcedimentoAgenda(s: string | null | undefined): string {
@@ -38,4 +41,15 @@ export function parseHexCorAgenda(input: string | null | undefined): string | nu
 export function corCorteTecnicoAgendaResolvida(db: string | null | undefined): string {
   const p = parseHexCorAgenda(db ?? null);
   return p ?? COR_CORTE_TECNICO_AGENDA_PADRAO;
+}
+
+/**
+ * Fundo do card = cor em `empresas.agenda_cor_corte_tecnico`.
+ * Procedimento "Corte técnico" não usa essa cor (mantém a cor do profissional).
+ */
+export function agendamentoCardCorEmpresaCorteTecnico(ag: {
+  status: string;
+  procedimentos?: { procedimento?: string | null }[] | null;
+}): boolean {
+  return ag.status === STATUS_AGENDAMENTO_CURATIVO_AGENDADO;
 }

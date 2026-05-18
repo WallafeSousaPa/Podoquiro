@@ -6,9 +6,11 @@ import {
   getUsuarioPodeAgendarRetroativo,
   getUsuarioAgendaSomentePropriaColuna,
   getNomeGrupoUsuariosDoUsuario,
+  grupoNomeIgnoraValidacaoHorarioAoMudarStatus,
   grupoNomeVisualizaDescontoProdutoModalCaixa,
   profissionalPodeNaAgenda,
 } from "@/lib/agenda/permissoes-calendario";
+import { STATUS_RETORNO_AGENDAMENTO } from "@/lib/agenda/retorno-agendamento";
 import { validarProcedimentosDoColaborador } from "@/lib/colaborador-procedimentos";
 import {
   MSG_HORARIO_RETROATIVO,
@@ -36,6 +38,7 @@ const AGENDAMENTO_STATUS = [
   "cancelado",
   "faltou",
   "adiado",
+  "curativo_agendado",
 ] as const;
 type AgendamentoStatus = (typeof AGENDAMENTO_STATUS)[number];
 
@@ -123,7 +126,12 @@ export async function POST(request: Request) {
     );
   }
 
-  const ignoraValidacaoHorario = statusAgendamentoIgnoraValidacaoHorario(statusStr);
+  const supabase = createAdminClient();
+  const nomeGrupoPost = await getNomeGrupoUsuariosDoUsuario(supabase, sessionUserId);
+  const ignoraValidacaoHorario =
+    statusAgendamentoIgnoraValidacaoHorario(statusStr) ||
+    (statusStr === STATUS_RETORNO_AGENDAMENTO &&
+      grupoNomeIgnoraValidacaoHorarioAoMudarStatus(nomeGrupoPost));
 
   const t0 = new Date(inicio);
   const t1 = new Date(fim);
@@ -143,7 +151,6 @@ export async function POST(request: Request) {
     );
   }
 
-  const supabase = createAdminClient();
   const podeAgendarRetroativo = await getUsuarioPodeAgendarRetroativo(
     supabase,
     sessionUserId,
@@ -185,7 +192,6 @@ export async function POST(request: Request) {
   }
 
   if (procedimentos.length > 0) {
-    const nomeGrupoPost = await getNomeGrupoUsuariosDoUsuario(supabase, sessionUserId);
     if (!grupoNomeVisualizaDescontoProdutoModalCaixa(nomeGrupoPost)) {
       return NextResponse.json(
         {

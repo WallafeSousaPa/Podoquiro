@@ -14,6 +14,39 @@ export function statusAgendamentoIgnoraValidacaoHorario(status: string): boolean
   return status === "cancelado" || status === "faltou";
 }
 
+type AgendamentoHorarioExistente = {
+  id_usuario: number;
+  data_hora_inicio: string;
+  data_hora_fim: string;
+};
+
+/**
+ * PATCH que altera de fato início, fim ou responsável em relação ao registro atual.
+ * Campos repetidos com o mesmo valor (ex.: modal de edição reenviando horários) não contam.
+ */
+export function patchBodyAlteraHorarioOuProfissionalEfetivo(
+  body: Record<string, unknown>,
+  existente: AgendamentoHorarioExistente,
+): boolean {
+  if (typeof body.id_usuario !== "undefined") {
+    const idU = Number(body.id_usuario);
+    if (Number.isFinite(idU) && idU > 0 && idU !== existente.id_usuario) return true;
+  }
+  if (
+    typeof body.data_hora_inicio === "string" &&
+    body.data_hora_inicio !== String(existente.data_hora_inicio)
+  ) {
+    return true;
+  }
+  if (
+    typeof body.data_hora_fim === "string" &&
+    body.data_hora_fim !== String(existente.data_hora_fim)
+  ) {
+    return true;
+  }
+  return false;
+}
+
 /** Mantém um único registro por id_procedimento (evita violação de unique no banco). */
 export function dedupeProcedimentos(
   items: { id_procedimento: number; valor_aplicado: number }[],
@@ -32,6 +65,7 @@ const STATUS_AGENDA_OCUPA_SLOT = [
   "em_andamento",
   "realizado",
   "adiado",
+  "curativo_agendado",
 ] as const;
 
 const STATUS_AGENDA_OCUPA_SLOT_SET = new Set<string>(STATUS_AGENDA_OCUPA_SLOT);

@@ -15,7 +15,8 @@ const STATUS_ALIASES: Record<string, string> = {
   /** Planilha: mesmo significado de confirmado no sistema. */
   agendado: "confirmado",
   /** Ex.: "Curativo agendado" na planilha. */
-  curativoagendado: "confirmado",
+  curativoagendado: "curativo_agendado",
+  curativo_agendado: "curativo_agendado",
   emandamento: "em_andamento",
   "em andamento": "em_andamento",
   em_atendimento: "em_andamento",
@@ -44,6 +45,7 @@ const STATUS_VALIDOS = new Set([
   "cancelado",
   "faltou",
   "adiado",
+  "curativo_agendado",
 ]);
 
 /** Converte texto da planilha em `agendamento_status` ou null. */

@@ -10,6 +10,8 @@ import {
   useState,
 } from "react";
 import { calcularValorTotal } from "@/lib/agenda/totais";
+import { agendamentoExigeRetornoNoCaixa } from "@/lib/agenda/retorno-agendamento";
+import { ModalAgendarRetornoCaixa } from "@/components/modal-agendar-retorno-caixa";
 import { dataReferenciaBrasilia } from "@/lib/financeiro/data-referencia-brasilia";
 import {
   fmtMoedaBrCampo,
@@ -89,6 +91,9 @@ type AgDetail = {
   mostrar_desconto_produtos_modal_caixa?: boolean;
   /** Inclui Recepção: pode editar mercadorias no modal sem alterar procedimentos. */
   permite_editar_produtos_modal_caixa?: boolean;
+  agendar_retorno?: boolean;
+  id_retorno?: number | null;
+  id_sala?: number;
 };
 
 function fmtDataHora(iso: string) {
@@ -115,6 +120,7 @@ function badgeStatusAg(status: string) {
     cancelado: "badge-secondary",
     faltou: "badge-secondary",
     adiado: "badge-primary",
+    curativo_agendado: "badge-primary",
   };
   const cls = map[status] ?? "badge-light";
   return (
@@ -171,6 +177,8 @@ export function ModalCaixaAgendamento({
     nomeFech: string | null;
   } | null>(null);
   const [caixaBusy, setCaixaBusy] = useState(false);
+  const [modalRetornoAberto, setModalRetornoAberto] = useState(false);
+  const continuarSalvarAposRetornoRef = useRef(false);
 
   const carregarTudo = useCallback(async () => {
     if (!row) return;
@@ -492,8 +500,7 @@ export function ModalCaixaAgendamento({
     ]);
   }
 
-  async function salvar(e: FormEvent) {
-    e.preventDefault();
+  async function salvarInterno(ignorarChecagemRetorno = false) {
     if (!row || !detalhe) return;
     /** Fecha sobre valor estável: TS não estreita `detalhe` dentro de closures assíncronas. */
     const detalheAg = detalhe;
@@ -506,6 +513,18 @@ export function ModalCaixaAgendamento({
       !modoAdminCaixaCompleto &&
       !modoRecepcaoProdutos
     ) {
+      return;
+    }
+
+    const enviaPagamentos =
+      detalheAg.status === "realizado" && !detalheAg.pagamentos_nao_carregados_por_perfil;
+    if (
+      !ignorarChecagemRetorno &&
+      enviaPagamentos &&
+      agendamentoExigeRetornoNoCaixa(detalheAg)
+    ) {
+      continuarSalvarAposRetornoRef.current = true;
+      setModalRetornoAberto(true);
       return;
     }
 
@@ -880,6 +899,23 @@ export function ModalCaixaAgendamento({
     }
   }
 
+  function salvar(e: FormEvent) {
+    e.preventDefault();
+    void salvarInterno(false);
+  }
+
+  function onRetornoAgendadoNoCaixa(idRetorno: number) {
+    setDetalhe((d) => (d ? { ...d, id_retorno: idRetorno } : d));
+    setModalRetornoAberto(false);
+    if (continuarSalvarAposRetornoRef.current) {
+      continuarSalvarAposRetornoRef.current = false;
+      void salvarInterno(true);
+    }
+  }
+
+  const retornoPendenteNoCaixa =
+    detalhe != null && agendamentoExigeRetornoNoCaixa(detalhe);
+
   const podeIgnorarSomenteVisualizar =
     detalhe?.mostrar_desconto_produtos_modal_caixa === true ||
     detalhe?.permite_editar_produtos_modal_caixa === true;
@@ -1033,6 +1069,15 @@ export function ModalCaixaAgendamento({
                     {erro && detalhe ? (
                       <div className="alert alert-danger py-2 small" role="alert">
                         {erro}
+                      </div>
+                    ) : null}
+
+                    {retornoPendenteNoCaixa ? (
+                      <div className="alert alert-warning py-2 small mb-3" role="status">
+                        <strong>Retorno pendente:</strong> a podóloga indicou que este paciente
+                        precisa de retorno (curativo). Agende o retorno antes de registrar o
+                        pagamento — ao salvar, o sistema abrirá o agendamento com status{" "}
+                        <strong>Curativo agendado</strong>.
                       </div>
                     ) : null}
 
@@ -1754,6 +1799,23 @@ export function ModalCaixaAgendamento({
             onClick={() => responderModalAbrirCaixa(false)}
           />
         </>
+      ) : null}
+
+      {row && detalhe && modalRetornoAberto ? (
+        <ModalAgendarRetornoCaixa
+          open={modalRetornoAberto}
+          idAgendamentoOrigem={row.id}
+          idUsuario={detalhe.id_usuario}
+          idPaciente={detalhe.id_paciente ?? 0}
+          idSalaPreferida={detalhe.id_sala}
+          pacienteNome={row.paciente_nome}
+          profissionalNome={row.profissional_nome}
+          onClose={() => {
+            setModalRetornoAberto(false);
+            continuarSalvarAposRetornoRef.current = false;
+          }}
+          onAgendado={onRetornoAgendadoNoCaixa}
+        />
       ) : null}
     </>
   );

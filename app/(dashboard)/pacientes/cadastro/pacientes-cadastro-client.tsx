@@ -106,6 +106,7 @@ function badgeAgendamentoStatus(status: string): { label: string; className: str
     cancelado: "badge-secondary",
     faltou: "badge-secondary",
     adiado: "badge-primary",
+    curativo_agendado: "badge-primary",
   };
   const cls = map[status] ?? "badge-light";
   return { label: s, className: `badge ${cls}` };

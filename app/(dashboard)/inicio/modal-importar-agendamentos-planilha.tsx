@@ -21,6 +21,7 @@ const STATUS_OPTIONS = [
   "cancelado",
   "faltou",
   "adiado",
+  "curativo_agendado",
 ] as const;
 
 function PacienteAssociarSearch({

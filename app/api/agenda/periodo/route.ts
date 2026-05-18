@@ -197,7 +197,13 @@ export async function GET(request: Request) {
     }
   }
   if (somentePropriaColuna) {
-    agQuery = agQuery.in("status", ["pendente", "confirmado", "em_andamento", "faltou"]);
+    agQuery = agQuery.in("status", [
+      "pendente",
+      "confirmado",
+      "em_andamento",
+      "faltou",
+      "curativo_agendado",
+    ]);
   }
   const { data: agRows, error: aErr } = await agQuery.order("data_hora_inicio", {
     ascending: true,

@@ -10,6 +10,7 @@ import {
   getUsuarioPodeAgendarRetroativo,
   getUsuarioAgendaSomentePropriaColuna,
   getNomeGrupoUsuariosDoUsuario,
+  grupoNomeIgnoraValidacaoHorarioAoMudarStatus,
   grupoNomePermiteProdutosModalCaixaRecepcao,
   grupoNomeVisualizaDescontoProdutoModalCaixa,
   profissionalPodeNaAgenda,
@@ -22,9 +23,15 @@ import {
   inicioEhRetroativo,
   listarSobreposicaoAgendaProfissional,
   mensagemConflitoAgendaProfissionalComDetalhe,
+  patchBodyAlteraHorarioOuProfissionalEfetivo,
   statusAgendaOcupacaoSlot,
   statusAgendamentoIgnoraValidacaoHorario,
 } from "@/lib/agenda/validacao-agendamento";
+import {
+  agendamentoExigeRetornoNoCaixa,
+  MSG_RETORNO_OBRIGATORIO_CAIXA,
+  STATUS_RETORNO_AGENDAMENTO,
+} from "@/lib/agenda/retorno-agendamento";
 import { dataReferenciaBrasilia } from "@/lib/financeiro/data-referencia-brasilia";
 import { obterSituacaoCaixaDia } from "@/lib/financeiro/caixa-situacao-dia";
 import { getSession } from "@/lib/auth/session";
@@ -49,6 +56,7 @@ const AGENDAMENTO_STATUS = [
   "cancelado",
   "faltou",
   "adiado",
+  "curativo_agendado",
 ] as const;
 type AgendamentoStatus = (typeof AGENDAMENTO_STATUS)[number];
 
@@ -94,7 +102,7 @@ export async function GET(request: Request, context: RouteContext) {
   const { data: row, error } = await supabase
     .from("agendamentos")
     .select(
-      "id, id_usuario, id_paciente, id_sala, data_hora_inicio, data_hora_fim, status, valor_bruto, desconto, valor_total, observacoes",
+      "id, id_usuario, id_paciente, id_sala, data_hora_inicio, data_hora_fim, status, valor_bruto, desconto, valor_total, observacoes, agendar_retorno, id_retorno",
     )
     .eq("id", id)
     .eq("id_empresa", empresaId)
@@ -187,6 +195,11 @@ export async function GET(request: Request, context: RouteContext) {
       valor_bruto: Number(row.valor_bruto),
       desconto: Number(row.desconto),
       valor_total: Number(row.valor_total),
+      agendar_retorno: Boolean(row.agendar_retorno),
+      id_retorno:
+        row.id_retorno != null && Number(row.id_retorno) > 0
+          ? Number(row.id_retorno)
+          : null,
       procedimentos: (procs ?? []).map((p) => ({
         id: p.id,
         id_procedimento: p.id_procedimento,
@@ -248,7 +261,7 @@ export async function PATCH(request: Request, context: RouteContext) {
   const { data: existente, error: exErr } = await supabase
     .from("agendamentos")
     .select(
-      "id, id_usuario, id_paciente, id_sala, data_hora_inicio, data_hora_fim, status, valor_bruto, desconto, valor_total, observacoes",
+      "id, id_usuario, id_paciente, id_sala, data_hora_inicio, data_hora_fim, status, valor_bruto, desconto, valor_total, observacoes, agendar_retorno, id_retorno",
     )
     .eq("id", id)
     .eq("id_empresa", empresaId)
@@ -289,13 +302,25 @@ export async function PATCH(request: Request, context: RouteContext) {
     const apenasStatus =
       chaves.length === 0 ||
       (chaves.length === 1 && chaves[0] === "status");
+    const apenasIdRetorno =
+      chaves.length === 1 && chaves[0] === "id_retorno";
+    const apenasPagamentosOpcionalRetorno =
+      usuarioFluxoCaixaProdutosOuAdmin &&
+      chaves.length > 0 &&
+      chaves.every((k) => k === "pagamentos" || k === "id_retorno") &&
+      Object.prototype.hasOwnProperty.call(body, "pagamentos");
     const apenasProdutosOpcionalPagamentos =
       usuarioFluxoCaixaProdutosOuAdmin &&
       chaves.length > 0 &&
-      chaves.every((k) => k === "produtos" || k === "pagamentos") &&
+      chaves.every((k) => k === "produtos" || k === "pagamentos" || k === "id_retorno") &&
       Object.prototype.hasOwnProperty.call(body, "produtos");
 
-    if (!apenasStatus && !apenasProdutosOpcionalPagamentos) {
+    if (
+      !apenasStatus &&
+      !apenasIdRetorno &&
+      !apenasPagamentosOpcionalRetorno &&
+      !apenasProdutosOpcionalPagamentos
+    ) {
       return NextResponse.json(
         {
           error:
@@ -415,8 +440,19 @@ export async function PATCH(request: Request, context: RouteContext) {
     typeof body.status === "string" && isAgStatus(body.status)
       ? body.status
       : String(existente.status);
+  const alteraStatusNoPatch =
+    typeof body.status === "string" && isAgStatus(body.status);
+  const ignoraValidacaoPorMudancaStatus =
+    alteraStatusNoPatch &&
+    !patchBodyAlteraHorarioOuProfissionalEfetivo(body, {
+      id_usuario: existente.id_usuario as number,
+      data_hora_inicio: String(existente.data_hora_inicio),
+      data_hora_fim: String(existente.data_hora_fim),
+    }) &&
+    grupoNomeIgnoraValidacaoHorarioAoMudarStatus(nomeGrupoUsuarioPatch);
   const ignoraValidacaoHorario =
-    statusAgendamentoIgnoraValidacaoHorario(statusParaValidacaoHorario);
+    statusAgendamentoIgnoraValidacaoHorario(statusParaValidacaoHorario) ||
+    ignoraValidacaoPorMudancaStatus;
 
   let inicio = existente.data_hora_inicio as string;
   let fim = existente.data_hora_fim as string;
@@ -579,6 +615,56 @@ export async function PATCH(request: Request, context: RouteContext) {
         : typeof body.observacoes === "string"
           ? body.observacoes.trim() || null
           : null;
+  }
+
+  if (typeof body.id_retorno !== "undefined") {
+    const podeVincularRetorno =
+      (podeVerTodos && !somentePropriaColuna) || usuarioFluxoCaixaProdutosOuAdmin;
+    if (!podeVincularRetorno) {
+      return NextResponse.json(
+        { error: "Sem permissão para vincular o agendamento de retorno." },
+        { status: 403 },
+      );
+    }
+    if (body.id_retorno === null) {
+      patch.id_retorno = null;
+    } else {
+      const idRetorno = Number(body.id_retorno);
+      if (!Number.isFinite(idRetorno) || idRetorno <= 0) {
+        return NextResponse.json({ error: "ID do retorno inválido." }, { status: 400 });
+      }
+      if (idRetorno === id) {
+        return NextResponse.json(
+          { error: "O retorno não pode ser o próprio agendamento." },
+          { status: 400 },
+        );
+      }
+      const { data: agRet, error: agRetErr } = await supabase
+        .from("agendamentos")
+        .select("id, id_empresa, id_paciente, status")
+        .eq("id", idRetorno)
+        .maybeSingle();
+      if (agRetErr) {
+        console.error(agRetErr);
+        return NextResponse.json({ error: agRetErr.message }, { status: 500 });
+      }
+      if (!agRet || (agRet.id_empresa as number) !== empresaId) {
+        return NextResponse.json({ error: "Agendamento de retorno não encontrado." }, { status: 400 });
+      }
+      if ((agRet.id_paciente as number) !== (existente.id_paciente as number)) {
+        return NextResponse.json(
+          { error: "O retorno deve ser para o mesmo paciente do atendimento." },
+          { status: 400 },
+        );
+      }
+      if (String(agRet.status) !== STATUS_RETORNO_AGENDAMENTO) {
+        return NextResponse.json(
+          { error: "O agendamento de retorno deve ter status Curativo agendado." },
+          { status: 400 },
+        );
+      }
+      patch.id_retorno = idRetorno;
+    }
   }
 
   let desconto = Number(existente.desconto);
@@ -939,6 +1025,19 @@ export async function PATCH(request: Request, context: RouteContext) {
         },
         { status: 400 },
       );
+    }
+
+    const idRetornoEfetivo =
+      typeof patch.id_retorno !== "undefined"
+        ? (patch.id_retorno as number | null)
+        : existente.id_retorno != null
+          ? Number(existente.id_retorno)
+          : null;
+    if (
+      Boolean(existente.agendar_retorno) &&
+      (idRetornoEfetivo == null || !Number.isFinite(idRetornoEfetivo) || idRetornoEfetivo <= 0)
+    ) {
+      return NextResponse.json({ error: MSG_RETORNO_OBRIGATORIO_CAIXA }, { status: 400 });
     }
 
     const dataRefCaixa = dataReferenciaBrasilia(String(existente.data_hora_inicio));

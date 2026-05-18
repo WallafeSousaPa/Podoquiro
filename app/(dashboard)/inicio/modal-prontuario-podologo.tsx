@@ -6,6 +6,7 @@ import {
   MAX_TOTAL_ANEXOS_ANAMNESE_BYTES,
   somaTamanhosArquivos,
 } from "@/lib/client/comprimir-imagem-anamnese";
+import type { HistoricoAtendimentoResumo } from "@/lib/prontuario/historico-atendimentos";
 import {
   type FormEvent,
   useCallback,
@@ -15,6 +16,7 @@ import {
   useRef,
   useState,
 } from "react";
+import { ModalProntuarioHistorico } from "./modal-prontuario-historico";
 
 type AgMin = {
   id: number;
@@ -176,9 +178,12 @@ export function ModalProntuarioPodologo({ ag, onClose, onSalvo }: Props) {
   const [procedimentos, setProcedimentos] = useState<ProcLinha[]>([]);
   const [selecionados, setSelecionados] = useState<Set<number>>(new Set());
   const [evolucao, setEvolucao] = useState("");
+  const [agendarRetorno, setAgendarRetorno] = useState(false);
 
   const [fotosExistentes, setFotosExistentes] = useState<FotoExistente[]>([]);
   const [novosArquivos, setNovosArquivos] = useState<File[]>([]);
+  const [historico, setHistorico] = useState<HistoricoAtendimentoResumo[]>([]);
+  const [modalHistoricoAberto, setModalHistoricoAberto] = useState(false);
 
   const previewsNovos = useMemo(
     () => novosArquivos.map((f) => URL.createObjectURL(f)),
@@ -201,6 +206,8 @@ export function ModalProntuarioPodologo({ ag, onClose, onSalvo }: Props) {
       const j = (await res.json()) as {
         error?: string;
         procedimentos?: ProcLinha[];
+        historico?: HistoricoAtendimentoResumo[];
+        agendamento?: { agendar_retorno?: boolean };
         prontuario?: {
           evolucao: string;
           procedimentos_realizados: number[];
@@ -209,7 +216,9 @@ export function ModalProntuarioPodologo({ ag, onClose, onSalvo }: Props) {
       };
       if (!res.ok) throw new Error(j.error ?? "Erro ao carregar.");
       setProcedimentos(j.procedimentos ?? []);
+      setHistorico(j.historico ?? []);
       const pr = j.prontuario;
+      setAgendarRetorno(Boolean(j.agendamento?.agendar_retorno));
       if (pr) {
         setEvolucao(pr.evolucao ?? "");
         setSelecionados(new Set(pr.procedimentos_realizados ?? []));
@@ -300,6 +309,7 @@ export function ModalProntuarioPodologo({ ag, onClose, onSalvo }: Props) {
         "caminhos_manter",
         JSON.stringify(fotosExistentes.map((f) => f.path)),
       );
+      fd.append("agendar_retorno", agendarRetorno ? "1" : "0");
       fotosComprimidas.forEach((file, i) => {
         fd.append(`foto_${i}`, file);
       });
@@ -397,6 +407,25 @@ export function ModalProntuarioPodologo({ ag, onClose, onSalvo }: Props) {
                       </div>
                     ) : null}
 
+                    <div className="mb-3">
+                      <button
+                        type="button"
+                        className="btn btn-outline-primary btn-block"
+                        disabled={salvando || loading}
+                        onClick={() => setModalHistoricoAberto(true)}
+                      >
+                        Histórico de atendimentos
+                        {historico.length > 0 ? (
+                          <span className="badge badge-primary ml-2">
+                            {historico.length}
+                          </span>
+                        ) : null}
+                      </button>
+                      <p className="small text-muted mb-0 mt-1">
+                        Consulte atendimentos anteriores do paciente sem sair do prontuário.
+                      </p>
+                    </div>
+
                     <div className="form-group">
                       <label className="font-weight-bold">Procedimentos realizados</label>
                       <p className="small text-muted mb-2">
@@ -430,6 +459,29 @@ export function ModalProntuarioPodologo({ ag, onClose, onSalvo }: Props) {
                         required
                         minLength={3}
                       />
+                    </div>
+
+                    <div className="form-group">
+                      <div className="custom-control custom-checkbox">
+                        <input
+                          type="checkbox"
+                          className="custom-control-input"
+                          id="agendar-retorno-prontuario"
+                          checked={agendarRetorno}
+                          onChange={(e) => setAgendarRetorno(e.target.checked)}
+                          disabled={salvando}
+                        />
+                        <label
+                          className="custom-control-label"
+                          htmlFor="agendar-retorno-prontuario"
+                        >
+                          Paciente precisará de retorno (curativo)
+                        </label>
+                      </div>
+                      <p className="small text-muted mb-0 ml-4 pl-2">
+                        A recepção deverá agendar o retorno no caixa antes de registrar o
+                        pagamento deste atendimento.
+                      </p>
                     </div>
 
                     <div className="form-group mb-0">
@@ -497,6 +549,14 @@ export function ModalProntuarioPodologo({ ag, onClose, onSalvo }: Props) {
         style={{ zIndex: 1067 }}
         role="presentation"
         onClick={() => !salvando && onClose()}
+      />
+
+      <ModalProntuarioHistorico
+        open={modalHistoricoAberto}
+        pacienteNome={ag.paciente_nome}
+        idAgendamentoAtual={ag.id}
+        historico={historico}
+        onClose={() => setModalHistoricoAberto(false)}
       />
     </>
   );

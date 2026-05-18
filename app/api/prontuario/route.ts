@@ -346,9 +346,31 @@ async function postProntuarioSalvar(request: Request) {
     }
   }
 
+  const agendarRetornoRaw = formData.get("agendar_retorno");
+  const agendarRetorno =
+    agendarRetornoRaw === "1" ||
+    agendarRetornoRaw === "true" ||
+    agendarRetornoRaw === "on";
+
+  const patchAgendamento: {
+    status: string;
+    valor_bruto: number;
+    valor_total: number;
+    agendar_retorno: boolean;
+    id_retorno?: null;
+  } = {
+    status: "realizado",
+    valor_bruto: valorBruto,
+    valor_total: valorTotal,
+    agendar_retorno: agendarRetorno,
+  };
+  if (agendarRetorno) {
+    patchAgendamento.id_retorno = null;
+  }
+
   const { error: stAg } = await supabase
     .from("agendamentos")
-    .update({ status: "realizado", valor_bruto: valorBruto, valor_total: valorTotal })
+    .update(patchAgendamento)
     .eq("id", idAgendamento)
     .eq("id_empresa", empresaId);
 

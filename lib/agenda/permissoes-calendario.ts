@@ -42,6 +42,17 @@ export function grupoNomePermiteProdutosModalCaixaRecepcao(
   return false;
 }
 
+/**
+ * Recepção, Administrador e Administrativo: ao mudar só o status do agendamento
+ * (sem alterar horário ou profissional), não aplica validação de conflito/retroativo.
+ */
+export function grupoNomeIgnoraValidacaoHorarioAoMudarStatus(
+  nome: string | null | undefined,
+): boolean {
+  if (grupoNomeContemRecepcao(nome)) return true;
+  return grupoNomeVisualizaDescontoProdutoModalCaixa(nome);
+}
+
 /** Grupos administrativos (ex.: Administrador, Administrativo) podem retroagir agenda. */
 export function grupoNomePermiteAgendarRetroativo(
   nome: string | null | undefined,

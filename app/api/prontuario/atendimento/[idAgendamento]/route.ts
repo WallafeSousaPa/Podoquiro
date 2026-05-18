@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { idsProcedimentosLiberadosColaborador } from "@/lib/colaborador-procedimentos";
 import { getUsuarioPodeAcessarProntuarioAtendimento } from "@/lib/agenda/permissoes-calendario";
+import { listarHistoricoProntuarioPaciente } from "@/lib/prontuario/historico-atendimentos";
 import { getSession } from "@/lib/auth/session";
 import { createAdminClient } from "@/lib/supabase/admin";
 
@@ -45,6 +46,7 @@ export async function GET(_request: Request, context: RouteContext) {
       id_usuario,
       id_paciente,
       status,
+      agendar_retorno,
       data_hora_inicio,
       data_hora_fim,
       pacientes ( nome_completo, nome_social )
@@ -174,13 +176,26 @@ export async function GET(_request: Request, context: RouteContext) {
     }
   }
 
+  let historico: Awaited<ReturnType<typeof listarHistoricoProntuarioPaciente>> = [];
+  try {
+    historico = await listarHistoricoProntuarioPaciente(supabase, {
+      idEmpresa: empresaId,
+      idPaciente: ag.id_paciente as number,
+      excluirIdAgendamento: idAgendamento,
+    });
+  } catch (histErr) {
+    console.error(histErr);
+  }
+
   return NextResponse.json({
     paciente_nome: pacienteNome,
+    historico,
     agendamento: {
       id: ag.id,
       data_hora_inicio: ag.data_hora_inicio,
       data_hora_fim: ag.data_hora_fim,
       status: ag.status,
+      agendar_retorno: Boolean(ag.agendar_retorno),
     },
     procedimentos,
     prontuario: pront

@@ -33,7 +33,7 @@ import {
 } from "@/lib/agenda/datas-agenda";
 import { normalizeCpfDigits } from "@/lib/pacientes";
 import {
-  agendamentoTemProcedimentoCorteTecnico,
+  agendamentoCardCorEmpresaCorteTecnico,
   corCorteTecnicoAgendaResolvida,
   COR_CORTE_TECNICO_AGENDA_PADRAO,
   parseHexCorAgenda,
@@ -574,6 +574,7 @@ function densidadeCardPorAlturaPercent(alturaPercent: number): DensidadeCardAgen
 }
 
 function classeStatus(status: string): string {
+  if (status === "curativo_agendado") return "";
   if (status === "cancelado" || status === "faltou") return "busy";
   if (status === "realizado") return "done";
   if (status === "adiado") return "warn";
@@ -597,6 +598,8 @@ function rotuloStatusAgendamento(status: string): string {
       return "Faltou";
     case "adiado":
       return "Adiado";
+    case "curativo_agendado":
+      return "Curativo agendado";
     default:
       return status;
   }
@@ -649,6 +652,12 @@ function iconeStatusAgendamento(status: string): {
         iconClass: "fas fa-exclamation-circle",
         badgeClass: "agenda-status-badge--adiado",
         label: "Adiado",
+      };
+    case "curativo_agendado":
+      return {
+        iconClass: "fas fa-band-aid",
+        badgeClass: "agenda-status-badge--confirmado",
+        label: "Curativo agendado",
       };
     default:
       return {
@@ -822,7 +831,7 @@ export function AgendaCalendario({
 
   const corDestaqueCard = useCallback(
     (a: AgendamentoDia): string | undefined => {
-      if (agendamentoTemProcedimentoCorteTecnico(a)) return corCorteTecnicoResolvida;
+      if (agendamentoCardCorEmpresaCorteTecnico(a)) return corCorteTecnicoResolvida;
       return corCardUsuario[a.id_usuario] ?? undefined;
     },
     [corCorteTecnicoResolvida, corCardUsuario],
@@ -1955,7 +1964,7 @@ export function AgendaCalendario({
                                 ? "agenda-appointment--com-menu-card"
                                 : ""
                             } text-left ${
-                              agendamentoTemProcedimentoCorteTecnico(a)
+                              agendamentoCardCorEmpresaCorteTecnico(a)
                                 ? "agenda-appointment--corte-tecnico-fundo "
                                 : ""
                             }${classeStatus(a.status)}`}
@@ -2273,7 +2282,7 @@ export function AgendaCalendario({
                             role="button"
                             tabIndex={0}
                             className={`agenda-appointment agenda-appointment--compact agenda-appointment--${densidade} text-left ${
-                              agendamentoTemProcedimentoCorteTecnico(a)
+                              agendamentoCardCorEmpresaCorteTecnico(a)
                                 ? "agenda-appointment--corte-tecnico-fundo "
                                 : ""
                             }${classeStatus(a.status)} ${
@@ -2419,7 +2428,7 @@ export function AgendaCalendario({
                                     role="button"
                                     tabIndex={0}
                                     className={`agenda-cal-month-chip agenda-cal-month-chip--${densidade} w-100 text-left ${classeStatus(a.status)}${
-                                      agendamentoTemProcedimentoCorteTecnico(a)
+                                      agendamentoCardCorEmpresaCorteTecnico(a)
                                         ? " agenda-cal-month-chip--corte-tecnico-fundo"
                                         : ""
                                     }`}
@@ -2552,11 +2561,11 @@ export function AgendaCalendario({
                   ))}
                 </div>
                 <hr className="my-4" />
-                <p className="font-weight-bold mb-2">Cor do card — Corte técnico</p>
+                <p className="font-weight-bold mb-2">Cor do card — Curativo agendado</p>
                 <p className="text-muted small mb-3">
-                  Aplica-se apenas quando o agendamento tem <strong>um único</strong> procedimento e ele é{" "}
-                  <strong>Corte técnico</strong>. Com mais de um procedimento na mesma marcação, o card mantém
-                  a cor do profissional.
+                  Aplica-se aos agendamentos com status <strong>Curativo agendado</strong> (ex.: retorno).
+                  Marcações com procedimento <strong>Corte técnico</strong> usam a cor do profissional na
+                  agenda.
                 </p>
                 <div className="form-row align-items-end">
                   <div className="form-group col-auto mb-0">
@@ -3287,6 +3296,7 @@ export function AgendaCalendario({
                         <option value="cancelado">Cancelado</option>
                         <option value="faltou">Faltou</option>
                         <option value="adiado">Adiado</option>
+                        <option value="curativo_agendado">Curativo agendado</option>
                       </select>
                     </div>
                     {perfilAdminAgenda ? (
