@@ -127,6 +127,9 @@ export function DashboardShell({
   const [openNotaFiscal, setOpenNotaFiscal] = useState(() =>
     pathname.startsWith("/financeiro/nota-fiscal"),
   );
+  const [openRelatorios, setOpenRelatorios] = useState(() =>
+    pathname.startsWith("/relatorios"),
+  );
 
   useEffect(() => {
     setOpenUsuarios(pathname.startsWith("/usuarios"));
@@ -138,6 +141,7 @@ export function DashboardShell({
     setOpenAtendimentos(pathname.startsWith("/atendimentos"));
     setOpenParametrizacao(pathname.startsWith("/financeiro/parametrizacao"));
     setOpenNotaFiscal(pathname.startsWith("/financeiro/nota-fiscal"));
+    setOpenRelatorios(pathname.startsWith("/relatorios"));
   }, [pathname]);
 
   useEffect(() => {
@@ -193,6 +197,7 @@ export function DashboardShell({
   const isAtendimentos = pathname.startsWith("/atendimentos");
   const isParametrizacao = pathname.startsWith("/financeiro/parametrizacao");
   const isNotaFiscal = pathname.startsWith("/financeiro/nota-fiscal");
+  const isRelatorios = pathname.startsWith("/relatorios");
 
   return (
     <div className="wrapper">
@@ -650,20 +655,6 @@ export function DashboardShell({
                       <p>Caixa</p>
                     </Link>
                   </li>
-                  {podeVerRelatorioCaixa ? (
-                    <li className="nav-item">
-                      <Link
-                        href="/financeiro/relatorio-caixa"
-                        className={cx(
-                          "nav-link",
-                          pathname === "/financeiro/relatorio-caixa" && "active",
-                        )}
-                      >
-                        <i className="far fa-circle nav-icon" />
-                        <p>Relatório caixa</p>
-                      </Link>
-                    </li>
-                  ) : null}
                   <li
                     className={cx(
                       "nav-item",
@@ -779,6 +770,57 @@ export function DashboardShell({
                   </li>
                 </ul>
               </li>
+
+              {podeVerRelatorioCaixa ? (
+                <li
+                  className={cx(
+                    "nav-item",
+                    "has-treeview",
+                    openRelatorios && "menu-open",
+                  )}
+                >
+                  <a
+                    href="#"
+                    className={cx("nav-link", isRelatorios && "active")}
+                    onClick={(e) => {
+                      e.preventDefault();
+                      setOpenRelatorios((v) => !v);
+                    }}
+                  >
+                    <i className="nav-icon fas fa-chart-bar" />
+                    <p>
+                      Relatórios
+                      <i className="right fas fa-angle-left" />
+                    </p>
+                  </a>
+                  <ul className="nav nav-treeview">
+                    <li className="nav-item">
+                      <Link
+                        href="/relatorios/caixa"
+                        className={cx(
+                          "nav-link",
+                          pathname === "/relatorios/caixa" && "active",
+                        )}
+                      >
+                        <i className="far fa-circle nav-icon" />
+                        <p>Relatório caixa</p>
+                      </Link>
+                    </li>
+                    <li className="nav-item">
+                      <Link
+                        href="/relatorios/atendimentos"
+                        className={cx(
+                          "nav-link",
+                          pathname === "/relatorios/atendimentos" && "active",
+                        )}
+                      >
+                        <i className="far fa-circle nav-icon" />
+                        <p>Atendimentos</p>
+                      </Link>
+                    </li>
+                  </ul>
+                </li>
+              ) : null}
 
               <li
                 className={cx(

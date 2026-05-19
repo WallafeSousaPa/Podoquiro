@@ -4,9 +4,9 @@ import { useCallback, useEffect, useId, useState } from "react";
 import {
   CaixaClient,
   type CaixaAgendamentoRow,
-} from "../caixa/caixa-client";
-import { ModalCaixaAgendamento } from "../caixa/modal-caixa-agendamento";
-import "../caixa/caixa.css";
+} from "../../financeiro/caixa/caixa-client";
+import { ModalCaixaAgendamento } from "../../financeiro/caixa/modal-caixa-agendamento";
+import "../../financeiro/caixa/caixa.css";
 
 function dataLocalYmd(): string {
   const d = new Date();

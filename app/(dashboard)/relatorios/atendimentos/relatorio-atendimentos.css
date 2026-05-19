@@ -1,0 +1,170 @@
+/* Colunas com card/info-box na mesma altura da linha */
+.relatorio-atendimentos .row > [class*="col-"].mb-3,
+.relatorio-atendimentos .row > [class*="col-"].mb-2 {
+  display: flex;
+}
+
+.relatorio-atendimentos .row > [class*="col-"] .card.h-100,
+.relatorio-atendimentos .row > [class*="col-"] .relatorio-atendimentos-chart-card {
+  width: 100%;
+}
+
+.relatorio-atendimentos-filtros .form-group {
+  margin-bottom: 0.75rem;
+}
+
+.relatorio-atendimentos-kpi > [class*="col-"] {
+  display: flex;
+}
+
+.relatorio-atendimentos-kpi .info-box {
+  width: 100%;
+  min-height: 96px;
+  height: 100%;
+  margin-bottom: 0;
+  display: flex;
+  align-items: stretch;
+}
+
+.relatorio-atendimentos-kpi .info-box-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 70px;
+  flex-shrink: 0;
+}
+
+.relatorio-atendimentos-kpi .info-box-content {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  flex: 1 1 auto;
+  min-width: 0;
+  padding: 0.5rem 0.75rem;
+}
+
+.relatorio-atendimentos-kpi .info-box-text {
+  display: block;
+  margin-bottom: 0.2rem;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.relatorio-atendimentos-kpi .info-box-number {
+  display: block;
+  line-height: 1.25;
+  font-size: 1.35rem;
+}
+
+.relatorio-atendimentos-kpi .info-box-number.small {
+  font-size: 1.1rem;
+}
+
+.relatorio-atendimentos-chart-card {
+  min-height: 280px;
+}
+
+.relatorio-atendimentos-chart-card .card-body {
+  padding: 0.75rem 0.5rem 0.5rem;
+}
+
+.relatorio-atendimentos-chart-wrap {
+  width: 100%;
+  height: min(320px, 55vw);
+  min-height: 220px;
+}
+
+.relatorio-atendimentos-chart-wrap--sm {
+  height: min(200px, 40vw);
+  min-height: 160px;
+}
+
+.relatorio-atendimentos-chart-wrap--pie-only {
+  height: min(200px, 42vw);
+  min-height: 160px;
+  max-height: 220px;
+}
+
+.relatorio-atendimentos-pie-layout {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  min-height: 0;
+}
+
+.relatorio-atendimentos-pie-legenda {
+  max-height: min(180px, 28vh);
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  padding-right: 0.25rem;
+}
+
+.relatorio-atendimentos-pie-legenda-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.4rem;
+  font-size: 0.75rem;
+  line-height: 1.25;
+  margin-bottom: 0.35rem;
+}
+
+.relatorio-atendimentos-pie-swatch {
+  flex-shrink: 0;
+  width: 0.65rem;
+  height: 0.65rem;
+  border-radius: 2px;
+  margin-top: 0.15rem;
+}
+
+.relatorio-atendimentos-pie-legenda-texto {
+  min-width: 0;
+  flex: 1;
+}
+
+.relatorio-atendimentos-pie-legenda-nome {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.relatorio-atendimentos-status-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+  gap: 0.35rem 0.75rem;
+}
+
+.relatorio-atendimentos-status-grid .custom-control-label {
+  font-size: 0.875rem;
+  cursor: pointer;
+}
+
+.relatorio-atendimentos-tabela-rank {
+  width: 2.5rem;
+  text-align: center;
+  font-weight: 600;
+}
+
+.relatorio-atendimentos-sr-resumo {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+@media (max-width: 575.98px) {
+  .relatorio-atendimentos-presets .btn {
+    margin-bottom: 0.35rem;
+  }
+
+  .relatorio-atendimentos-chart-wrap {
+    height: 260px;
+    min-height: 200px;
+  }
+}
