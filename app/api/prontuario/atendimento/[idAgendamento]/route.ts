@@ -1,11 +1,14 @@
 import { NextResponse } from "next/server";
 import { idsProcedimentosLiberadosColaborador } from "@/lib/colaborador-procedimentos";
 import { getUsuarioPodeAcessarProntuarioAtendimento } from "@/lib/agenda/permissoes-calendario";
+import {
+  assinarFotosProntuario,
+  parsePathsFotosProntuario,
+  statusAgendamentoPermiteProntuario,
+} from "@/lib/prontuario/fotos-storage";
 import { listarHistoricoProntuarioPaciente } from "@/lib/prontuario/historico-atendimentos";
 import { getSession } from "@/lib/auth/session";
 import { createAdminClient } from "@/lib/supabase/admin";
-
-const BUCKET = "Prontuario";
 
 function parseEmpresaId(idEmpresa: string) {
   const n = Number(idEmpresa);
@@ -63,9 +66,12 @@ export async function GET(_request: Request, context: RouteContext) {
   if (!ag) {
     return NextResponse.json({ error: "Agendamento não encontrado." }, { status: 404 });
   }
-  if (String(ag.status) !== "em_andamento") {
+  if (!statusAgendamentoPermiteProntuario(String(ag.status))) {
     return NextResponse.json(
-      { error: "O prontuário só pode ser preenchido com status Em andamento." },
+      {
+        error:
+          "O prontuário só pode ser acessado com status Em andamento ou Realizado.",
+      },
       { status: 400 },
     );
   }
@@ -160,21 +166,8 @@ export async function GET(_request: Request, context: RouteContext) {
     return NextResponse.json({ error: prErr.message }, { status: 500 });
   }
 
-  const paths = (pront?.fotos as string[] | null) ?? [];
-  const fotosComUrl: { path: string; url: string }[] = [];
-  for (const path of paths) {
-    if (typeof path !== "string" || !path.trim()) continue;
-    const { data: signed, error: signErr } = await supabase.storage
-      .from(BUCKET)
-      .createSignedUrl(path, 3600);
-    if (signErr) {
-      console.error(signErr);
-      continue;
-    }
-    if (signed?.signedUrl) {
-      fotosComUrl.push({ path, url: signed.signedUrl });
-    }
-  }
+  const paths = parsePathsFotosProntuario(pront?.fotos);
+  const fotosComUrl = await assinarFotosProntuario(supabase, paths);
 
   let historico: Awaited<ReturnType<typeof listarHistoricoProntuarioPaciente>> = [];
   try {

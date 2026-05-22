@@ -18,7 +18,7 @@ import {
 import { validarProcedimentosDoColaborador } from "@/lib/colaborador-procedimentos";
 import {
   MSG_HORARIO_RETROATIVO,
-  MSG_PROCEDIMENTO_DUPLICADO,
+  mensagemErroInsertAgendamentoProcedimentos,
   haConflitoNasLinhasSobreposicao,
   inicioEhRetroativo,
   listarSobreposicaoAgendaProfissional,
@@ -727,10 +727,6 @@ export async function PATCH(request: Request, context: RouteContext) {
       procedimentos.push({ id_procedimento: ip, valor_aplicado: Math.round(va * 100) / 100 });
     }
 
-    if (new Set(procedimentos.map((p) => p.id_procedimento)).size !== procedimentos.length) {
-      return NextResponse.json({ error: MSG_PROCEDIMENTO_DUPLICADO }, { status: 400 });
-    }
-
     const procIds = [...new Set(procedimentos.map((p) => p.id_procedimento))];
     const { data: procRows, error: procErr } = await supabase
       .from("procedimentos")
@@ -861,10 +857,10 @@ export async function PATCH(request: Request, context: RouteContext) {
     );
     if (insP) {
       console.error(insP);
-      if (insP.code === "23505") {
-        return NextResponse.json({ error: MSG_PROCEDIMENTO_DUPLICADO }, { status: 400 });
-      }
-      return NextResponse.json({ error: insP.message }, { status: 500 });
+      return NextResponse.json(
+        { error: mensagemErroInsertAgendamentoProcedimentos(insP) },
+        { status: 500 },
+      );
     }
   }
 

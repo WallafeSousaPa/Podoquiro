@@ -6,9 +6,6 @@ export const MSG_HORARIO_RETROATIVO =
 export const MSG_CONFLITO_PROFISSIONAL =
   "Já existe um agendamento para este responsável neste horário. Escolha outro intervalo que não se sobreponha a um agendamento existente.";
 
-export const MSG_PROCEDIMENTO_DUPLICADO =
-  "Não é permitido repetir o mesmo procedimento mais de uma vez no mesmo agendamento.";
-
 /** Cancelado ou faltou: validação de intervalo início/fim e conflitos de agenda não se aplicam como nos demais status. */
 export function statusAgendamentoIgnoraValidacaoHorario(status: string): boolean {
   return status === "cancelado" || status === "faltou";
@@ -45,17 +42,6 @@ export function patchBodyAlteraHorarioOuProfissionalEfetivo(
     return true;
   }
   return false;
-}
-
-/** Mantém um único registro por id_procedimento (evita violação de unique no banco). */
-export function dedupeProcedimentos(
-  items: { id_procedimento: number; valor_aplicado: number }[],
-): { id_procedimento: number; valor_aplicado: number }[] {
-  const map = new Map<number, { id_procedimento: number; valor_aplicado: number }>();
-  for (const p of items) {
-    map.set(p.id_procedimento, p);
-  }
-  return [...map.values()];
 }
 
 /** Status em que o intervalo ainda “ocupa” o profissional para fins de conflito de agenda. */
@@ -158,4 +144,18 @@ export async function haConflitoAgendaProfissional(
 
 export function inicioEhRetroativo(inicio: Date): boolean {
   return inicio.getTime() < Date.now();
+}
+
+/** Erro ao inserir linhas em `agendamento_procedimentos` (ex.: constraint antiga no banco). */
+export function mensagemErroInsertAgendamentoProcedimentos(err: {
+  code?: string;
+  message?: string;
+}): string {
+  if (err.code === "23505") {
+    return (
+      "Não foi possível gravar os procedimentos. Se o banco ainda não foi atualizado, " +
+      "aplique a migração que permite repetir o mesmo procedimento no agendamento."
+    );
+  }
+  return err.message?.trim() || "Erro ao gravar procedimentos do agendamento.";
 }

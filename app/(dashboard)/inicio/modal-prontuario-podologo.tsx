@@ -59,6 +59,10 @@ function MiniaturaFotoProntuario({
 }) {
   const [imagemCarregada, setImagemCarregada] = useState(false);
 
+  useEffect(() => {
+    setImagemCarregada(false);
+  }, [src]);
+
   return (
     <div
       className="position-relative border rounded overflow-hidden mr-2 mb-2 prontuario-foto-thumb"
@@ -99,19 +103,31 @@ function MiniaturaFotoProntuario({
   );
 }
 
+function contagemProcedimento(selecionados: number[], id: number): number {
+  return selecionados.filter((x) => x === id).length;
+}
+
 function DropdownChecklistProcedimentos({
   procedimentos,
   selecionados,
-  onToggle,
+  onAdicionar,
+  onRemoverUma,
+  onRemoverIndice,
   disabled,
 }: {
   procedimentos: ProcLinha[];
-  selecionados: Set<number>;
-  onToggle: (id: number) => void;
+  selecionados: number[];
+  onAdicionar: (id: number) => void;
+  onRemoverUma: (id: number) => void;
+  onRemoverIndice: (indice: number) => void;
   disabled: boolean;
 }) {
   const [aberto, setAberto] = useState(false);
   const wrapRef = useRef<HTMLDivElement>(null);
+  const nomePorId = useMemo(
+    () => new Map(procedimentos.map((p) => [p.id_procedimento, p.nome])),
+    [procedimentos],
+  );
 
   useEffect(() => {
     if (!aberto) return;
@@ -125,9 +141,9 @@ function DropdownChecklistProcedimentos({
   }, [aberto]);
 
   const rotulo =
-    selecionados.size === 0
+    selecionados.length === 0
       ? "Selecione os procedimentos realizados…"
-      : `${selecionados.size} procedimento(s) selecionado(s)`;
+      : `${selecionados.length} procedimento(s) selecionado(s)`;
 
   return (
     <div className="prontuario-proc-dropdown-wrap" ref={wrapRef}>
@@ -149,19 +165,67 @@ function DropdownChecklistProcedimentos({
           className="prontuario-proc-dropdown-menu border rounded bg-white shadow-sm py-2"
           role="listbox"
         >
-          {procedimentos.map((p) => (
-            <label
-              key={p.id_procedimento}
-              className="d-flex align-items-center px-3 py-1 mb-0 small prontuario-proc-item"
+          {procedimentos.map((p) => {
+            const qtd = contagemProcedimento(selecionados, p.id_procedimento);
+            const marcado = qtd > 0;
+            return (
+              <div
+                key={p.id_procedimento}
+                className="d-flex align-items-center px-3 py-1 small prontuario-proc-item"
+              >
+                <label className="d-flex align-items-center flex-grow-1 mb-0 min-width-0">
+                  <input
+                    type="checkbox"
+                    className="mr-2 flex-shrink-0"
+                    checked={marcado}
+                    onChange={() => onAdicionar(p.id_procedimento)}
+                  />
+                  <span className="text-truncate">{p.nome}</span>
+                  {qtd > 1 ? (
+                    <span className="badge badge-light ml-2 flex-shrink-0">
+                      ×{qtd}
+                    </span>
+                  ) : null}
+                </label>
+                {qtd > 0 ? (
+                  <button
+                    type="button"
+                    className="btn btn-link btn-sm text-muted py-0 px-1 flex-shrink-0"
+                    title="Remover uma ocorrência"
+                    disabled={disabled}
+                    onClick={() => onRemoverUma(p.id_procedimento)}
+                    aria-label={`Remover uma ocorrência de ${p.nome}`}
+                  >
+                    −
+                  </button>
+                ) : null}
+              </div>
+            );
+          })}
+        </div>
+      ) : null}
+      {selecionados.length > 0 ? (
+        <div className="d-flex flex-wrap mt-2 prontuario-proc-chips">
+          {selecionados.map((id, idx) => (
+            <span
+              key={`${id}-${idx}`}
+              className="badge badge-secondary d-inline-flex align-items-center mr-1 mb-1 prontuario-proc-chip"
             >
-              <input
-                type="checkbox"
-                className="mr-2 flex-shrink-0"
-                checked={selecionados.has(p.id_procedimento)}
-                onChange={() => onToggle(p.id_procedimento)}
-              />
-              <span className="text-truncate">{p.nome}</span>
-            </label>
+              <span className="text-truncate" style={{ maxWidth: 160 }}>
+                {nomePorId.get(id) ?? `Procedimento #${id}`}
+              </span>
+              <button
+                type="button"
+                className="btn btn-link btn-sm text-white p-0 ml-1"
+                style={{ lineHeight: 1, minWidth: 16 }}
+                title="Remover esta ocorrência"
+                disabled={disabled}
+                onClick={() => onRemoverIndice(idx)}
+                aria-label={`Remover ${nomePorId.get(id) ?? "procedimento"}`}
+              >
+                ×
+              </button>
+            </span>
           ))}
         </div>
       ) : null}
@@ -176,7 +240,7 @@ export function ModalProntuarioPodologo({ ag, onClose, onSalvo }: Props) {
   const [erro, setErro] = useState<string | null>(null);
 
   const [procedimentos, setProcedimentos] = useState<ProcLinha[]>([]);
-  const [selecionados, setSelecionados] = useState<Set<number>>(new Set());
+  const [selecionados, setSelecionados] = useState<number[]>([]);
   const [evolucao, setEvolucao] = useState("");
   const [agendarRetorno, setAgendarRetorno] = useState(false);
 
@@ -219,13 +283,14 @@ export function ModalProntuarioPodologo({ ag, onClose, onSalvo }: Props) {
       setHistorico(j.historico ?? []);
       const pr = j.prontuario;
       setAgendarRetorno(Boolean(j.agendamento?.agendar_retorno));
+      setNovosArquivos([]);
       if (pr) {
         setEvolucao(pr.evolucao ?? "");
-        setSelecionados(new Set(pr.procedimentos_realizados ?? []));
+        setSelecionados(pr.procedimentos_realizados ?? []);
         setFotosExistentes(pr.fotos ?? []);
       } else {
         setEvolucao("");
-        setSelecionados(new Set());
+        setSelecionados([]);
         setFotosExistentes([]);
       }
     } catch (e) {
@@ -240,13 +305,20 @@ export function ModalProntuarioPodologo({ ag, onClose, onSalvo }: Props) {
     return () => window.clearTimeout(t);
   }, [carregar]);
 
-  function toggleProc(id: number) {
+  function adicionarProc(id: number) {
+    setSelecionados((prev) => [...prev, id]);
+  }
+
+  function removerUmaProc(id: number) {
     setSelecionados((prev) => {
-      const n = new Set(prev);
-      if (n.has(id)) n.delete(id);
-      else n.add(id);
-      return n;
+      const idx = prev.indexOf(id);
+      if (idx < 0) return prev;
+      return [...prev.slice(0, idx), ...prev.slice(idx + 1)];
     });
+  }
+
+  function removerProcIndice(indice: number) {
+    setSelecionados((prev) => prev.filter((_, i) => i !== indice));
   }
 
   function onPickFotos(e: React.ChangeEvent<HTMLInputElement>) {
@@ -274,7 +346,7 @@ export function ModalProntuarioPodologo({ ag, onClose, onSalvo }: Props) {
     setSalvando(true);
     setErro(null);
     try {
-      if (selecionados.size === 0) {
+      if (selecionados.length === 0) {
         setErro("Selecione ao menos um procedimento realizado.");
         return;
       }
@@ -303,7 +375,7 @@ export function ModalProntuarioPodologo({ ag, onClose, onSalvo }: Props) {
       fd.append("evolucao", evolucaoLimpa);
       fd.append(
         "procedimentos_ids",
-        JSON.stringify([...selecionados]),
+        JSON.stringify(selecionados),
       );
       fd.append(
         "caminhos_manter",
@@ -344,6 +416,7 @@ export function ModalProntuarioPodologo({ ag, onClose, onSalvo }: Props) {
         return;
       }
       if (!res.ok) throw new Error(j.error ?? "Erro ao salvar.");
+      await carregar();
       onSalvo();
     } catch (err) {
       setErro(err instanceof Error ? err.message : "Erro ao salvar.");
@@ -354,8 +427,11 @@ export function ModalProntuarioPodologo({ ag, onClose, onSalvo }: Props) {
 
   const podeMaisFotos = totalFotos < MAX_FOTOS;
 
+  const somenteConsultaRealizado = ag.status === "realizado";
+
   const rotuloStatus = useMemo(() => {
     if (ag.status === "em_andamento") return "Em andamento";
+    if (ag.status === "realizado") return "Realizado";
     return ag.status;
   }, [ag.status]);
 
@@ -429,7 +505,8 @@ export function ModalProntuarioPodologo({ ag, onClose, onSalvo }: Props) {
                     <div className="form-group">
                       <label className="font-weight-bold">Procedimentos realizados</label>
                       <p className="small text-muted mb-2">
-                        Abra a lista e marque o que foi efetivamente realizado neste atendimento.
+                        Clique no procedimento para incluir; clique de novo para repetir.
+                        Use o − na lista ou as etiquetas abaixo para remover uma ocorrência.
                       </p>
                       {procedimentos.length === 0 ? (
                         <span className="text-muted small d-block">
@@ -439,7 +516,9 @@ export function ModalProntuarioPodologo({ ag, onClose, onSalvo }: Props) {
                         <DropdownChecklistProcedimentos
                           procedimentos={procedimentos}
                           selecionados={selecionados}
-                          onToggle={toggleProc}
+                          onAdicionar={adicionarProc}
+                          onRemoverUma={removerUmaProc}
+                          onRemoverIndice={removerProcIndice}
                           disabled={salvando}
                         />
                       )}
@@ -506,7 +585,7 @@ export function ModalProntuarioPodologo({ ag, onClose, onSalvo }: Props) {
                       <div className="d-flex flex-wrap mt-2">
                         {fotosExistentes.map((f) => (
                           <MiniaturaFotoProntuario
-                            key={f.url}
+                            key={f.path}
                             src={f.url}
                             onRemove={() => removerExistente(f.path)}
                           />
@@ -537,7 +616,11 @@ export function ModalProntuarioPodologo({ ag, onClose, onSalvo }: Props) {
                   className="btn btn-primary"
                   disabled={salvando || loading}
                 >
-                  {salvando ? "Salvando…" : "Salvar prontuário"}
+                  {salvando
+                    ? "Salvando…"
+                    : somenteConsultaRealizado
+                      ? "Salvar alterações"
+                      : "Salvar prontuário"}
                 </button>
               </div>
             </form>

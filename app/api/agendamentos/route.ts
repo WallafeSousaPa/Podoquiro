@@ -14,7 +14,7 @@ import { STATUS_RETORNO_AGENDAMENTO } from "@/lib/agenda/retorno-agendamento";
 import { validarProcedimentosDoColaborador } from "@/lib/colaborador-procedimentos";
 import {
   MSG_HORARIO_RETROATIVO,
-  MSG_PROCEDIMENTO_DUPLICADO,
+  mensagemErroInsertAgendamentoProcedimentos,
   haConflitoNasLinhasSobreposicao,
   inicioEhRetroativo,
   listarSobreposicaoAgendaProfissional,
@@ -185,10 +185,6 @@ export async function POST(request: Request) {
       }
       procedimentos.push({ id_procedimento: ip, valor_aplicado: Math.round(va * 100) / 100 });
     }
-  }
-
-  if (new Set(procedimentos.map((p) => p.id_procedimento)).size !== procedimentos.length) {
-    return NextResponse.json({ error: MSG_PROCEDIMENTO_DUPLICADO }, { status: 400 });
   }
 
   if (procedimentos.length > 0) {
@@ -485,10 +481,10 @@ export async function POST(request: Request) {
     if (apErr) {
       console.error(apErr);
       await supabase.from("agendamentos").delete().eq("id", idAgendamento);
-      if (apErr.code === "23505") {
-        return NextResponse.json({ error: MSG_PROCEDIMENTO_DUPLICADO }, { status: 400 });
-      }
-      return NextResponse.json({ error: apErr.message }, { status: 500 });
+      return NextResponse.json(
+        { error: mensagemErroInsertAgendamentoProcedimentos(apErr) },
+        { status: 500 },
+      );
     }
   }
 

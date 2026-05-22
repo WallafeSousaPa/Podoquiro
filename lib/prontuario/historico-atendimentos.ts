@@ -1,6 +1,9 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 
-const BUCKET = "Prontuario";
+import {
+  assinarFotosProntuario,
+  parsePathsFotosProntuario,
+} from "@/lib/prontuario/fotos-storage";
 
 export type HistoricoAtendimentoResumo = {
   id_agendamento: number;
@@ -42,12 +45,11 @@ function parseIdsProcedimentos(raw: unknown): number[] {
     const n = Number(x);
     if (Number.isFinite(n) && n > 0) ids.push(n);
   }
-  return [...new Set(ids)];
+  return ids;
 }
 
 function parsePathsFotos(raw: unknown): string[] {
-  if (!Array.isArray(raw)) return [];
-  return raw.filter((p): p is string => typeof p === "string" && p.trim().length > 0);
+  return parsePathsFotosProntuario(raw);
 }
 
 type ProntuarioEmbed = {
@@ -132,9 +134,7 @@ async function mapProcedimentosPorAgendamento(
     const p = Array.isArray(pr) ? pr[0] : pr;
     const nome = p?.procedimento ?? "—";
     const lista = porAg.get(idAg) ?? [];
-    if (!lista.some((x) => x.id_procedimento === idProc)) {
-      lista.push({ id_procedimento: idProc, nome: String(nome) });
-    }
+    lista.push({ id_procedimento: idProc, nome: String(nome) });
     porAg.set(idAg, lista);
   }
   return porAg;
@@ -152,26 +152,6 @@ function montarListaProcedimentos(
     }));
   }
   return procedimentosAg;
-}
-
-async function assinarFotosProntuario(
-  supabase: SupabaseClient,
-  paths: string[],
-): Promise<{ path: string; url: string }[]> {
-  const fotos: { path: string; url: string }[] = [];
-  for (const path of paths) {
-    const { data: signed, error: signErr } = await supabase.storage
-      .from(BUCKET)
-      .createSignedUrl(path, 3600);
-    if (signErr) {
-      console.error(signErr);
-      continue;
-    }
-    if (signed?.signedUrl) {
-      fotos.push({ path, url: signed.signedUrl });
-    }
-  }
-  return fotos;
 }
 
 /**

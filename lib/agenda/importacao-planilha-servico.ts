@@ -134,49 +134,6 @@ export type ProcedimentoResolvido = {
   valor_aplicado: number;
 };
 
-/**
- * Mesmo procedimento repetido na linha da planilha: unifica em um único item,
- * somando os valores aplicados (evita erro de duplicata no insert e mantém o total da linha).
- */
-function dedupeProcedimentosImportacaoExecutar(
-  itens: { id_procedimento: number; valor_aplicado: number }[],
-): { id_procedimento: number; valor_aplicado: number }[] {
-  const map = new Map<number, { id_procedimento: number; valor_aplicado: number }>();
-  for (const p of itens) {
-    const id = p.id_procedimento;
-    const ex = map.get(id);
-    if (!ex) {
-      map.set(id, {
-        id_procedimento: id,
-        valor_aplicado: Math.round(p.valor_aplicado * 100) / 100,
-      });
-    } else {
-      ex.valor_aplicado = Math.round((ex.valor_aplicado + p.valor_aplicado) * 100) / 100;
-    }
-  }
-  return [...map.values()];
-}
-
-/** Igual ao de cima, para a pré-visualização (mantém o primeiro nome da planilha por id). */
-function dedupeProcedimentosPreviewResolvido(rows: ProcedimentoResolvido[]): ProcedimentoResolvido[] {
-  const map = new Map<number, ProcedimentoResolvido>();
-  const semId: ProcedimentoResolvido[] = [];
-  for (const p of rows) {
-    if (p.id_procedimento != null && p.id_procedimento > 0) {
-      const id = p.id_procedimento;
-      const ex = map.get(id);
-      if (!ex) {
-        map.set(id, { ...p });
-      } else {
-        ex.valor_aplicado = Math.round((ex.valor_aplicado + p.valor_aplicado) * 100) / 100;
-      }
-    } else {
-      semId.push(p);
-    }
-  }
-  return [...map.values(), ...semId];
-}
-
 export type LinhaPreviewImport = {
   numeroLinha: number;
   pendencias: PendenciaImport[];
@@ -710,7 +667,7 @@ export function montarPreviewLinha(
     }
   });
 
-  const procedimentosFinal = dedupeProcedimentosPreviewResolvido(procedimentos);
+  const procedimentosFinal = procedimentos;
 
   const valor_bruto =
     listaValores == null
@@ -1078,7 +1035,7 @@ export async function executarImportacaoAgendamentos(
 
   const linhasNormalizadas = linhas.map((l) => ({
     ...l,
-    procedimentos: dedupeProcedimentosImportacaoExecutar(l.procedimentos),
+    procedimentos: l.procedimentos,
   }));
 
   const { linhas: linhasComPaciente, erro: erroPacientes } =

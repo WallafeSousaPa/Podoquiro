@@ -4,6 +4,11 @@ import {
   getUsuarioPodeAcessarProntuarioAtendimento,
 } from "@/lib/agenda/permissoes-calendario";
 import { validarProcedimentosDoColaborador } from "@/lib/colaborador-procedimentos";
+import {
+  BUCKET_PRONTUARIO,
+  parsePathsFotosProntuario,
+  statusAgendamentoPermiteProntuario,
+} from "@/lib/prontuario/fotos-storage";
 import { montarCaminhoFotoProntuario } from "@/lib/prontuario/nomes-arquivo";
 import { getSession } from "@/lib/auth/session";
 import { createAdminClient } from "@/lib/supabase/admin";
@@ -12,7 +17,6 @@ import {
   somarQtdPorProduto,
 } from "@/lib/estoque/agendamento-produtos-estoque";
 
-const BUCKET = "Prontuario";
 const MAX_FOTOS = 4;
 
 function parseEmpresaId(idEmpresa: string) {
@@ -151,9 +155,12 @@ async function postProntuarioSalvar(request: Request) {
   if (!ag) {
     return NextResponse.json({ error: "Agendamento não encontrado." }, { status: 404 });
   }
-  if (String(ag.status) !== "em_andamento") {
+  if (!statusAgendamentoPermiteProntuario(String(ag.status))) {
     return NextResponse.json(
-      { error: "Só é possível registrar prontuário com status Em andamento." },
+      {
+        error:
+          "Só é possível registrar prontuário com status Em andamento ou Realizado.",
+      },
       { status: 400 },
     );
   }
@@ -205,7 +212,7 @@ async function postProntuarioSalvar(request: Request) {
     .eq("id_agendamento", idAgendamento)
     .maybeSingle();
 
-  const fotosAntigas = (existente?.fotos as string[] | null) ?? [];
+  const fotosAntigas = parsePathsFotosProntuario(existente?.fotos);
   for (const p of caminhosManter) {
     if (!fotosAntigas.includes(p)) {
       return NextResponse.json(
@@ -231,7 +238,7 @@ async function postProntuarioSalvar(request: Request) {
       );
       const buf = Buffer.from(await file.arrayBuffer());
       const { error: upErr } = await supabase.storage
-        .from(BUCKET)
+        .from(BUCKET_PRONTUARIO)
         .upload(pathRelativo, buf, {
           contentType: mime,
           upsert: true,
@@ -243,7 +250,7 @@ async function postProntuarioSalvar(request: Request) {
     }
   } catch (e) {
     for (const p of uploadedPaths) {
-      await supabase.storage.from(BUCKET).remove([p]);
+      await supabase.storage.from(BUCKET_PRONTUARIO).remove([p]);
     }
     console.error(e);
     return NextResponse.json(
@@ -256,15 +263,16 @@ async function postProntuarioSalvar(request: Request) {
 
   const pathsRemovidos = fotosAntigas.filter((p) => !fotosFinais.includes(p));
   if (pathsRemovidos.length > 0) {
-    await supabase.storage.from(BUCKET).remove(pathsRemovidos);
+    await supabase.storage.from(BUCKET_PRONTUARIO).remove(pathsRemovidos);
   }
 
-  const procJson = [...new Set(procedimentosIds)];
+  const procJson = procedimentosIds;
+  const procIdsUnicos = [...new Set(procedimentosIds)];
   const { data: procRows, error: procErr } = await supabase
     .from("procedimentos")
     .select("id, valor_total")
     .eq("id_empresa", empresaId)
-    .in("id", procJson);
+    .in("id", procIdsUnicos);
   if (procErr) {
     console.error(procErr);
     return NextResponse.json({ error: procErr.message }, { status: 500 });
@@ -273,7 +281,7 @@ async function postProntuarioSalvar(request: Request) {
   const procValorMap = new Map(
     (procRows ?? []).map((p) => [p.id as number, Number(p.valor_total)]),
   );
-  if (procValorMap.size !== procJson.length) {
+  if (procValorMap.size !== procIdsUnicos.length) {
     return NextResponse.json(
       { error: "Um ou mais procedimentos são inválidos para esta empresa." },
       { status: 400 },
@@ -305,7 +313,7 @@ async function postProntuarioSalvar(request: Request) {
   if (upsertErr) {
     console.error(upsertErr);
     for (const p of uploadedPaths) {
-      await supabase.storage.from(BUCKET).remove([p]);
+      await supabase.storage.from(BUCKET_PRONTUARIO).remove([p]);
     }
     return NextResponse.json({ error: upsertErr.message }, { status: 500 });
   }
