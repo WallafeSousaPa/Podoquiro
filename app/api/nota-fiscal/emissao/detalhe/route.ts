@@ -32,7 +32,7 @@ export async function GET(req: Request) {
     return NextResponse.json({ error: "Empresa inválida." }, { status: 400 });
   }
 
-  const sessionUserId = Number(session.sub);
+  const sessionUserId = Number(session!.sub);
   const idAgendamento = Number(new URL(req.url).searchParams.get("id_agendamento"));
 
   if (!Number.isFinite(idAgendamento) || idAgendamento <= 0) {

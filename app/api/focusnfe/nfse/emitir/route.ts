@@ -32,7 +32,7 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Empresa inválida." }, { status: 400 });
   }
 
-  const sessionUserId = Number(session.sub);
+  const sessionUserId = Number(session!.sub);
 
   let body: { id_agendamento?: number; iss_retido?: boolean };
   try {
