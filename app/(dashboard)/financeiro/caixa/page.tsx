@@ -1,5 +1,6 @@
 import { redirect } from "next/navigation";
 import { getSession } from "@/lib/auth/session";
+import { getNomesSaudacao } from "@/lib/dashboard/saudacao";
 import { CaixaPaginaClient } from "./caixa-pagina-client";
 
 export default async function FinanceiroCaixaPage() {
@@ -17,6 +18,12 @@ export default async function FinanceiroCaixaPage() {
   if (!Number.isFinite(sessionUserId) || sessionUserId <= 0) {
     redirect("/inicio");
   }
+
+  const { podeVerMenuNotaFiscal } = await getNomesSaudacao(
+    session.sub,
+    session.usuario,
+    session.idEmpresa,
+  );
 
   return (
     <>
@@ -41,7 +48,7 @@ export default async function FinanceiroCaixaPage() {
 
       <section className="content">
         <div className="container-fluid">
-          <CaixaPaginaClient />
+          <CaixaPaginaClient podeEmitirNfse={podeVerMenuNotaFiscal} />
         </div>
       </section>
     </>

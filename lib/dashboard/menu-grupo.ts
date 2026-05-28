@@ -37,6 +37,35 @@ export function grupoUsuariosRelatorioCaixa(
   return c.includes("administrador") || c.includes("administrativo");
 }
 
+/**
+ * Menu Nota Fiscal (Emissão / Consultar): apenas **Administrador** ou **Administrativo**.
+ */
+export function grupoUsuariosMenuNotaFiscal(
+  nomeGrupo: string | null | undefined,
+): boolean {
+  return grupoUsuariosRelatorioCaixa(nomeGrupo);
+}
+
+/** Resolve se o usuário pode acessar o menu e telas de Nota Fiscal (API e página). */
+export async function getUsuarioPodeMenuNotaFiscal(
+  supabase: SupabaseClient,
+  idUsuario: number,
+): Promise<boolean> {
+  if (!Number.isFinite(idUsuario) || idUsuario <= 0) return false;
+  const { data: u, error: uErr } = await supabase
+    .from("usuarios")
+    .select(
+      "usuarios_grupos:usuarios_grupos!usuarios_id_grupo_usuarios_fkey ( grupo_usuarios )",
+    )
+    .eq("id", idUsuario)
+    .maybeSingle();
+  if (uErr || !u) return false;
+  type G = { grupo_usuarios: string | null };
+  const gRaw = u.usuarios_grupos as G | G[] | null | undefined;
+  const g = Array.isArray(gRaw) ? gRaw[0] : gRaw;
+  return grupoUsuariosMenuNotaFiscal(g?.grupo_usuarios);
+}
+
 /** Resolve se o usuário pode acessar o relatório de caixa (API e página). */
 export async function getUsuarioPodeRelatorioCaixa(
   supabase: SupabaseClient,

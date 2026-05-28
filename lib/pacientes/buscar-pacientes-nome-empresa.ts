@@ -7,6 +7,7 @@ export function escapePadraoIlike(texto: string): string {
 
 export type PacienteBuscaLinha = {
   id: number;
+  cpf: string | null;
   nome_completo: string | null;
   nome_social: string | null;
 };
@@ -36,7 +37,7 @@ export async function buscarPacientesPorNomeEmpresa(
   empresaId: number,
   termo: string,
   limite: number = 80,
-): Promise<{ data: { id: number; nome: string }[]; error: string | null }> {
+): Promise<{ data: { id: number; nome: string; cpf: string | null }[]; error: string | null }> {
   const t = termo.trim();
   if (t.length < 2) {
     return { data: [], error: null };
@@ -46,14 +47,14 @@ export async function buscarPacientesPorNomeEmpresa(
   const [{ data: porNome, error: e1 }, { data: porSocial, error: e2 }] = await Promise.all([
     supabase
       .from("pacientes")
-      .select("id, nome_completo, nome_social")
+      .select("id, cpf, nome_completo, nome_social")
       .eq("id_empresa", empresaId)
       .ilike("nome_completo", pattern)
       .order("nome_completo", { ascending: true })
       .limit(limite),
     supabase
       .from("pacientes")
-      .select("id, nome_completo, nome_social")
+      .select("id, cpf, nome_completo, nome_social")
       .eq("id_empresa", empresaId)
       .ilike("nome_social", pattern)
       .order("nome_completo", { ascending: true })
@@ -73,7 +74,11 @@ export async function buscarPacientesPorNomeEmpresa(
       String(a.nome_completo ?? "").localeCompare(String(b.nome_completo ?? ""), "pt-BR"),
     )
     .slice(0, limite)
-    .map((r) => ({ id: r.id, nome: nomeExibicao(r) }));
+    .map((r) => ({
+      id: r.id,
+      nome: nomeExibicao(r),
+      cpf: r.cpf ?? null,
+    }));
 
   return { data, error: null };
 }

@@ -62,6 +62,7 @@ export async function carregarCaixaAgendamentosRows(
     .select(
       `
         id,
+        id_paciente,
         id_usuario,
         data_hora_inicio,
         data_hora_fim,
@@ -165,6 +166,7 @@ export async function carregarCaixaAgendamentosRows(
 
     return {
       id: raw.id as number,
+      id_paciente: raw.id_paciente as number,
       id_usuario: raw.id_usuario as number,
       data_hora_inicio: raw.data_hora_inicio as string,
       data_hora_fim: raw.data_hora_fim as string,

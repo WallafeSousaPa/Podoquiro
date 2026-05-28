@@ -23,6 +23,7 @@ export default async function DashboardGroupLayout({
     menuRecepcao,
     menuAtendimento,
     podeVerRelatorioCaixa,
+    podeVerMenuNotaFiscal,
   } =
     await getNomesSaudacao(session.sub, session.usuario, session.idEmpresa);
 
@@ -34,6 +35,7 @@ export default async function DashboardGroupLayout({
       menuRecepcao={menuRecepcao}
       menuAtendimento={menuAtendimento}
       podeVerRelatorioCaixa={podeVerRelatorioCaixa}
+      podeVerMenuNotaFiscal={podeVerMenuNotaFiscal}
     >
       {children}
     </DashboardShell>

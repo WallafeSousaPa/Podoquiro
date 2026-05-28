@@ -6,6 +6,8 @@ import type { CaixaAgendamentoRow } from "./caixa-client";
 import { CaixaClient } from "./caixa-client";
 import { ModalCaixaAgendamento } from "./modal-caixa-agendamento";
 import { CaixaSessaoClient } from "./caixa-sessao-client";
+import type { NotaFiscalAtendimentoRow } from "@/lib/financeiro/nota-fiscal-atendimentos-rows";
+import { ModalEmissaoNfse } from "@/app/(dashboard)/nota-fiscal/emissao/modal-emissao-nfse";
 
 /** Todos os lançamentos com status pago — modal só para consulta. */
 function todosPagamentosQuitadosNaLista(r: CaixaAgendamentoRow): boolean {
@@ -23,12 +25,21 @@ function dataLocalYmd(): string {
   return `${y}-${m}-${day}`;
 }
 
-export function CaixaPaginaClient() {
+function paraLinhaNfse(r: CaixaAgendamentoRow): NotaFiscalAtendimentoRow {
+  return r;
+}
+
+type CaixaPaginaClientProps = {
+  podeEmitirNfse?: boolean;
+};
+
+export function CaixaPaginaClient({ podeEmitirNfse = false }: CaixaPaginaClientProps) {
   const [dataRef, setDataRef] = useState(dataLocalYmd);
   const [rows, setRows] = useState<CaixaAgendamentoRow[]>([]);
   const [loadingRows, setLoadingRows] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [modalRow, setModalRow] = useState<CaixaAgendamentoRow | null>(null);
+  const [rowNfse, setRowNfse] = useState<NotaFiscalAtendimentoRow | null>(null);
 
   const carregarLinhas = useCallback(async (data: string) => {
     setLoadingRows(true);
@@ -86,6 +97,8 @@ export function CaixaPaginaClient() {
             dataRef={dataRef}
             onPacienteClick={(r) => setModalRow(r)}
             onAtualizar={() => void carregarLinhas(dataRef)}
+            exibirColunaNfse={podeEmitirNfse}
+            onNfseClick={podeEmitirNfse ? (r) => setRowNfse(paraLinhaNfse(r)) : undefined}
           />
         </div>
       </div>
@@ -98,6 +111,12 @@ export function CaixaPaginaClient() {
           onSaved={recarregarTabela}
         />
       ) : null}
+
+      <ModalEmissaoNfse
+        row={rowNfse}
+        onFechar={() => setRowNfse(null)}
+        onEmitido={recarregarTabela}
+      />
     </>
   );
 }

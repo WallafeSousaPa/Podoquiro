@@ -1,5 +1,7 @@
 "use client";
 
+import { agendamentoPagamentoQuitado } from "@/lib/financeiro/agendamento-pagamento-quitado";
+
 type ProcItem = {
   procedimento: string | null;
   valor_aplicado: number;
@@ -14,6 +16,7 @@ type PagItem = {
 
 export type CaixaAgendamentoRow = {
   id: number;
+  id_paciente: number;
   id_usuario: number;
   data_hora_inicio: string;
   data_hora_fim: string;
@@ -94,6 +97,10 @@ type Props = {
   onPacienteClick?: (row: CaixaAgendamentoRow) => void;
   /** Recarrega a lista do dia (ex.: botão Atualizar). */
   onAtualizar?: () => void;
+  /** Exibe coluna NFS-e (Administrador / Administrativo). */
+  exibirColunaNfse?: boolean;
+  /** Abre emissão de NFS-e para o agendamento quitado. */
+  onNfseClick?: (row: CaixaAgendamentoRow) => void;
 };
 
 export function CaixaClient({
@@ -103,7 +110,10 @@ export function CaixaClient({
   dataRef,
   onPacienteClick,
   onAtualizar,
+  exibirColunaNfse = false,
+  onNfseClick,
 }: Props) {
+  const colCount = exibirColunaNfse ? 10 : 9;
   if (loadError) {
     return (
       <div className="alert alert-danger" role="alert">
@@ -152,12 +162,17 @@ export function CaixaClient({
               </th>
               <th style={{ minWidth: "200px" }}>Procedimentos</th>
               <th style={{ minWidth: "220px" }}>Pagamentos</th>
+              {exibirColunaNfse ? (
+                <th style={{ width: "56px" }} className="text-center">
+                  NFS-e
+                </th>
+              ) : null}
             </tr>
           </thead>
           <tbody>
             {loadingRows ? (
               <tr>
-                <td colSpan={9} className="text-center text-muted py-4">
+                <td colSpan={colCount} className="text-center text-muted py-4">
                   <span
                     className="spinner-border spinner-border-sm mr-2 align-middle"
                     role="status"
@@ -168,7 +183,7 @@ export function CaixaClient({
               </tr>
             ) : rows.length === 0 ? (
               <tr>
-                <td colSpan={9} className="text-center text-muted py-4">
+                <td colSpan={colCount} className="text-center text-muted py-4">
                   Nenhum agendamento realizado neste dia.
                 </td>
               </tr>
@@ -235,6 +250,23 @@ export function CaixaClient({
                       </ul>
                     )}
                   </td>
+                  {exibirColunaNfse ? (
+                    <td className="text-center align-middle">
+                      {agendamentoPagamentoQuitado(r.pagamentos) && onNfseClick ? (
+                        <button
+                          type="button"
+                          className="btn btn-sm btn-outline-primary"
+                          title="Emitir NFS-e"
+                          aria-label={`Emitir NFS-e para ${r.paciente_nome}`}
+                          onClick={() => onNfseClick(r)}
+                        >
+                          <i className="fas fa-file-invoice" aria-hidden />
+                        </button>
+                      ) : (
+                        <span className="text-muted">—</span>
+                      )}
+                    </td>
+                  ) : null}
                 </tr>
               ))
             )}
