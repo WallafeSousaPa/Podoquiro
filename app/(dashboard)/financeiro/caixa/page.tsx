@@ -19,7 +19,7 @@ export default async function FinanceiroCaixaPage() {
     redirect("/inicio");
   }
 
-  const { podeVerMenuNotaFiscal } = await getNomesSaudacao(
+  const { podeEmitirNfseNoCaixa } = await getNomesSaudacao(
     session.sub,
     session.usuario,
     session.idEmpresa,
@@ -48,7 +48,7 @@ export default async function FinanceiroCaixaPage() {
 
       <section className="content">
         <div className="container-fluid">
-          <CaixaPaginaClient podeEmitirNfse={podeVerMenuNotaFiscal} />
+          <CaixaPaginaClient podeEmitirNfse={podeEmitirNfseNoCaixa} />
         </div>
       </section>
     </>

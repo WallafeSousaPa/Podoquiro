@@ -1,14 +1,14 @@
 import { NextResponse } from "next/server";
 import { getPodeVerTodosAgendamentos } from "@/lib/agenda/permissoes-calendario";
 import { getSession } from "@/lib/auth/session";
-import { respostaSeSemPermissaoNotaFiscal } from "@/lib/dashboard/nota-fiscal-permissao";
+import { respostaSeSemPermissaoNfseNoCaixa } from "@/lib/dashboard/nota-fiscal-permissao";
 import { carregarNotaFiscalAtendimentosRows } from "@/lib/financeiro/nota-fiscal-atendimentos-rows";
 import { validarPeriodoRelatorio } from "@/lib/relatorios/periodo";
 import { createAdminClient } from "@/lib/supabase/admin";
 
 export async function GET(req: Request) {
   const session = await getSession();
-  const negado = await respostaSeSemPermissaoNotaFiscal(session);
+  const negado = await respostaSeSemPermissaoNfseNoCaixa(session);
   if (negado) return negado;
 
   const empresaId = Number(session!.idEmpresa);

@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { getPodeVerTodosAgendamentos } from "@/lib/agenda/permissoes-calendario";
 import { getSession } from "@/lib/auth/session";
-import { respostaSeSemPermissaoNotaFiscal } from "@/lib/dashboard/nota-fiscal-permissao";
+import { respostaSeSemPermissaoNfseNoCaixa } from "@/lib/dashboard/nota-fiscal-permissao";
 import { agendamentoPagamentoQuitado } from "@/lib/financeiro/agendamento-pagamento-quitado";
 import { createAdminClient } from "@/lib/supabase/admin";
 
@@ -24,7 +24,7 @@ function nomePaciente(
 /** Detalhes do agendamento + paciente para modal de emissão NFS-e. */
 export async function GET(req: Request) {
   const session = await getSession();
-  const negado = await respostaSeSemPermissaoNotaFiscal(session);
+  const negado = await respostaSeSemPermissaoNfseNoCaixa(session);
   if (negado) return negado;
 
   const empresaId = parseEmpresaId(session!.idEmpresa);

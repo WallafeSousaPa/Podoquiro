@@ -2,8 +2,9 @@ import { cache } from "react";
 import { createAdminClient } from "@/lib/supabase/admin";
 import {
   grupoUsuariosAdministrador,
-  grupoUsuariosMenuRecepcao,
   grupoUsuariosMenuNotaFiscal,
+  grupoUsuariosMenuRestritoBalcao,
+  grupoUsuariosNfseNoCaixa,
   grupoUsuariosRelatorioCaixa,
   grupoUsuariosSomenteMenuInicioCalendario,
 } from "@/lib/dashboard/menu-grupo";
@@ -27,6 +28,8 @@ export type SaudacaoNomes = {
   podeVerRelatorioCaixa: boolean;
   /** Menu Nota Fiscal (somente Administrador / Administrativo). */
   podeVerMenuNotaFiscal: boolean;
+  /** Coluna NFS-e no Caixa (Administrador, Administrativo ou Recepção). */
+  podeEmitirNfseNoCaixa: boolean;
 };
 
 /**
@@ -44,6 +47,7 @@ export const getNomesSaudacao = cache(
     let podeAgendarRetroativo = false;
     let podeVerRelatorioCaixa = false;
     let podeVerMenuNotaFiscal = false;
+    let podeEmitirNfseNoCaixa = false;
 
     if (Number.isFinite(userId) && userId > 0 && Number.isFinite(empresaId) && empresaId > 0) {
       const supabase = createAdminClient();
@@ -66,14 +70,15 @@ export const getNomesSaudacao = cache(
       const gRaw = uRow?.usuarios_grupos as GrupoNome | GrupoNome[] | null | undefined;
       const g = Array.isArray(gRaw) ? gRaw[0] : gRaw;
       const nomeGrupo = g?.grupo_usuarios;
-      menuRecepcao = grupoUsuariosMenuRecepcao(nomeGrupo);
+      podeVerMenuNotaFiscal = grupoUsuariosMenuNotaFiscal(nomeGrupo);
+      menuRecepcao = grupoUsuariosMenuRestritoBalcao(nomeGrupo);
       const isPodologo = grupoUsuariosSomenteMenuInicioCalendario(nomeGrupo);
       const isAdministrador = grupoUsuariosAdministrador(nomeGrupo);
       somenteMenuInicio = !menuRecepcao && isPodologo;
       menuAtendimento = isPodologo || isAdministrador;
       podeAgendarRetroativo = isAdministrador;
       podeVerRelatorioCaixa = grupoUsuariosRelatorioCaixa(nomeGrupo);
-      podeVerMenuNotaFiscal = grupoUsuariosMenuNotaFiscal(nomeGrupo);
+      podeEmitirNfseNoCaixa = grupoUsuariosNfseNoCaixa(nomeGrupo);
     }
 
     const nomeEmpresaComId = nomeFantasia
@@ -93,6 +98,7 @@ export const getNomesSaudacao = cache(
       podeAgendarRetroativo,
       podeVerRelatorioCaixa,
       podeVerMenuNotaFiscal,
+      podeEmitirNfseNoCaixa,
     };
   },
 );

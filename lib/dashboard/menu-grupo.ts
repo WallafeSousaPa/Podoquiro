@@ -1,6 +1,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import {
   grupoNomeContemRecepcao,
+  grupoNomePermiteProdutosModalCaixaRecepcao,
   normalizarNomeGrupoAgenda,
 } from "@/lib/agenda/permissoes-calendario";
 
@@ -44,6 +45,38 @@ export function grupoUsuariosMenuNotaFiscal(
   nomeGrupo: string | null | undefined,
 ): boolean {
   return grupoUsuariosRelatorioCaixa(nomeGrupo);
+}
+
+/**
+ * Emissão/cancelamento de NFS-e pelo Caixa: Administrador, Administrativo ou Recepção.
+ */
+export function grupoUsuariosNfseNoCaixa(
+  nomeGrupo: string | null | undefined,
+): boolean {
+  return (
+    grupoUsuariosMenuNotaFiscal(nomeGrupo) ||
+    grupoNomePermiteProdutosModalCaixaRecepcao(nomeGrupo)
+  );
+}
+
+/** Resolve se o usuário pode emitir/cancelar NFS-e na tela de Caixa. */
+export async function getUsuarioPodeNfseNoCaixa(
+  supabase: SupabaseClient,
+  idUsuario: number,
+): Promise<boolean> {
+  if (!Number.isFinite(idUsuario) || idUsuario <= 0) return false;
+  const { data: u, error: uErr } = await supabase
+    .from("usuarios")
+    .select(
+      "usuarios_grupos:usuarios_grupos!usuarios_id_grupo_usuarios_fkey ( grupo_usuarios )",
+    )
+    .eq("id", idUsuario)
+    .maybeSingle();
+  if (uErr || !u) return false;
+  type G = { grupo_usuarios: string | null };
+  const gRaw = u.usuarios_grupos as G | G[] | null | undefined;
+  const g = Array.isArray(gRaw) ? gRaw[0] : gRaw;
+  return grupoUsuariosNfseNoCaixa(g?.grupo_usuarios);
 }
 
 /** Resolve se o usuário pode acessar o menu e telas de Nota Fiscal (API e página). */
@@ -91,4 +124,15 @@ export function grupoUsuariosMenuRecepcao(
   nomeGrupo: string | null | undefined,
 ): boolean {
   return grupoNomeContemRecepcao(nomeGrupo);
+}
+
+/**
+ * Menu recepção/balcão (sem Nota Fiscal no menu): Recepção, Receção, Secretaria etc.,
+ * exceto perfis com menu Nota Fiscal (Administrador / Administrativo).
+ */
+export function grupoUsuariosMenuRestritoBalcao(
+  nomeGrupo: string | null | undefined,
+): boolean {
+  if (grupoUsuariosMenuNotaFiscal(nomeGrupo)) return false;
+  return grupoNomePermiteProdutosModalCaixaRecepcao(nomeGrupo);
 }

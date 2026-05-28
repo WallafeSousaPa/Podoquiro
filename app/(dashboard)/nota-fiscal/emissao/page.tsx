@@ -1,5 +1,6 @@
 import { redirect } from "next/navigation";
 import { getSession } from "@/lib/auth/session";
+import { getNomesSaudacao } from "@/lib/dashboard/saudacao";
 import { NotaFiscalEmissaoClient } from "./nota-fiscal-emissao-client";
 
 export default async function NotaFiscalEmissaoPage() {
@@ -7,6 +8,12 @@ export default async function NotaFiscalEmissaoPage() {
   if (!session) {
     redirect("/login");
   }
+
+  const { podeVerMenuNotaFiscal } = await getNomesSaudacao(
+    session.sub,
+    session.usuario,
+    session.idEmpresa,
+  );
 
   return (
     <>
@@ -33,7 +40,7 @@ export default async function NotaFiscalEmissaoPage() {
         <div className="container-fluid">
           <div className="row">
             <div className="col-12">
-              <NotaFiscalEmissaoClient />
+              <NotaFiscalEmissaoClient exibirParametros={podeVerMenuNotaFiscal} />
             </div>
           </div>
         </div>

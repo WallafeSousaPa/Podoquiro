@@ -38,7 +38,12 @@ function fmtDataRef(ymd: string) {
   }
 }
 
-export function NotaFiscalEmissaoClient() {
+type Props = {
+  /** Parâmetros Focus NFe — somente Administrador / Administrativo. */
+  exibirParametros?: boolean;
+};
+
+export function NotaFiscalEmissaoClient({ exibirParametros = true }: Props) {
   const hoje = dataLocalYmd();
   const semanaPadrao = limitesSemanaInclusive(hoje);
 
@@ -105,16 +110,18 @@ export function NotaFiscalEmissaoClient() {
 
   return (
     <>
-      <div className="d-flex flex-wrap justify-content-end mb-2">
-        <button
-          type="button"
-          className="btn btn-outline-secondary btn-sm"
-          onClick={() => setModalParametros(true)}
-        >
-          <i className="fas fa-cog mr-1" aria-hidden />
-          Parâmetros Focus NFe
-        </button>
-      </div>
+      {exibirParametros ? (
+        <div className="d-flex flex-wrap justify-content-end mb-2">
+          <button
+            type="button"
+            className="btn btn-outline-secondary btn-sm"
+            onClick={() => setModalParametros(true)}
+          >
+            <i className="fas fa-cog mr-1" aria-hidden />
+            Parâmetros Focus NFe
+          </button>
+        </div>
+      ) : null}
 
       <div className="card card-outline card-primary mb-3">
         <div className="card-header">
@@ -314,10 +321,12 @@ export function NotaFiscalEmissaoClient() {
         </div>
       </div>
 
-      <ModalParametrosFocusNfe
-        aberto={modalParametros}
-        onFechar={() => setModalParametros(false)}
-      />
+      {exibirParametros ? (
+        <ModalParametrosFocusNfe
+          aberto={modalParametros}
+          onFechar={() => setModalParametros(false)}
+        />
+      ) : null}
       <ModalEmissaoNfse
         row={rowEmissao}
         onFechar={() => setRowEmissao(null)}

@@ -1,11 +1,21 @@
 import { redirect } from "next/navigation";
 import { getSession } from "@/lib/auth/session";
+import { getNomesSaudacao } from "@/lib/dashboard/saudacao";
 import { NotaFiscalConsultarClient } from "./nota-fiscal-consultar-client";
 
 export default async function NotaFiscalConsultarPage() {
   const session = await getSession();
   if (!session) {
     redirect("/login");
+  }
+
+  const { podeVerMenuNotaFiscal } = await getNomesSaudacao(
+    session.sub,
+    session.usuario,
+    session.idEmpresa,
+  );
+  if (!podeVerMenuNotaFiscal) {
+    redirect("/nota-fiscal/emissao");
   }
 
   return (

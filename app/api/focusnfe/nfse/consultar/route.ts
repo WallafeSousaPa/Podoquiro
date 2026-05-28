@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { getSession } from "@/lib/auth/session";
-import { respostaSeSemPermissaoNotaFiscal } from "@/lib/dashboard/nota-fiscal-permissao";
+import { respostaSeSemPermissaoNfseNoCaixa } from "@/lib/dashboard/nota-fiscal-permissao";
 import {
   FocusNfeApiError,
   focusConsultarNfse,
@@ -17,7 +17,7 @@ function parseEmpresaId(idEmpresa: string) {
 
 export async function POST(request: Request) {
   const session = await getSession();
-  const negado = await respostaSeSemPermissaoNotaFiscal(session);
+  const negado = await respostaSeSemPermissaoNfseNoCaixa(session);
   if (negado) return negado;
 
   const empresaId = parseEmpresaId(session!.idEmpresa);
