@@ -23,6 +23,15 @@ type ConfigFocus = {
   updated_at: string | null;
 };
 
+type WebhookInfo = {
+  url_webhook: string;
+  tem_segredo: boolean;
+  configurado: boolean;
+  webhook_focus_id: string | null;
+  webhook_registrado_em: string | null;
+  erro_lista?: string | null;
+};
+
 type Props = {
   aberto: boolean;
   onFechar: () => void;
@@ -48,6 +57,11 @@ export function ModalParametrosFocusNfe({ aberto, onFechar }: Props) {
   const [issRetido, setIssRetido] = useState(false);
   const [temTokenEmpresa, setTemTokenEmpresa] = useState(false);
   const [podeCifrar, setPodeCifrar] = useState(false);
+
+  const [webhook, setWebhook] = useState<WebhookInfo | null>(null);
+  const [webhookBusy, setWebhookBusy] = useState(false);
+  const [webhookMsg, setWebhookMsg] = useState<string | null>(null);
+  const [webhookErro, setWebhookErro] = useState<string | null>(null);
 
   const carregar = useCallback(async () => {
     setLoading(true);
@@ -76,9 +90,67 @@ export function ModalParametrosFocusNfe({ aberto, onFechar }: Props) {
     }
   }, []);
 
+  const carregarWebhook = useCallback(async () => {
+    setWebhookErro(null);
+    try {
+      const res = await fetch("/api/focusnfe/webhook/registrar", {
+        credentials: "include",
+      });
+      const j = (await res.json()) as WebhookInfo & { error?: string };
+      if (!res.ok) throw new Error(j.error ?? "Erro ao carregar webhook.");
+      setWebhook(j);
+    } catch (e) {
+      setWebhook(null);
+      setWebhookErro(e instanceof Error ? e.message : "Erro ao carregar webhook.");
+    }
+  }, []);
+
+  const registrarWebhook = useCallback(async () => {
+    setWebhookBusy(true);
+    setWebhookMsg(null);
+    setWebhookErro(null);
+    try {
+      const res = await fetch("/api/focusnfe/webhook/registrar", {
+        method: "POST",
+        credentials: "include",
+      });
+      const j = (await res.json()) as { error?: string };
+      if (!res.ok) throw new Error(j.error ?? "Erro ao registrar webhook.");
+      setWebhookMsg("Webhook registrado na Focus NFe.");
+      await carregarWebhook();
+    } catch (e) {
+      setWebhookErro(e instanceof Error ? e.message : "Erro ao registrar webhook.");
+    } finally {
+      setWebhookBusy(false);
+    }
+  }, [carregarWebhook]);
+
+  const removerWebhook = useCallback(async () => {
+    setWebhookBusy(true);
+    setWebhookMsg(null);
+    setWebhookErro(null);
+    try {
+      const res = await fetch("/api/focusnfe/webhook/registrar", {
+        method: "DELETE",
+        credentials: "include",
+      });
+      const j = (await res.json()) as { error?: string };
+      if (!res.ok) throw new Error(j.error ?? "Erro ao remover webhook.");
+      setWebhookMsg("Webhook removido da Focus NFe.");
+      await carregarWebhook();
+    } catch (e) {
+      setWebhookErro(e instanceof Error ? e.message : "Erro ao remover webhook.");
+    } finally {
+      setWebhookBusy(false);
+    }
+  }, [carregarWebhook]);
+
   useEffect(() => {
-    if (aberto) void carregar();
-  }, [aberto, carregar]);
+    if (aberto) {
+      void carregar();
+      void carregarWebhook();
+    }
+  }, [aberto, carregar, carregarWebhook]);
 
   useEffect(() => {
     setBaseUrl(baseUrlFocusNfe(ambiente));
@@ -310,6 +382,82 @@ export function ModalParametrosFocusNfe({ aberto, onFechar }: Props) {
                       </div>
                     </div>
                   </div>
+
+                  <hr />
+                  <h6 className="text-muted text-uppercase small">
+                    Webhook — atualização automática de status
+                  </h6>
+                  <p className="small text-muted">
+                    Ao registrar o webhook, a Focus NFe avisa o sistema quando uma
+                    NFS-e é autorizada, rejeitada ou cancelada, atualizando o status
+                    automaticamente em <strong>Nota Fiscal › Consultar</strong>.
+                  </p>
+
+                  {webhookErro ? (
+                    <div className="alert alert-warning py-2" role="alert">
+                      {webhookErro}
+                    </div>
+                  ) : null}
+                  {webhookMsg ? (
+                    <div className="alert alert-success py-2" role="alert">
+                      {webhookMsg}
+                    </div>
+                  ) : null}
+
+                  <div className="form-group">
+                    <label className="mb-1">URL do webhook</label>
+                    <input
+                      type="text"
+                      className="form-control"
+                      readOnly
+                      value={webhook?.url_webhook ?? ""}
+                      onFocus={(e) => e.currentTarget.select()}
+                    />
+                    <small className="form-text text-muted">
+                      {webhook?.tem_segredo
+                        ? "Protegido por segredo (FOCUSNFE_WEBHOOK_SECRET)."
+                        : "Sem segredo configurado — defina FOCUSNFE_WEBHOOK_SECRET no servidor para proteger o endpoint."}
+                    </small>
+                  </div>
+
+                  <div className="d-flex flex-wrap align-items-center">
+                    <span className="mr-3 mb-2">
+                      Situação:{" "}
+                      {webhook?.webhook_focus_id ? (
+                        <span className="badge badge-success">Registrado</span>
+                      ) : (
+                        <span className="badge badge-secondary">Não registrado</span>
+                      )}
+                    </span>
+                    <button
+                      type="button"
+                      className="btn btn-outline-primary btn-sm mr-2 mb-2"
+                      disabled={webhookBusy || !webhook?.configurado}
+                      onClick={() => void registrarWebhook()}
+                    >
+                      {webhookBusy
+                        ? "Processando…"
+                        : webhook?.webhook_focus_id
+                          ? "Re-registrar webhook"
+                          : "Registrar webhook"}
+                    </button>
+                    {webhook?.webhook_focus_id ? (
+                      <button
+                        type="button"
+                        className="btn btn-outline-danger btn-sm mb-2"
+                        disabled={webhookBusy}
+                        onClick={() => void removerWebhook()}
+                      >
+                        Remover
+                      </button>
+                    ) : null}
+                  </div>
+                  {!webhook?.configurado ? (
+                    <small className="form-text text-muted">
+                      Configure e salve o token e o CNPJ do prestador antes de
+                      registrar o webhook.
+                    </small>
+                  ) : null}
                 </>
               )}
             </div>

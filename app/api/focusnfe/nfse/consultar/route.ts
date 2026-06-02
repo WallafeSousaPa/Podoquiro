@@ -4,9 +4,11 @@ import { respostaSeSemPermissaoNfseNoCaixa } from "@/lib/dashboard/nota-fiscal-p
 import {
   FocusNfeApiError,
   focusConsultarNfse,
+  montarPatchEmissaoFocus,
   obterConfigFocusNfe,
   obterTokenFocusNfe,
   statusInternoDeFocus,
+  type EmissaoFocusParcial,
 } from "@/lib/focusnfe";
 import { createAdminClient } from "@/lib/supabase/admin";
 
@@ -80,24 +82,7 @@ export async function POST(request: Request) {
   }
 
   const statusFocus = consulta.status ?? (emissao.status as string);
-  const patch = {
-    status: statusFocus,
-    numero_rps: consulta.numero_rps ?? emissao.numero_rps,
-    serie_rps: consulta.serie_rps ?? emissao.serie_rps,
-    tipo_rps: consulta.tipo_rps ?? emissao.tipo_rps,
-    numero_nfse: consulta.numero ?? emissao.numero_nfse,
-    codigo_verificacao: consulta.codigo_verificacao ?? emissao.codigo_verificacao,
-    url_danfse: consulta.url_danfse ?? consulta.url ?? emissao.url_danfse,
-    caminho_xml_nota_fiscal:
-      consulta.caminho_xml_nota_fiscal ?? emissao.caminho_xml_nota_fiscal,
-    payload_resposta: consulta,
-    error_message:
-      statusInternoDeFocus(statusFocus) === "erro"
-        ? (consulta.mensagem ?? null)
-        : null,
-    emitted_at:
-      statusInternoDeFocus(statusFocus) === "autorizado" ? new Date().toISOString() : null,
-  };
+  const patch = montarPatchEmissaoFocus(emissao as EmissaoFocusParcial, consulta);
 
   const { data: atualizado, error: upErr } = await supabase
     .from("nfse_focus_emissoes")

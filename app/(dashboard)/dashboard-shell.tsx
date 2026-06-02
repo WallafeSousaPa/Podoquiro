@@ -671,6 +671,18 @@ export function DashboardShell({
                         <p>Consultar</p>
                       </Link>
                     </li>
+                    <li className="nav-item">
+                      <Link
+                        href="/nota-fiscal/nfce"
+                        className={cx(
+                          "nav-link",
+                          pathname === "/nota-fiscal/nfce" && "active",
+                        )}
+                      >
+                        <i className="far fa-circle nav-icon" />
+                        <p>NFCe</p>
+                      </Link>
+                    </li>
                   </ul>
                 </li>
               ) : null}

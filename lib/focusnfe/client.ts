@@ -122,3 +122,101 @@ export async function focusCancelarNfse(
   }
   return json as FocusNfseRespostaCancelar;
 }
+
+export type FocusWebhook = {
+  id?: string | number;
+  event?: string;
+  url?: string;
+  cnpj?: string;
+  cpf?: string;
+};
+
+export type FocusCriarWebhookParams = {
+  event: string;
+  url: string;
+  cnpj?: string;
+  authorization?: string;
+  authorizationHeader?: string;
+};
+
+/** Cria um gatilho (webhook) na Focus NFe. */
+export async function focusCriarWebhook(
+  baseUrl: string,
+  token: string,
+  params: FocusCriarWebhookParams,
+): Promise<FocusWebhook> {
+  const url = `${baseUrl.replace(/\/$/, "")}/hooks`;
+  const body: Record<string, unknown> = {
+    event: params.event,
+    url: params.url,
+  };
+  if (params.cnpj) body.cnpj = params.cnpj.replace(/\D/g, "");
+  if (params.authorization) body.authorization = params.authorization;
+  if (params.authorizationHeader) body.authorization_header = params.authorizationHeader;
+
+  const res = await fetch(url, {
+    method: "POST",
+    headers: {
+      accept: "application/json",
+      authorization: authHeader(token),
+      "content-type": "application/json",
+    },
+    body: JSON.stringify(body),
+  });
+  const json = await parseJson(res);
+  if (!res.ok) {
+    throw new FocusNfeApiError(
+      mensagemErro(json, `Focus NFe retornou HTTP ${res.status} ao criar webhook.`),
+      res.status,
+      json,
+    );
+  }
+  return json as FocusWebhook;
+}
+
+/** Lista os gatilhos (webhooks) configurados na conta Focus NFe. */
+export async function focusListarWebhooks(
+  baseUrl: string,
+  token: string,
+): Promise<FocusWebhook[]> {
+  const url = `${baseUrl.replace(/\/$/, "")}/hooks`;
+  const res = await fetch(url, {
+    method: "GET",
+    headers: { accept: "application/json", authorization: authHeader(token) },
+  });
+  const json = await parseJson(res);
+  if (!res.ok) {
+    throw new FocusNfeApiError(
+      mensagemErro(json, `Focus NFe retornou HTTP ${res.status} ao listar webhooks.`),
+      res.status,
+      json,
+    );
+  }
+  if (Array.isArray(json)) return json as FocusWebhook[];
+  if (json && typeof json === "object") {
+    const arr = (json as { hooks?: unknown }).hooks;
+    if (Array.isArray(arr)) return arr as FocusWebhook[];
+  }
+  return [];
+}
+
+/** Remove um gatilho (webhook) na Focus NFe pelo id. */
+export async function focusRemoverWebhook(
+  baseUrl: string,
+  token: string,
+  id: string | number,
+): Promise<void> {
+  const url = `${baseUrl.replace(/\/$/, "")}/hooks/${encodeURIComponent(String(id))}`;
+  const res = await fetch(url, {
+    method: "DELETE",
+    headers: { accept: "application/json", authorization: authHeader(token) },
+  });
+  if (!res.ok) {
+    const json = await parseJson(res);
+    throw new FocusNfeApiError(
+      mensagemErro(json, `Focus NFe retornou HTTP ${res.status} ao remover webhook.`),
+      res.status,
+      json,
+    );
+  }
+}

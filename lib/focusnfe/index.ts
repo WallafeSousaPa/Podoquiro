@@ -2,8 +2,20 @@ export {
   FocusNfeApiError,
   focusCancelarNfse,
   focusConsultarNfse,
+  focusCriarWebhook,
   focusEmitirNfse,
+  focusListarWebhooks,
+  focusRemoverWebhook,
+  type FocusCriarWebhookParams,
+  type FocusWebhook,
 } from "./client";
+export {
+  montarPatchEmissaoFocus,
+  sincronizarEmissaoFocus,
+  sincronizarEmissaoFocusPorRef,
+  type EmissaoFocusParcial,
+  type ResultadoSincronizacao,
+} from "./sincronizar";
 export {
   obterConfigFocusNfe,
   obterTokenFocusNfe,
