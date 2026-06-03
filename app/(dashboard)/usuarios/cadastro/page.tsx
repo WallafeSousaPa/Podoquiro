@@ -1,7 +1,18 @@
 import { redirect } from "next/navigation";
 import { getSession } from "@/lib/auth/session";
+import { normalizarHoraHHMM } from "@/lib/agenda/expediente-tempo";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { UsuariosCadastroClient } from "./usuarios-cadastro-client";
+
+type ExpedienteRaw = {
+  id_usuario: number;
+  horario_inicio: string | null;
+  intervalo_inicio: string | null;
+  intervalo_fim: string | null;
+  horario_fim: string | null;
+  horario_inicio_bloqueado: string | null;
+  horario_fim_bloqueado: string | null;
+};
 
 type GrupoItem = {
   id: number;
@@ -84,24 +95,59 @@ export default async function UsuariosCadastroPage() {
       e instanceof Error ? e.message : "Não foi possível carregar os usuários.";
   }
 
+  const expedientePorUsuario = new Map<number, ExpedienteRaw>();
+  if (!loadError && usuarios.length > 0) {
+    const { data: expData, error: expError } = await supabase
+      .from("colaboradores_expedientes")
+      .select(
+        "id_usuario, horario_inicio, intervalo_inicio, intervalo_fim, horario_fim, horario_inicio_bloqueado, horario_fim_bloqueado",
+      )
+      .in(
+        "id_usuario",
+        usuarios.map((u) => u.id),
+      );
+    if (expError) {
+      loadError = expError.message;
+    } else {
+      for (const e of (expData ?? []) as ExpedienteRaw[]) {
+        expedientePorUsuario.set(e.id_usuario, e);
+      }
+    }
+  }
+
   const nomeEmpresaPorId = new Map(empresas.map((e) => [e.id, e.nome_fantasia]));
 
-  const usuariosView = usuarios.map((u) => ({
-    id: u.id,
-    usuario: u.usuario,
-    nome_completo: u.nome_completo,
-    cpf: u.cpf,
-    email: u.email,
-    ativo: u.ativo,
-    id_grupo_usuarios: u.id_grupo_usuarios,
-    id_empresa: u.id_empresa,
-    exibir_na_agenda: Boolean(u.exibir_na_agenda),
-    card_cor: u.card_cor,
-    nome_empresa: nomeEmpresaPorId.get(u.id_empresa) ?? null,
-    grupo_usuarios: Array.isArray(u.usuarios_grupos)
-      ? (u.usuarios_grupos[0]?.grupo_usuarios ?? null)
-      : (u.usuarios_grupos?.grupo_usuarios ?? null),
-  }));
+  const usuariosView = usuarios.map((u) => {
+    const e = expedientePorUsuario.get(u.id) ?? null;
+    return {
+      id: u.id,
+      usuario: u.usuario,
+      nome_completo: u.nome_completo,
+      cpf: u.cpf,
+      email: u.email,
+      ativo: u.ativo,
+      id_grupo_usuarios: u.id_grupo_usuarios,
+      id_empresa: u.id_empresa,
+      exibir_na_agenda: Boolean(u.exibir_na_agenda),
+      card_cor: u.card_cor,
+      nome_empresa: nomeEmpresaPorId.get(u.id_empresa) ?? null,
+      grupo_usuarios: Array.isArray(u.usuarios_grupos)
+        ? (u.usuarios_grupos[0]?.grupo_usuarios ?? null)
+        : (u.usuarios_grupos?.grupo_usuarios ?? null),
+      expediente: e
+        ? {
+            horario_inicio: normalizarHoraHHMM(e.horario_inicio) ?? "",
+            intervalo_inicio: normalizarHoraHHMM(e.intervalo_inicio) ?? "",
+            intervalo_fim: normalizarHoraHHMM(e.intervalo_fim) ?? "",
+            horario_fim: normalizarHoraHHMM(e.horario_fim) ?? "",
+            horario_inicio_bloqueado:
+              normalizarHoraHHMM(e.horario_inicio_bloqueado) ?? "",
+            horario_fim_bloqueado:
+              normalizarHoraHHMM(e.horario_fim_bloqueado) ?? "",
+          }
+        : null,
+    };
+  });
 
   return (
     <>

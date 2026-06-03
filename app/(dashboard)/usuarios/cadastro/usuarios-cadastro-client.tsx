@@ -14,6 +14,15 @@ type EmpresaItem = {
   nome_fantasia: string;
 };
 
+type ExpedienteForm = {
+  horario_inicio: string;
+  intervalo_inicio: string;
+  intervalo_fim: string;
+  horario_fim: string;
+  horario_inicio_bloqueado: string;
+  horario_fim_bloqueado: string;
+};
+
 type UsuarioItem = {
   id: number;
   usuario: string;
@@ -27,6 +36,16 @@ type UsuarioItem = {
   card_cor: string | null;
   nome_empresa: string | null;
   grupo_usuarios: string | null;
+  expediente: ExpedienteForm | null;
+};
+
+const EXPEDIENTE_VAZIO: ExpedienteForm = {
+  horario_inicio: "",
+  intervalo_inicio: "",
+  intervalo_fim: "",
+  horario_fim: "",
+  horario_inicio_bloqueado: "",
+  horario_fim_bloqueado: "",
 };
 
 function formatCpfExibicao(digits: string | null | undefined): string {
@@ -110,6 +129,11 @@ export function UsuariosCadastroClient({
   const [feedback, setFeedback] = useState<{ title: string; message: string } | null>(
     null,
   );
+
+  const [expedienteUser, setExpedienteUser] = useState<UsuarioItem | null>(null);
+  const [expedienteForm, setExpedienteForm] = useState<ExpedienteForm>(EXPEDIENTE_VAZIO);
+  const [savingExpediente, setSavingExpediente] = useState(false);
+  const [expedienteError, setExpedienteError] = useState<string | null>(null);
   const cardCorPickerValue = isHexCorValida(cardCor) ? cardCor : "#2563EB";
 
   function resetForm() {
@@ -255,6 +279,78 @@ export function UsuariosCadastroClient({
     }
   }
 
+  function openExpediente(row: UsuarioItem) {
+    setExpedienteUser(row);
+    setExpedienteForm(row.expediente ?? EXPEDIENTE_VAZIO);
+    setExpedienteError(null);
+  }
+
+  function closeExpediente() {
+    setExpedienteUser(null);
+    setExpedienteForm(EXPEDIENTE_VAZIO);
+    setExpedienteError(null);
+  }
+
+  function setExpedienteCampo(campo: keyof ExpedienteForm, valor: string) {
+    setExpedienteForm((prev) => ({ ...prev, [campo]: valor }));
+  }
+
+  async function salvarExpediente(e: FormEvent) {
+    e.preventDefault();
+    if (!expedienteUser) return;
+    if (!expedienteForm.horario_inicio || !expedienteForm.horario_fim) {
+      setExpedienteError("Informe o horário de início e de fim do expediente.");
+      return;
+    }
+    setSavingExpediente(true);
+    setExpedienteError(null);
+    try {
+      const res = await fetch("/api/colaboradores-expedientes", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id_usuario: expedienteUser.id, ...expedienteForm }),
+      });
+      const json = (await res.json().catch(() => ({}))) as { error?: string };
+      if (!res.ok) throw new Error(json.error ?? "Erro ao salvar expediente.");
+      const nome = expedienteUser.usuario;
+      closeExpediente();
+      setFeedback({
+        title: "Expediente salvo",
+        message: `O expediente do usuário "${nome}" foi salvo.`,
+      });
+      router.refresh();
+    } catch (err) {
+      setExpedienteError(err instanceof Error ? err.message : "Erro ao salvar expediente.");
+    } finally {
+      setSavingExpediente(false);
+    }
+  }
+
+  async function removerExpediente() {
+    if (!expedienteUser) return;
+    setSavingExpediente(true);
+    setExpedienteError(null);
+    try {
+      const res = await fetch(
+        `/api/colaboradores-expedientes?id_usuario=${expedienteUser.id}`,
+        { method: "DELETE" },
+      );
+      const json = (await res.json().catch(() => ({}))) as { error?: string };
+      if (!res.ok) throw new Error(json.error ?? "Erro ao remover expediente.");
+      const nome = expedienteUser.usuario;
+      closeExpediente();
+      setFeedback({
+        title: "Expediente removido",
+        message: `O expediente do usuário "${nome}" foi removido.`,
+      });
+      router.refresh();
+    } catch (err) {
+      setExpedienteError(err instanceof Error ? err.message : "Erro ao remover expediente.");
+    } finally {
+      setSavingExpediente(false);
+    }
+  }
+
   if (loadError) {
     return (
       <div className="alert alert-danger" role="alert">
@@ -299,7 +395,7 @@ export function UsuariosCadastroClient({
                 <th>Grupo</th>
                 <th style={{ width: "100px" }}>Na agenda</th>
                 <th style={{ width: "90px" }}>Status</th>
-                <th style={{ width: "260px" }} className="text-right">
+                <th style={{ width: "380px" }} className="text-right">
                   Ações
                 </th>
               </tr>
@@ -342,6 +438,17 @@ export function UsuariosCadastroClient({
                         onClick={() => openEdit(row)}
                       >
                         <i className="fas fa-edit" aria-hidden /> Editar
+                      </button>
+                      <button
+                        type="button"
+                        className="btn btn-sm btn-outline-info mr-1"
+                        onClick={() => openExpediente(row)}
+                        title="Cadastrar expediente do profissional"
+                      >
+                        <i className="fas fa-clock" aria-hidden /> Expediente
+                        {row.expediente ? (
+                          <i className="fas fa-check text-success ml-1" aria-hidden />
+                        ) : null}
                       </button>
                       {row.ativo ? (
                         <button
@@ -589,6 +696,139 @@ export function UsuariosCadastroClient({
                   {changingStatus ? "Processando..." : "Confirmar"}
                 </button>
               </div>
+            </div>
+          </div>
+        </ModalBackdrop>
+      ) : null}
+
+      {expedienteUser ? (
+        <ModalBackdrop
+          onBackdropClick={() => {
+            if (!savingExpediente) closeExpediente();
+          }}
+        >
+          <div className="modal-dialog modal-lg" role="document">
+            <div className="modal-content">
+              <form onSubmit={(e) => void salvarExpediente(e)}>
+                <div className="modal-header">
+                  <h5 className="modal-title">
+                    Expediente — {expedienteUser.nome_completo?.trim() || expedienteUser.usuario}
+                  </h5>
+                  <button
+                    type="button"
+                    className="close"
+                    aria-label="Fechar"
+                    disabled={savingExpediente}
+                    onClick={closeExpediente}
+                  >
+                    <span aria-hidden="true">&times;</span>
+                  </button>
+                </div>
+                <div className="modal-body">
+                  {expedienteError ? (
+                    <div className="alert alert-danger py-2 small" role="alert">
+                      {expedienteError}
+                    </div>
+                  ) : null}
+                  <p className="text-muted small">
+                    Usado no relatório <strong>Intervalos vagos</strong> para calcular o tempo
+                    ocioso. O intervalo (almoço) e o horário bloqueado são descontados da janela.
+                  </p>
+                  <div className="form-row">
+                    <div className="form-group col-md-6">
+                      <label>Horário de início *</label>
+                      <input
+                        type="time"
+                        className="form-control"
+                        value={expedienteForm.horario_inicio}
+                        onChange={(e) => setExpedienteCampo("horario_inicio", e.target.value)}
+                        required
+                      />
+                    </div>
+                    <div className="form-group col-md-6">
+                      <label>Horário de fim *</label>
+                      <input
+                        type="time"
+                        className="form-control"
+                        value={expedienteForm.horario_fim}
+                        onChange={(e) => setExpedienteCampo("horario_fim", e.target.value)}
+                        required
+                      />
+                    </div>
+                  </div>
+                  <div className="form-row">
+                    <div className="form-group col-md-6">
+                      <label>Início do intervalo (almoço)</label>
+                      <input
+                        type="time"
+                        className="form-control"
+                        value={expedienteForm.intervalo_inicio}
+                        onChange={(e) => setExpedienteCampo("intervalo_inicio", e.target.value)}
+                      />
+                    </div>
+                    <div className="form-group col-md-6">
+                      <label>Fim do intervalo (almoço)</label>
+                      <input
+                        type="time"
+                        className="form-control"
+                        value={expedienteForm.intervalo_fim}
+                        onChange={(e) => setExpedienteCampo("intervalo_fim", e.target.value)}
+                      />
+                    </div>
+                  </div>
+                  <div className="form-row">
+                    <div className="form-group col-md-6">
+                      <label>Início do bloqueio</label>
+                      <input
+                        type="time"
+                        className="form-control"
+                        value={expedienteForm.horario_inicio_bloqueado}
+                        onChange={(e) =>
+                          setExpedienteCampo("horario_inicio_bloqueado", e.target.value)
+                        }
+                      />
+                    </div>
+                    <div className="form-group col-md-6 mb-0">
+                      <label>Fim do bloqueio</label>
+                      <input
+                        type="time"
+                        className="form-control"
+                        value={expedienteForm.horario_fim_bloqueado}
+                        onChange={(e) =>
+                          setExpedienteCampo("horario_fim_bloqueado", e.target.value)
+                        }
+                      />
+                    </div>
+                  </div>
+                </div>
+                <div className="modal-footer justify-content-between">
+                  <div>
+                    {expedienteUser.expediente ? (
+                      <button
+                        type="button"
+                        className="btn btn-outline-danger"
+                        disabled={savingExpediente}
+                        onClick={() => void removerExpediente()}
+                      >
+                        <i className="fas fa-trash mr-1" aria-hidden /> Remover
+                      </button>
+                    ) : null}
+                  </div>
+                  <div>
+                    <button
+                      type="button"
+                      className="btn btn-secondary mr-2"
+                      disabled={savingExpediente}
+                      onClick={closeExpediente}
+                    >
+                      Cancelar
+                    </button>
+                    <button type="submit" className="btn btn-primary" disabled={savingExpediente}>
+                      {savingExpediente ? "Salvando..." : "Salvar expediente"}
+                    </button>
+                  </div>
+                </div>
+              </form>
             </div>
           </div>
         </ModalBackdrop>

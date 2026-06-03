@@ -43,13 +43,24 @@ export function corCorteTecnicoAgendaResolvida(db: string | null | undefined): s
   return p ?? COR_CORTE_TECNICO_AGENDA_PADRAO;
 }
 
+/** Status em que a cor de "Curativo agendado" não vale, mesmo com a marca permanente. */
+const STATUS_DESCARTA_COR_CURATIVO = new Set(["cancelado", "faltou"]);
+
 /**
  * Fundo do card = cor em `empresas.agenda_cor_corte_tecnico`.
+ * Aplica-se quando o agendamento está como "Curativo agendado" OU já passou por esse
+ * status (marca `foi_curativo_agendado`), de modo que a cor permanece mesmo após troca
+ * de status — exceto quando o status atual for cancelado/faltou.
  * Procedimento "Corte técnico" não usa essa cor (mantém a cor do profissional).
  */
 export function agendamentoCardCorEmpresaCorteTecnico(ag: {
   status: string;
+  foi_curativo_agendado?: boolean | null;
   procedimentos?: { procedimento?: string | null }[] | null;
 }): boolean {
-  return ag.status === STATUS_AGENDAMENTO_CURATIVO_AGENDADO;
+  if (STATUS_DESCARTA_COR_CURATIVO.has(ag.status)) return false;
+  return (
+    ag.status === STATUS_AGENDAMENTO_CURATIVO_AGENDADO ||
+    ag.foi_curativo_agendado === true
+  );
 }

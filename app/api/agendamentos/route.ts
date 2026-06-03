@@ -454,6 +454,7 @@ export async function POST(request: Request) {
       data_hora_inicio: inicio,
       data_hora_fim: fim,
       status: statusStr,
+      foi_curativo_agendado: statusStr === "curativo_agendado",
       valor_bruto: valorBruto,
       desconto,
       valor_total: valorTotal,

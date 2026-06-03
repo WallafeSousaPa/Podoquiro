@@ -606,6 +606,9 @@ export async function PATCH(request: Request, context: RouteContext) {
       return NextResponse.json({ error: "Status inválido." }, { status: 400 });
     }
     patch.status = body.status;
+    if (body.status === "curativo_agendado") {
+      patch.foi_curativo_agendado = true;
+    }
   }
 
   if (typeof body.observacoes !== "undefined") {

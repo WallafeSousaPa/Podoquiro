@@ -821,6 +821,18 @@ export function DashboardShell({
                         <p>Atendimentos</p>
                       </Link>
                     </li>
+                    <li className="nav-item">
+                      <Link
+                        href="/relatorios/intervalos-vagos"
+                        className={cx(
+                          "nav-link",
+                          pathname === "/relatorios/intervalos-vagos" && "active",
+                        )}
+                      >
+                        <i className="far fa-circle nav-icon" />
+                        <p>Intervalos vagos</p>
+                      </Link>
+                    </li>
                   </ul>
                 </li>
               ) : null}

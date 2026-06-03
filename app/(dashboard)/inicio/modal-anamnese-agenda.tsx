@@ -58,6 +58,19 @@ const FORMAS_CONTATO_PACIENTE = [
   "Indicação",
 ] as const;
 
+/**
+ * Sugestões de pressão arterial (combobox): o usuário escolhe uma opção ou digita algo diferente.
+ * `valor` é o texto gravado; `descricao` é a leitura clínica exibida ao lado.
+ */
+const OPCOES_PRESSAO_ARTERIAL = [
+  { valor: "90x60 mmHg (9x6)", descricao: "Hipotensão (Baixa)" },
+  { valor: "120x80 mmHg (12x8)", descricao: "Normal / Ideal" },
+  { valor: "130x85 mmHg (13x8.5)", descricao: "Pré-hipertensão" },
+  { valor: "140x90 mmHg (14x9)", descricao: "Hipertensão Estágio 1" },
+  { valor: "160x100 mmHg (16x10)", descricao: "Hipertensão Estágio 2" },
+  { valor: "180x120 mmHg (18x12)", descricao: "Crise Hipertensiva (Urgência)" },
+] as const;
+
 type AvaliacaoOptionItem = {
   id: number;
   tipo?: string | null;
@@ -197,11 +210,28 @@ export function ModalAnamneseAgenda({ ag, onClose, onSalvo }: Props) {
     })();
   }, [ag.id, carregarCatalogos]);
 
+  function primeiroCampoObrigatorioFaltando(): string | null {
+    if (idsCondicao.length === 0) return "Selecione ao menos uma Condição de saúde.";
+    if (idsTipoUnha.length === 0) return "Selecione ao menos um Tipo de unha.";
+    if (!idPeEsquerdo) return "Selecione o Pé esquerdo.";
+    if (!idPeDireito) return "Selecione o Pé direito.";
+    if (idsHidrose.length === 0) return "Selecione ao menos uma Hidrose.";
+    if (idsLesoesMecanicas.length === 0) return "Selecione ao menos uma Lesão mecânica.";
+    if (!idFormatoDedos) return "Selecione o Formato dos dedos.";
+    if (!idFormatoPe) return "Selecione o Formato do pé.";
+    if (!formaContato) return "Selecione a Forma de contato.";
+    if (!arquivoTermoAssinatura) {
+      return "Preencha o Termo — assinatura virtual (marque a opção, leia e assine o termo).";
+    }
+    return null;
+  }
+
   async function salvar(e: FormEvent) {
     e.preventDefault();
     if (saving) return;
-    if (assinaturaVirtual && !arquivoTermoAssinatura) {
-      setError("Marque a assinatura virtual e confirme o termo assinado, ou desmarque a opção.");
+    const faltando = primeiroCampoObrigatorioFaltando();
+    if (faltando) {
+      setError(faltando);
       return;
     }
     setSaving(true);
@@ -390,7 +420,7 @@ export function ModalAnamneseAgenda({ ag, onClose, onSalvo }: Props) {
                 <div className="form-row">
                   <div className="form-group col-md-4">
                     <DropdownCheckboxMultiselect
-                      label="Condição de saúde"
+                      label="Condição de saúde *"
                       options={condicoes
                         .filter((x) => x.ativo)
                         .map((x) => ({ id: x.id, label: x.condicao?.trim() || `ID ${x.id}` }))}
@@ -403,9 +433,18 @@ export function ModalAnamneseAgenda({ ag, onClose, onSalvo }: Props) {
                     <label>Pressão arterial</label>
                     <input
                       className="form-control"
+                      list="anamnese-pressao-arterial-opcoes"
+                      placeholder="Selecione ou digite…"
                       value={pressaoArterial}
                       onChange={(e) => setPressaoArterial(e.target.value)}
                     />
+                    <datalist id="anamnese-pressao-arterial-opcoes">
+                      {OPCOES_PRESSAO_ARTERIAL.map((o) => (
+                        <option key={o.valor} value={o.valor}>
+                          {o.descricao}
+                        </option>
+                      ))}
+                    </datalist>
                   </div>
                   <div className="form-group col-md-4">
                     <label>Glicemia</label>
@@ -466,7 +505,7 @@ export function ModalAnamneseAgenda({ ag, onClose, onSalvo }: Props) {
                 <div className="form-row">
                   <div className="form-group col-md-4">
                     <DropdownCheckboxMultiselect
-                      label="Tipo de unha"
+                      label="Tipo de unha *"
                       options={tiposUnhas
                         .filter((x) => x.ativo)
                         .map((x) => ({ id: x.id, label: x.tipo?.trim() || `ID ${x.id}` }))}
@@ -476,7 +515,7 @@ export function ModalAnamneseAgenda({ ag, onClose, onSalvo }: Props) {
                     />
                   </div>
                   <div className="form-group col-md-4">
-                    <label>Pé esquerdo</label>
+                    <label>Pé esquerdo *</label>
                     <select
                       className="form-control"
                       value={idPeEsquerdo}
@@ -493,7 +532,7 @@ export function ModalAnamneseAgenda({ ag, onClose, onSalvo }: Props) {
                     </select>
                   </div>
                   <div className="form-group col-md-4">
-                    <label>Pé direito</label>
+                    <label>Pé direito *</label>
                     <select
                       className="form-control"
                       value={idPeDireito}
@@ -516,7 +555,7 @@ export function ModalAnamneseAgenda({ ag, onClose, onSalvo }: Props) {
                 <div className="form-row">
                   <div className="form-group col-md-6">
                     <DropdownCheckboxMultiselect
-                      label="Hidrose"
+                      label="Hidrose *"
                       options={hidroses
                         .filter((x) => x.ativo)
                         .map((x) => ({ id: x.id, label: x.tipo?.trim() || `ID ${x.id}` }))}
@@ -527,7 +566,7 @@ export function ModalAnamneseAgenda({ ag, onClose, onSalvo }: Props) {
                   </div>
                   <div className="form-group col-md-6">
                     <DropdownCheckboxMultiselect
-                      label="Lesões mecânicas"
+                      label="Lesões mecânicas *"
                       options={lesoes
                         .filter((x) => x.ativo)
                         .map((x) => ({ id: x.id, label: x.tipo?.trim() || `ID ${x.id}` }))}
@@ -573,7 +612,7 @@ export function ModalAnamneseAgenda({ ag, onClose, onSalvo }: Props) {
                     />
                   </div>
                   <div className="form-group col-md-4">
-                    <label>Formato dos dedos</label>
+                    <label>Formato dos dedos *</label>
                     <select
                       className="form-control"
                       value={idFormatoDedos}
@@ -590,7 +629,7 @@ export function ModalAnamneseAgenda({ ag, onClose, onSalvo }: Props) {
                     </select>
                   </div>
                   <div className="form-group col-md-4">
-                    <label>Formato do pé</label>
+                    <label>Formato do pé *</label>
                     <select
                       className="form-control"
                       value={idFormatoPe}
@@ -609,7 +648,7 @@ export function ModalAnamneseAgenda({ ag, onClose, onSalvo }: Props) {
                 </div>
                 <div className="form-row">
                   <div className="form-group col-md-6">
-                    <label>Forma de contato</label>
+                    <label>Forma de contato *</label>
                     <select
                       className="form-control"
                       value={formaContato}
@@ -643,7 +682,7 @@ export function ModalAnamneseAgenda({ ag, onClose, onSalvo }: Props) {
                 </div>
               </div>
               <div className="border rounded p-3 mb-3">
-                <h6 className="text-primary mb-3">Termo — assinatura virtual</h6>
+                <h6 className="text-primary mb-3">Termo — assinatura virtual *</h6>
                 <div className="form-check mb-2">
                   <input
                     type="checkbox"

@@ -153,6 +153,7 @@ export async function GET(request: Request) {
       desconto,
       valor_total,
       observacoes,
+      foi_curativo_agendado,
       pacientes ( nome_completo, nome_social, telefone )
     `,
     )
@@ -330,6 +331,7 @@ export async function GET(request: Request) {
       desconto: Number(r.desconto),
       valor_total: Number(r.valor_total),
       observacoes: (r.observacoes as string | null) ?? null,
+      foi_curativo_agendado: Boolean(r.foi_curativo_agendado),
       procedimentos: procedimentosPorAg[id] ?? [],
       pagamentos: pagamentosPorAg[id] ?? [],
     };

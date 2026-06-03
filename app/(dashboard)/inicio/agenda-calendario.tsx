@@ -177,6 +177,8 @@ type AgendamentoDia = {
   desconto: number;
   valor_total: number;
   observacoes: string | null;
+  /** Marca permanente: o agendamento já foi "Curativo agendado" — mantém a cor do card. */
+  foi_curativo_agendado?: boolean;
   /** Quando verdadeiro, bloqueia nova anamnese até cumprido o intervalo da empresa. */
   anamnese_bloqueada?: boolean;
   anamnese_bloqueio_texto?: string | null;
