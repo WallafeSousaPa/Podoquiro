@@ -11,16 +11,8 @@ function parseEmpresaId(idEmpresa: string) {
   return Number.isFinite(n) && n > 0 ? n : null;
 }
 
-const CAMPOS_EXPEDIENTE = [
-  "id",
-  "id_usuario",
-  "horario_inicio",
-  "intervalo_inicio",
-  "intervalo_fim",
-  "horario_fim",
-  "horario_inicio_bloqueado",
-  "horario_fim_bloqueado",
-] as const;
+const CAMPOS_EXPEDIENTE =
+  "id, id_usuario, horario_inicio, intervalo_inicio, intervalo_fim, horario_fim, horario_inicio_bloqueado, horario_fim_bloqueado";
 
 export async function GET() {
   const session = await getSession();
@@ -36,7 +28,7 @@ export async function GET() {
   const { data, error } = await supabase
     .from("colaboradores_expedientes")
     .select(
-      `${CAMPOS_EXPEDIENTE.join(", ")}, usuarios!inner ( id_empresa )`,
+      "id, id_usuario, horario_inicio, intervalo_inicio, intervalo_fim, horario_fim, horario_inicio_bloqueado, horario_fim_bloqueado, usuarios!inner ( id_empresa )",
     )
     .eq("usuarios.id_empresa", empresaId);
 
@@ -134,7 +126,7 @@ export async function POST(request: Request) {
   const { data, error } = await supabase
     .from("colaboradores_expedientes")
     .upsert(registro, { onConflict: "id_usuario" })
-    .select(CAMPOS_EXPEDIENTE.join(", "))
+    .select(CAMPOS_EXPEDIENTE)
     .single();
 
   if (error) {
