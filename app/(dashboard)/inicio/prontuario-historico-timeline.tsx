@@ -169,110 +169,161 @@ export function ProntuarioHistoricoTimeline({
       </div>
 
       {selecionadoId != null ? (
-        <div
-          id={detalheTitleId}
-          className="prontuario-historico-detalhe border rounded p-3 mt-3 bg-light"
-          role="region"
-          aria-label="Detalhes do atendimento selecionado"
-        >
-          {loadingDetalhe ? (
-            <p className="small text-muted mb-0">Carregando detalhes…</p>
-          ) : erroDetalhe ? (
-            <div className="alert alert-danger py-2 small mb-0">{erroDetalhe}</div>
-          ) : detalhe ? (
-            <>
-              <p className="small mb-2">
-                <strong>Data:</strong> {fmtDataHora(detalhe.data_hora_inicio)}
-                {detalhe.data_hora_fim ? (
-                  <>
-                    {" "}
-                    — <span className="text-muted">até {fmtDataHora(detalhe.data_hora_fim)}</span>
-                  </>
-                ) : null}
-              </p>
-              <p className="small mb-2">
-                <strong>Status:</strong>{" "}
-                {rotuloStatusAgendamentoHistorico(detalhe.status)}
-              </p>
-              <p className="small mb-2">
-                <strong>Responsável:</strong> {detalhe.responsavel_nome}
-              </p>
-              <p className="small mb-1">
-                <strong>
-                  {detalhe.tem_prontuario
-                    ? "Procedimentos realizados (prontuário):"
-                    : "Procedimentos do agendamento:"}
-                </strong>
-              </p>
-              {detalhe.procedimentos.length === 0 ? (
-                <p className="small text-muted mb-2">—</p>
-              ) : (
-                <ul className="small pl-3 mb-2">
-                  {detalhe.procedimentos.map((p) => (
-                    <li key={p.id_procedimento}>{p.nome}</li>
-                  ))}
-                </ul>
-              )}
-              {detalhe.tem_prontuario &&
-              detalhe.procedimentos_agendamento.length > 0 &&
-              detalhe.procedimentos_agendamento.some(
-                (pa) =>
-                  !detalhe.procedimentos.some(
-                    (pr) => pr.id_procedimento === pa.id_procedimento,
-                  ),
-              ) ? (
-                <>
-                  <p className="small mb-1 text-muted">
-                    <strong>Procedimentos previstos no agendamento:</strong>
-                  </p>
-                  <ul className="small pl-3 mb-2 text-muted">
-                    {detalhe.procedimentos_agendamento.map((p) => (
-                      <li key={`ag-${p.id_procedimento}`}>{p.nome}</li>
-                    ))}
-                  </ul>
-                </>
-              ) : null}
-              <p className="small mb-1">
-                <strong>Evolução / observações:</strong>
-              </p>
-              <p className="small mb-2 prontuario-historico-evolucao">
-                {detalhe.evolucao || (
-                  <span className="text-muted">Sem evolução registrada.</span>
-                )}
-              </p>
-              {detalhe.observacoes_agendamento &&
-              detalhe.observacoes_agendamento !== detalhe.evolucao ? (
-                <>
-                  <p className="small mb-1">
-                    <strong>Obs. do agendamento:</strong>
-                  </p>
-                  <p className="small mb-2 text-muted">{detalhe.observacoes_agendamento}</p>
-                </>
-              ) : null}
-              {detalhe.fotos.length > 0 ? (
-                <>
-                  <p className="small mb-1 font-weight-bold">Fotos</p>
-                  <div className="d-flex flex-wrap">
-                    {detalhe.fotos.map((f) => (
-                      <FotoHistoricoVisualizar
-                        key={f.path}
-                        src={f.url}
-                        onAmpliar={() => setFotoAmpliada(f.url)}
-                      />
-                    ))}
-                  </div>
-                </>
-              ) : null}
-            </>
-          ) : null}
-        </div>
+        <>
+          <div
+            className="modal fade show d-block"
+            style={{ zIndex: 1086 }}
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby={detalheTitleId}
+            onClick={() => setSelecionadoId(null)}
+          >
+            <div
+              className="modal-dialog modal-dialog-centered modal-lg modal-dialog-scrollable"
+              role="document"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="modal-content">
+                <div className="modal-header">
+                  <h5 className="modal-title" id={detalheTitleId}>
+                    Detalhes do atendimento
+                  </h5>
+                  <button
+                    type="button"
+                    className="close"
+                    onClick={() => setSelecionadoId(null)}
+                    aria-label="Fechar"
+                  >
+                    <span aria-hidden="true">&times;</span>
+                  </button>
+                </div>
+                <div className="modal-body">
+                  {loadingDetalhe ? (
+                    <p className="small text-muted mb-0">Carregando detalhes…</p>
+                  ) : erroDetalhe ? (
+                    <div className="alert alert-danger py-2 small mb-0">
+                      {erroDetalhe}
+                    </div>
+                  ) : detalhe ? (
+                    <>
+                      <p className="small mb-2">
+                        <strong>Data:</strong> {fmtDataHora(detalhe.data_hora_inicio)}
+                        {detalhe.data_hora_fim ? (
+                          <>
+                            {" "}
+                            —{" "}
+                            <span className="text-muted">
+                              até {fmtDataHora(detalhe.data_hora_fim)}
+                            </span>
+                          </>
+                        ) : null}
+                      </p>
+                      <p className="small mb-2">
+                        <strong>Status:</strong>{" "}
+                        {rotuloStatusAgendamentoHistorico(detalhe.status)}
+                      </p>
+                      <p className="small mb-2">
+                        <strong>Responsável:</strong> {detalhe.responsavel_nome}
+                      </p>
+                      <p className="small mb-1">
+                        <strong>
+                          {detalhe.tem_prontuario
+                            ? "Procedimentos realizados (prontuário):"
+                            : "Procedimentos do agendamento:"}
+                        </strong>
+                      </p>
+                      {detalhe.procedimentos.length === 0 ? (
+                        <p className="small text-muted mb-2">—</p>
+                      ) : (
+                        <ul className="small pl-3 mb-2">
+                          {detalhe.procedimentos.map((p) => (
+                            <li key={p.id_procedimento}>{p.nome}</li>
+                          ))}
+                        </ul>
+                      )}
+                      {detalhe.tem_prontuario &&
+                      detalhe.procedimentos_agendamento.length > 0 &&
+                      detalhe.procedimentos_agendamento.some(
+                        (pa) =>
+                          !detalhe.procedimentos.some(
+                            (pr) => pr.id_procedimento === pa.id_procedimento,
+                          ),
+                      ) ? (
+                        <>
+                          <p className="small mb-1 text-muted">
+                            <strong>Procedimentos previstos no agendamento:</strong>
+                          </p>
+                          <ul className="small pl-3 mb-2 text-muted">
+                            {detalhe.procedimentos_agendamento.map((p) => (
+                              <li key={`ag-${p.id_procedimento}`}>{p.nome}</li>
+                            ))}
+                          </ul>
+                        </>
+                      ) : null}
+                      <p className="small mb-1">
+                        <strong>Evolução / observações:</strong>
+                      </p>
+                      <p className="small mb-2 prontuario-historico-evolucao">
+                        {detalhe.evolucao || (
+                          <span className="text-muted">Sem evolução registrada.</span>
+                        )}
+                      </p>
+                      {detalhe.observacoes_agendamento &&
+                      detalhe.observacoes_agendamento !== detalhe.evolucao ? (
+                        <>
+                          <p className="small mb-1">
+                            <strong>Obs. do agendamento:</strong>
+                          </p>
+                          <p className="small mb-2 text-muted">
+                            {detalhe.observacoes_agendamento}
+                          </p>
+                        </>
+                      ) : null}
+                      <p className="small mb-1 font-weight-bold">Fotos</p>
+                      {detalhe.fotos.length > 0 ? (
+                        <div className="d-flex flex-wrap">
+                          {detalhe.fotos.map((f) => (
+                            <FotoHistoricoVisualizar
+                              key={f.path}
+                              src={f.url}
+                              onAmpliar={() => setFotoAmpliada(f.url)}
+                            />
+                          ))}
+                        </div>
+                      ) : (
+                        <p className="small text-muted mb-0">
+                          Nenhuma foto registrada neste atendimento.
+                        </p>
+                      )}
+                    </>
+                  ) : null}
+                </div>
+                <div className="modal-footer">
+                  <button
+                    type="button"
+                    className="btn btn-secondary"
+                    onClick={() => setSelecionadoId(null)}
+                  >
+                    Fechar
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div
+            className="modal-backdrop fade show"
+            style={{ zIndex: 1085 }}
+            role="presentation"
+            onClick={() => setSelecionadoId(null)}
+          />
+        </>
       ) : null}
 
       {fotoAmpliada ? (
         <>
           <div
             className="modal fade show d-block"
-            style={{ zIndex: 1090 }}
+            style={{ zIndex: 1096 }}
             role="dialog"
             aria-modal="true"
             onClick={() => setFotoAmpliada(null)}
@@ -307,7 +358,7 @@ export function ProntuarioHistoricoTimeline({
           </div>
           <div
             className="modal-backdrop fade show"
-            style={{ zIndex: 1085 }}
+            style={{ zIndex: 1095 }}
             onClick={() => setFotoAmpliada(null)}
             role="presentation"
           />
