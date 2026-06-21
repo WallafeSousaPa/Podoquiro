@@ -29,9 +29,27 @@ export function tBandDeMaquineta(nome: string | null | undefined): string {
   return "99";
 }
 
+function normalizarTpag(tPag: string): string {
+  return tPag.replace(/\D/g, "").padStart(2, "0").slice(0, 2);
+}
+
 export function isTpagCartao(tPag: string): boolean {
-  const t = tPag.replace(/\D/g, "").padStart(2, "0").slice(0, 2);
+  const t = normalizarTpag(tPag);
   return t === "03" || t === "04";
+}
+
+/** PIX dinâmico (QR único por transação) — tPag 17. */
+export function isTpagPixDinamico(tPag: string): boolean {
+  return normalizarTpag(tPag) === "17";
+}
+
+/**
+ * NT 2025.001: cartão (03/04) e PIX dinâmico (17) exigem grupo `card` na NFC-e.
+ * PIX estático (20) não exige.
+ */
+export function isTpagExigeGrupoCardNfce(tPag: string): boolean {
+  const t = normalizarTpag(tPag);
+  return t === "03" || t === "04" || t === "17";
 }
 
 /** CNPJ da credenciadora (14 dígitos) para o grupo `card` da NFC-e. */
@@ -52,30 +70,44 @@ export function cnpjCredenciadoraCartao(
   return "";
 }
 
-function dadosCartaoNfce(
+function grupoCardNfce(
+  tPag: string,
   maquineta: string | null | undefined,
   maquinetaCnpj?: string | null,
   bandeiraCodigo?: string | null,
 ): PagamentoDetNfce["card"] {
   const cnpj14 = cnpjCredenciadoraCartao(maquineta, maquinetaCnpj);
   if (!cnpj14) {
+    if (isTpagPixDinamico(tPag)) {
+      throw new Error(
+        "PIX na NFC-e (código 17) exige o grupo de pagamento integrado (NT 2025.001). " +
+          "Cadastre o CNPJ da instituição na maquineta (Financeiro → Parametrização → Maquinetas) " +
+          "ou defina NFE_CREDENCIADORA_CNPJ no servidor.",
+      );
+    }
     throw new Error(
       "Pagamento com cartão exige CNPJ da credenciadora na NFC-e. " +
         "Cadastre o CNPJ na maquineta (Financeiro → Parametrização → Maquinetas) " +
         "ou defina NFE_CREDENCIADORA_CNPJ no servidor.",
     );
   }
+
+  const base: PagamentoDetNfce["card"] = {
+    tpIntegra: "2",
+    cnpj14,
+    cAut: "0",
+  };
+
+  if (isTpagPixDinamico(tPag)) {
+    return base;
+  }
+
   const tBandRaw = (bandeiraCodigo ?? "").replace(/\D/g, "");
   const tBand =
     tBandRaw.length > 0
       ? tBandRaw.padStart(2, "0").slice(0, 2)
       : tBandDeMaquineta(maquineta);
-  return {
-    tpIntegra: "2",
-    tBand,
-    cnpj14,
-    cAut: "0",
-  };
+  return { ...base, tBand };
 }
 
 function linhaPagamentoNfce(
@@ -85,10 +117,10 @@ function linhaPagamentoNfce(
   maquinetaCnpj?: string | null,
   bandeiraCodigo?: string | null,
 ): PagamentoDetNfce {
-  const tPagNorm = tPag.replace(/\D/g, "").padStart(2, "0").slice(0, 2);
+  const tPagNorm = normalizarTpag(tPag);
   const linha: PagamentoDetNfce = { tPag: tPagNorm, vPag: roundMoney(vPag) };
-  if (isTpagCartao(tPagNorm)) {
-    linha.card = dadosCartaoNfce(maquineta, maquinetaCnpj, bandeiraCodigo);
+  if (isTpagExigeGrupoCardNfce(tPagNorm)) {
+    linha.card = grupoCardNfce(tPagNorm, maquineta, maquinetaCnpj, bandeiraCodigo);
   }
   return linha;
 }
@@ -187,6 +219,11 @@ export function distribuirPagamentosNfceAtendimento(
 }
 
 /** Uma linha de pagamento (emissão manual sem atendimento). */
-export function pagamentoUnicoNfce(tPag: string, vPag: number): PagamentoDetNfce {
-  return linhaPagamentoNfce(tPag, vPag, null);
+export function pagamentoUnicoNfce(
+  tPag: string,
+  vPag: number,
+  maquineta?: string | null,
+  maquinetaCnpj?: string | null,
+): PagamentoDetNfce {
+  return linhaPagamentoNfce(tPag, vPag, maquineta ?? null, maquinetaCnpj ?? null);
 }

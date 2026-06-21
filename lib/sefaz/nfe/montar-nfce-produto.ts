@@ -57,11 +57,11 @@ export type PagamentoDetNfce = {
   card?: {
     /** 1 = TEF integrado; 2 = POS não integrado (maquineta). */
     tpIntegra: "1" | "2";
-    /** Bandeira (obrigatório com cartão). */
-    tBand: string;
-    /** CNPJ da credenciadora (14 dígitos). */
+    /** Bandeira (obrigatório com cartão crédito/débito; omitir no PIX dinâmico). */
+    tBand?: string;
+    /** CNPJ da credenciadora / instituição de pagamento (14 dígitos). */
     cnpj14: string;
-    /** Código de autorização / NSU (obrigatório na NFC-e; use 0 se POS não integrado). */
+    /** Código de autorização / NSU (cartão) ou endToEndId (PIX dinâmico). */
     cAut: string;
   };
 };
@@ -275,12 +275,14 @@ export function montarNfceXmlProduto(opts: MontarNfceProdutoOpts): string {
     const tPag = lp.tPag.replace(/\D/g, "").padStart(2, "0").slice(0, 2);
     el(doc, detPag, "tPag", tPag);
     el(doc, detPag, "vPag", fmtDec(lp.vPag, 2));
-    if (tPag === "03" || tPag === "04") {
+    if (tPag === "03" || tPag === "04" || tPag === "17") {
       const card = el(doc, detPag, "card");
       const tpIntegra = lp.card?.tpIntegra ?? "2";
       el(doc, card, "tpIntegra", tpIntegra);
-      const tBand = (lp.card?.tBand ?? "99").replace(/\D/g, "").padStart(2, "0").slice(0, 2);
-      el(doc, card, "tBand", tBand);
+      if (tPag === "03" || tPag === "04") {
+        const tBand = (lp.card?.tBand ?? "99").replace(/\D/g, "").padStart(2, "0").slice(0, 2);
+        el(doc, card, "tBand", tBand);
+      }
       const cnpj = (lp.card?.cnpj14 ?? "").replace(/\D/g, "");
       if (cnpj.length === 14) {
         el(doc, card, "CNPJ", cnpj);

@@ -47,6 +47,7 @@ const TPAG_LABEL: Record<string, string> = {
   "03": "Cartão de Crédito",
   "04": "Cartão de Débito",
   "17": "PIX",
+  "20": "PIX (estático)",
   "99": "Outros",
 };
 
