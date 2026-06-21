@@ -23,6 +23,10 @@ import {
   statusAgendamentoIgnoraValidacaoHorario,
 } from "@/lib/agenda/validacao-agendamento";
 import { getSession } from "@/lib/auth/session";
+import {
+  parsePagamentosAgendamentoBody,
+  type PagamentoAgendamentoInput,
+} from "@/lib/financeiro/parse-pagamentos-agendamento";
 import { createAdminClient } from "@/lib/supabase/admin";
 
 function parseEmpresaId(idEmpresa: string) {
@@ -46,10 +50,6 @@ const PAGAMENTO_STATUS = ["pago", "estornado", "pendente"] as const;
 
 function isAgStatus(s: string): s is AgendamentoStatus {
   return (AGENDAMENTO_STATUS as readonly string[]).includes(s);
-}
-
-function isPgStatus(s: string): boolean {
-  return (PAGAMENTO_STATUS as readonly string[]).includes(s);
 }
 
 export async function POST(request: Request) {
@@ -199,54 +199,14 @@ export async function POST(request: Request) {
     }
   }
 
-  let pagamentos: {
-    id_forma_pagamento: number;
-    id_maquineta: number | null;
-    valor_pago: number;
-    status_pagamento: string;
-  }[] = [];
+  let pagamentos: PagamentoAgendamentoInput[] = [];
 
   if (body.pagamentos !== undefined && body.pagamentos !== null) {
-    if (!Array.isArray(body.pagamentos)) {
-      return NextResponse.json({ error: "pagamentos deve ser um array." }, { status: 400 });
+    const parsed = await parsePagamentosAgendamentoBody(supabase, body.pagamentos);
+    if (!parsed.ok) {
+      return NextResponse.json({ error: parsed.error }, { status: 400 });
     }
-    for (const pg of body.pagamentos) {
-      if (!pg || typeof pg !== "object") {
-        return NextResponse.json({ error: "Pagamento inválido." }, { status: 400 });
-      }
-      const o = pg as {
-        id_forma_pagamento?: unknown;
-        id_maquineta?: unknown;
-        valor_pago?: unknown;
-        status_pagamento?: unknown;
-      };
-      const ifp = Number(o.id_forma_pagamento);
-      const vp = Number(o.valor_pago);
-      const st = typeof o.status_pagamento === "string" ? o.status_pagamento : "pendente";
-      let im: number | null = null;
-      if (o.id_maquineta !== undefined && o.id_maquineta !== null) {
-        const n = Number(o.id_maquineta);
-        if (!Number.isFinite(n) || n <= 0) {
-          return NextResponse.json({ error: "Maquineta inválida." }, { status: 400 });
-        }
-        im = n;
-      }
-      if (!Number.isFinite(ifp) || ifp <= 0) {
-        return NextResponse.json({ error: "Forma de pagamento inválida." }, { status: 400 });
-      }
-      if (!Number.isFinite(vp) || vp < 0) {
-        return NextResponse.json({ error: "Valor pago inválido." }, { status: 400 });
-      }
-      if (!isPgStatus(st)) {
-        return NextResponse.json({ error: "Status de pagamento inválido." }, { status: 400 });
-      }
-      pagamentos.push({
-        id_forma_pagamento: ifp,
-        id_maquineta: im,
-        valor_pago: Math.round(vp * 100) / 100,
-        status_pagamento: st,
-      });
-    }
+    pagamentos = parsed.pagamentos;
   }
 
   const [podeVerTodos, somentePropriaColuna] = await Promise.all([
@@ -402,43 +362,6 @@ export async function POST(request: Request) {
     }
   }
 
-  if (pagamentos.length > 0) {
-    const formas = [...new Set(pagamentos.map((p) => p.id_forma_pagamento))];
-    const { data: fRows, error: fErr } = await supabase
-      .from("formas_pagamento")
-      .select("id")
-      .in("id", formas);
-    if (fErr) {
-      console.error(fErr);
-      return NextResponse.json({ error: fErr.message }, { status: 500 });
-    }
-    if ((fRows ?? []).length !== formas.length) {
-      return NextResponse.json({ error: "Forma de pagamento inválida." }, { status: 400 });
-    }
-
-    const maqs = pagamentos.map((p) => p.id_maquineta).filter((x): x is number => x !== null);
-    if (maqs.length > 0) {
-      const um = [...new Set(maqs)];
-      const { data: mRows, error: mErr } = await supabase
-        .from("maquinetas")
-        .select("id, ativo")
-        .in("id", um);
-      if (mErr) {
-        console.error(mErr);
-        return NextResponse.json({ error: mErr.message }, { status: 500 });
-      }
-      for (const id of um) {
-        const row = (mRows ?? []).find((r) => (r.id as number) === id);
-        if (!row || !row.ativo) {
-          return NextResponse.json(
-            { error: "Maquineta inválida ou inativa." },
-            { status: 400 },
-          );
-        }
-      }
-    }
-  }
-
   const valorBruto = Math.round(
     procedimentos.reduce((s, p) => s + p.valor_aplicado, 0) * 100,
   ) / 100;
@@ -495,6 +418,7 @@ export async function POST(request: Request) {
         id_agendamento: idAgendamento,
         id_forma_pagamento: p.id_forma_pagamento,
         id_maquineta: p.id_maquineta,
+        id_bandeira: p.id_bandeira,
         valor_pago: p.valor_pago,
         status_pagamento: p.status_pagamento,
       })),

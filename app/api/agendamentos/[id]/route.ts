@@ -34,6 +34,7 @@ import {
 } from "@/lib/agenda/retorno-agendamento";
 import { dataReferenciaBrasilia } from "@/lib/financeiro/data-referencia-brasilia";
 import { obterSituacaoCaixaDia } from "@/lib/financeiro/caixa-situacao-dia";
+import { parsePagamentosAgendamentoBody } from "@/lib/financeiro/parse-pagamentos-agendamento";
 import { getSession } from "@/lib/auth/session";
 import { tentarLogErroApi } from "@/lib/aplicacao/tentar-log-erro-api";
 import { createAdminClient } from "@/lib/supabase/admin";
@@ -60,14 +61,8 @@ const AGENDAMENTO_STATUS = [
 ] as const;
 type AgendamentoStatus = (typeof AGENDAMENTO_STATUS)[number];
 
-const PAGAMENTO_STATUS = ["pago", "estornado", "pendente"] as const;
-
 function isAgStatus(s: string): s is AgendamentoStatus {
   return (AGENDAMENTO_STATUS as readonly string[]).includes(s);
-}
-
-function isPgStatus(s: string): boolean {
-  return (PAGAMENTO_STATUS as readonly string[]).includes(s);
 }
 
 type RouteContext = { params: Promise<{ id: string }> };
@@ -164,6 +159,7 @@ export async function GET(request: Request, context: RouteContext) {
     id: number;
     id_forma_pagamento: number;
     id_maquineta: number | null;
+    id_bandeira: number | null;
     valor_pago: number;
     status_pagamento: string;
   }[] = [];
@@ -172,13 +168,14 @@ export async function GET(request: Request, context: RouteContext) {
     const { data: pags } = await supabase
       .from("pagamentos")
       .select(
-        "id, id_forma_pagamento, id_maquineta, valor_pago, status_pagamento",
+        "id, id_forma_pagamento, id_maquineta, id_bandeira, valor_pago, status_pagamento",
       )
       .eq("id_agendamento", id);
     pagamentosRes = (pags ?? []).map((p) => ({
       id: p.id as number,
       id_forma_pagamento: p.id_forma_pagamento as number,
       id_maquineta: p.id_maquineta as number | null,
+      id_bandeira: p.id_bandeira as number | null,
       valor_pago: Number(p.valor_pago),
       status_pagamento: p.status_pagamento as string,
     }));
@@ -1079,53 +1076,11 @@ export async function PATCH(request: Request, context: RouteContext) {
     }
 
     const arr = body.pagamentos;
-    if (!Array.isArray(arr)) {
-      return NextResponse.json({ error: "pagamentos deve ser um array." }, { status: 400 });
+    const parsed = await parsePagamentosAgendamentoBody(supabase, arr);
+    if (!parsed.ok) {
+      return NextResponse.json({ error: parsed.error }, { status: 400 });
     }
-    const pagamentos: {
-      id_forma_pagamento: number;
-      id_maquineta: number | null;
-      valor_pago: number;
-      status_pagamento: string;
-    }[] = [];
-
-    for (const pg of arr) {
-      if (!pg || typeof pg !== "object") {
-        return NextResponse.json({ error: "Pagamento inválido." }, { status: 400 });
-      }
-      const o = pg as {
-        id_forma_pagamento?: unknown;
-        id_maquineta?: unknown;
-        valor_pago?: unknown;
-        status_pagamento?: unknown;
-      };
-      const ifp = Number(o.id_forma_pagamento);
-      const vp = Number(o.valor_pago);
-      const st = typeof o.status_pagamento === "string" ? o.status_pagamento : "pendente";
-      let im: number | null = null;
-      if (o.id_maquineta !== undefined && o.id_maquineta !== null) {
-        const n = Number(o.id_maquineta);
-        if (!Number.isFinite(n) || n <= 0) {
-          return NextResponse.json({ error: "Maquineta inválida." }, { status: 400 });
-        }
-        im = n;
-      }
-      if (!Number.isFinite(ifp) || ifp <= 0) {
-        return NextResponse.json({ error: "Forma de pagamento inválida." }, { status: 400 });
-      }
-      if (!Number.isFinite(vp) || vp < 0) {
-        return NextResponse.json({ error: "Valor pago inválido." }, { status: 400 });
-      }
-      if (!isPgStatus(st)) {
-        return NextResponse.json({ error: "Status de pagamento inválido." }, { status: 400 });
-      }
-      pagamentos.push({
-        id_forma_pagamento: ifp,
-        id_maquineta: im,
-        valor_pago: Math.round(vp * 100) / 100,
-        status_pagamento: st,
-      });
-    }
+    const pagamentos = parsed.pagamentos;
 
     const valorTotalEsperado = calcularValorTotal(valorBruto, desconto);
     const somaPagamentos =
@@ -1137,43 +1092,6 @@ export async function PATCH(request: Request, context: RouteContext) {
         },
         { status: 400 },
       );
-    }
-
-    if (pagamentos.length > 0) {
-      const formas = [...new Set(pagamentos.map((p) => p.id_forma_pagamento))];
-      const { data: fRows, error: fErr } = await supabase
-        .from("formas_pagamento")
-        .select("id")
-        .in("id", formas);
-      if (fErr) {
-        console.error(fErr);
-        return NextResponse.json({ error: fErr.message }, { status: 500 });
-      }
-      if ((fRows ?? []).length !== formas.length) {
-        return NextResponse.json({ error: "Forma de pagamento inválida." }, { status: 400 });
-      }
-
-      const maqs = pagamentos.map((p) => p.id_maquineta).filter((x): x is number => x !== null);
-      if (maqs.length > 0) {
-        const um = [...new Set(maqs)];
-        const { data: mRows, error: mErr } = await supabase
-          .from("maquinetas")
-          .select("id, ativo")
-          .in("id", um);
-        if (mErr) {
-          console.error(mErr);
-          return NextResponse.json({ error: mErr.message }, { status: 500 });
-        }
-        for (const mid of um) {
-          const row = (mRows ?? []).find((r) => (r.id as number) === mid);
-          if (!row || !row.ativo) {
-            return NextResponse.json(
-              { error: "Maquineta inválida ou inativa." },
-              { status: 400 },
-            );
-          }
-        }
-      }
     }
 
     const { error: delPg } = await supabase.from("pagamentos").delete().eq("id_agendamento", id);
@@ -1188,6 +1106,7 @@ export async function PATCH(request: Request, context: RouteContext) {
           id_agendamento: id,
           id_forma_pagamento: p.id_forma_pagamento,
           id_maquineta: p.id_maquineta,
+          id_bandeira: p.id_bandeira,
           valor_pago: p.valor_pago,
           status_pagamento: p.status_pagamento,
         })),

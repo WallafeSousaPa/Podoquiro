@@ -175,6 +175,8 @@ export async function POST(request: Request) {
     valor_pago: number;
     status_pagamento: string;
     maquineta: string | null;
+    maquineta_cnpj: string | null;
+    agrupamento_caixa: string | null;
   }> | null = null;
 
   if (idAgendamento) {
@@ -374,10 +376,15 @@ export async function POST(request: Request) {
 
   const vNFProdutos = roundMoney(linhas.reduce((s, l) => s + l.vProd, 0));
   let pagamentosNfce: PagamentoDetNfce[];
-  if (pagamentosAtendimento) {
-    pagamentosNfce = distribuirPagamentosNfceAtendimento(pagamentosAtendimento, vNFProdutos);
-  } else {
-    pagamentosNfce = [pagamentoUnicoNfce(tPagEmissao, vNFProdutos)];
+  try {
+    if (pagamentosAtendimento) {
+      pagamentosNfce = distribuirPagamentosNfceAtendimento(pagamentosAtendimento, vNFProdutos);
+    } else {
+      pagamentosNfce = [pagamentoUnicoNfce(tPagEmissao, vNFProdutos)];
+    }
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : "Falha ao montar pagamentos da NFC-e.";
+    return NextResponse.json({ error: msg }, { status: 400 });
   }
 
   const { data: maxRow } = await supabase
@@ -553,7 +560,14 @@ export async function POST(request: Request) {
         pagamentos: pagamentosNfce.map((p) => ({
           t_pag: p.tPag,
           v_pag: p.vPag,
-          card: p.card ?? null,
+          card: p.card
+            ? {
+                tp_integra: p.card.tpIntegra,
+                t_band: p.card.tBand,
+                cnpj: p.card.cnpj14,
+                c_aut: p.card.cAut,
+              }
+            : null,
         })),
         ...(idAgendamentoSalvar != null ? { id_agendamento: idAgendamentoSalvar } : {}),
         itens: [...qtdPorId.entries()].map(([id_produto, quantidade]) => ({

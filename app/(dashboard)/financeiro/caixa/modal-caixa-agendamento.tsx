@@ -11,6 +11,7 @@ import {
 } from "react";
 import { calcularValorTotal } from "@/lib/agenda/totais";
 import { agendamentoExigeRetornoNoCaixa } from "@/lib/agenda/retorno-agendamento";
+import { formaPagamentoEhCartao } from "@/lib/financeiro/forma-pagamento-cartao";
 import { ModalAgendarRetornoCaixa } from "@/components/modal-agendar-retorno-caixa";
 import { dataReferenciaBrasilia } from "@/lib/financeiro/data-referencia-brasilia";
 import {
@@ -46,6 +47,7 @@ function subtotalProdutosAgendamento(
 type PagLinha = {
   id_forma_pagamento: number;
   id_maquineta: number | null;
+  id_bandeira: number | null;
   valor_pago: number;
   valor_texto: string;
 };
@@ -78,6 +80,7 @@ type AgDetail = {
     id: number;
     id_forma_pagamento: number;
     id_maquineta: number | null;
+    id_bandeira: number | null;
     valor_pago: number;
     status_pagamento: string;
   }[];
@@ -156,8 +159,13 @@ export function ModalCaixaAgendamento({
   const [procedimentosCat, setProcedimentosCat] = useState<
     { id: number; procedimento: string; valor_total: number }[]
   >([]);
-  const [formasPg, setFormasPg] = useState<{ id: number; nome: string }[]>([]);
+  const [formasPg, setFormasPg] = useState<
+    { id: number; nome: string; agrupamento_caixa: string | null }[]
+  >([]);
   const [maquinetas, setMaquinetas] = useState<{ id: number; nome: string }[]>(
+    [],
+  );
+  const [bandeiras, setBandeiras] = useState<{ id: number; nome_bandeira: string }[]>(
     [],
   );
 
@@ -195,13 +203,14 @@ export function ModalCaixaAgendamento({
       setDetalhe(d);
       setDescontoAgendamentoTexto(String(Number(d.desconto ?? 0)));
 
-      const [procRes, prodMercRes, fpRes, mqRes] = await Promise.all([
+      const [procRes, prodMercRes, fpRes, mqRes, brRes] = await Promise.all([
         fetch(
           `/api/procedimentos?id_usuario=${encodeURIComponent(String(d.id_usuario))}`,
         ),
         fetch("/api/produtos?tipo=mercadoria&status=ativo"),
         fetch("/api/formas-pagamento"),
         fetch("/api/maquinetas"),
+        fetch("/api/bandeiras"),
       ]);
       const procJ = (await procRes.json()) as {
         data?: { id: number; procedimento: string; valor_total: number }[];
@@ -238,14 +247,23 @@ export function ModalCaixaAgendamento({
       );
 
       const fpJ = (await fpRes.json()) as {
-        data?: { id: number; nome: string; ativo?: boolean }[];
+        data?: {
+          id: number;
+          nome: string;
+          ativo?: boolean;
+          agrupamento_caixa?: string | null;
+        }[];
         error?: string;
       };
       if (!fpRes.ok) throw new Error(fpJ.error ?? "Erro ao carregar formas.");
       setFormasPg(
         (fpJ.data ?? [])
           .filter((f) => f.ativo !== false)
-          .map((f) => ({ id: f.id, nome: f.nome })),
+          .map((f) => ({
+            id: f.id,
+            nome: f.nome,
+            agrupamento_caixa: f.agrupamento_caixa ?? null,
+          })),
       );
 
       const mqJ = (await mqRes.json()) as {
@@ -257,6 +275,17 @@ export function ModalCaixaAgendamento({
         (mqJ.data ?? [])
           .filter((m) => m.ativo !== false)
           .map((m) => ({ id: m.id, nome: m.nome })),
+      );
+
+      const brJ = (await brRes.json()) as {
+        data?: { id: number; nome_bandeira: string; ativo?: boolean }[];
+        error?: string;
+      };
+      if (!brRes.ok) throw new Error(brJ.error ?? "Erro ao carregar bandeiras.");
+      setBandeiras(
+        (brJ.data ?? [])
+          .filter((b) => b.ativo !== false)
+          .map((b) => ({ id: b.id, nome_bandeira: b.nome_bandeira })),
       );
 
       setProcedimentos(
@@ -282,6 +311,7 @@ export function ModalCaixaAgendamento({
           return {
             id_forma_pagamento: p.id_forma_pagamento,
             id_maquineta: p.id_maquineta,
+            id_bandeira: p.id_bandeira ?? null,
             valor_pago: vp,
             valor_texto: fmtMoedaBrCampo(vp),
           };
@@ -494,6 +524,7 @@ export function ModalCaixaAgendamento({
       {
         id_forma_pagamento: primeira.id,
         id_maquineta: null,
+        id_bandeira: null,
         valor_pago: 0,
         valor_texto: fmtMoedaBrCampo(0),
       },
@@ -625,9 +656,10 @@ export function ModalCaixaAgendamento({
         }
         if (detalheAg.status === "realizado") {
           body.pagamentos = pagamentos.map(
-            ({ id_forma_pagamento, id_maquineta, valor_pago }) => ({
+            ({ id_forma_pagamento, id_maquineta, id_bandeira, valor_pago }) => ({
               id_forma_pagamento,
               id_maquineta,
+              id_bandeira,
               valor_pago,
               status_pagamento: "pago",
             }),
@@ -720,9 +752,10 @@ export function ModalCaixaAgendamento({
               valor_desconto: 0,
             })),
             pagamentos: pagamentos.map(
-              ({ id_forma_pagamento, id_maquineta, valor_pago }) => ({
+              ({ id_forma_pagamento, id_maquineta, id_bandeira, valor_pago }) => ({
                 id_forma_pagamento,
                 id_maquineta,
+                id_bandeira,
                 valor_pago,
                 status_pagamento: "pago",
               }),
@@ -853,9 +886,10 @@ export function ModalCaixaAgendamento({
     try {
       const body = {
         pagamentos: pagamentos.map(
-          ({ id_forma_pagamento, id_maquineta, valor_pago }) => ({
+          ({ id_forma_pagamento, id_maquineta, id_bandeira, valor_pago }) => ({
             id_forma_pagamento,
             id_maquineta,
+            id_bandeira,
             valor_pago,
             status_pagamento: "pago" as const,
           }),
@@ -991,9 +1025,19 @@ export function ModalCaixaAgendamento({
     return formasPg.find((f) => f.id === id)?.nome ?? `#${id}`;
   }
 
+  function formaEhCartao(idForma: number) {
+    const f = formasPg.find((x) => x.id === idForma);
+    return formaPagamentoEhCartao(f?.agrupamento_caixa, f?.nome);
+  }
+
   function nomeMaquineta(id: number | null) {
     if (id == null) return "—";
     return maquinetas.find((m) => m.id === id)?.nome ?? `#${id}`;
+  }
+
+  function nomeBandeira(id: number | null) {
+    if (id == null) return "—";
+    return bandeiras.find((b) => b.id === id)?.nome_bandeira ?? `#${id}`;
   }
 
   return (
@@ -1145,6 +1189,9 @@ export function ModalCaixaAgendamento({
                                     {nomeForma(p.id_forma_pagamento)}
                                     {p.id_maquineta != null
                                       ? ` · ${nomeMaquineta(p.id_maquineta)}`
+                                      : ""}
+                                    {p.id_bandeira != null
+                                      ? ` · ${nomeBandeira(p.id_bandeira)}`
                                       : ""}{" "}
                                     ·{" "}
                                     <span className="badge badge-success">
@@ -1506,6 +1553,9 @@ export function ModalCaixaAgendamento({
                                     {p.id_maquineta != null
                                       ? ` · ${nomeMaquineta(p.id_maquineta)}`
                                       : ""}
+                                    {p.id_bandeira != null
+                                      ? ` · ${nomeBandeira(p.id_bandeira)}`
+                                      : ""}
                                   </li>
                                 ))
                               )}
@@ -1605,19 +1655,27 @@ export function ModalCaixaAgendamento({
                                 {caixaBusy ? "Verificando caixa…" : "+ Pagamento"}
                               </button>
                             </div>
-                            {pagamentos.map((linha, idx) => (
+                            {pagamentos.map((linha, idx) => {
+                              const linhaCartao = formaEhCartao(linha.id_forma_pagamento);
+                              return (
                               <div key={idx} className="form-row align-items-end mb-2">
-                                <div className="form-group col-md-4 mb-0">
+                                <div className="form-group col-md-3 mb-0">
                                   <label className="small">Forma</label>
                                   <select
                                     className="form-control form-control-sm"
                                     value={linha.id_forma_pagamento || ""}
                                     onChange={(e) => {
                                       const v = Number(e.target.value);
+                                      const cartao = formaEhCartao(v);
                                       setPagamentos((prev) =>
                                         prev.map((p, i) =>
                                           i === idx
-                                            ? { ...p, id_forma_pagamento: v }
+                                            ? {
+                                                ...p,
+                                                id_forma_pagamento: v,
+                                                id_maquineta: cartao ? p.id_maquineta : null,
+                                                id_bandeira: cartao ? p.id_bandeira : null,
+                                              }
                                             : p,
                                         ),
                                       );
@@ -1630,35 +1688,69 @@ export function ModalCaixaAgendamento({
                                     ))}
                                   </select>
                                 </div>
-                                <div className="form-group col-md-4 mb-0">
-                                  <label className="small">Maquineta</label>
-                                  <select
-                                    className="form-control form-control-sm"
-                                    value={linha.id_maquineta ?? ""}
-                                    onChange={(e) => {
-                                      const v = e.target.value;
-                                      setPagamentos((prev) =>
-                                        prev.map((p, i) =>
-                                          i === idx
-                                            ? {
-                                                ...p,
-                                                id_maquineta:
-                                                  v === "" ? null : Number(v),
-                                              }
-                                            : p,
-                                        ),
-                                      );
-                                    }}
-                                  >
-                                    <option value="">—</option>
-                                    {maquinetas.map((m) => (
-                                      <option key={m.id} value={m.id}>
-                                        {m.nome}
-                                      </option>
-                                    ))}
-                                  </select>
-                                </div>
-                                <div className="form-group col-md-3 mb-0">
+                                {linhaCartao ? (
+                                  <>
+                                    <div className="form-group col-md-3 mb-0">
+                                      <label className="small">Maquineta</label>
+                                      <select
+                                        className="form-control form-control-sm"
+                                        value={linha.id_maquineta ?? ""}
+                                        onChange={(e) => {
+                                          const v = e.target.value;
+                                          setPagamentos((prev) =>
+                                            prev.map((p, i) =>
+                                              i === idx
+                                                ? {
+                                                    ...p,
+                                                    id_maquineta:
+                                                      v === "" ? null : Number(v),
+                                                  }
+                                                : p,
+                                            ),
+                                          );
+                                        }}
+                                      >
+                                        <option value="">Selecione…</option>
+                                        {maquinetas.map((m) => (
+                                          <option key={m.id} value={m.id}>
+                                            {m.nome}
+                                          </option>
+                                        ))}
+                                      </select>
+                                    </div>
+                                    <div className="form-group col-md-3 mb-0">
+                                      <label className="small">Bandeira</label>
+                                      <select
+                                        className="form-control form-control-sm"
+                                        value={linha.id_bandeira ?? ""}
+                                        onChange={(e) => {
+                                          const v = e.target.value;
+                                          setPagamentos((prev) =>
+                                            prev.map((p, i) =>
+                                              i === idx
+                                                ? {
+                                                    ...p,
+                                                    id_bandeira:
+                                                      v === "" ? null : Number(v),
+                                                  }
+                                                : p,
+                                            ),
+                                          );
+                                        }}
+                                      >
+                                        <option value="">Selecione…</option>
+                                        {bandeiras.map((b) => (
+                                          <option key={b.id} value={b.id}>
+                                            {b.nome_bandeira}
+                                          </option>
+                                        ))}
+                                      </select>
+                                    </div>
+                                  </>
+                                ) : null}
+                                <div
+                                  className={`form-group mb-0 ${linhaCartao ? "col-md-2" : "col-md-6"}`}
+                                >
                                   <label className="small">Valor (R$)</label>
                                   <input
                                     type="text"
@@ -1714,7 +1806,8 @@ export function ModalCaixaAgendamento({
                                   </button>
                                 </div>
                               </div>
-                            ))}
+                              );
+                            })}
                           </>
                             )}
                           </>

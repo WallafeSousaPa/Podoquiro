@@ -2,12 +2,11 @@
 
 import { useRouter } from "next/navigation";
 import { type FormEvent, type ReactNode, useEffect, useId, useState } from "react";
-import { formatarCnpj } from "@/lib/documentos/cnpj";
 
-type MaquinetaRow = {
+type BandeiraRow = {
   id: number;
-  nome: string;
-  cnpj: string | null;
+  codigo: string;
+  nome_bandeira: string;
   ativo: boolean;
 };
 
@@ -39,33 +38,30 @@ function ModalBackdrop({
 }
 
 type Props = {
-  maquinetas: MaquinetaRow[];
+  bandeiras: BandeiraRow[];
   loadError?: string | null;
 };
 
-export function MaquinetasClient({
-  maquinetas: maquinetasProp,
-  loadError,
-}: Props) {
+export function BandeirasClient({ bandeiras: bandeirasProp, loadError }: Props) {
   const router = useRouter();
   const modalTitleId = useId();
   const confirmTitleId = useId();
 
-  const [rows, setRows] = useState<MaquinetaRow[]>(maquinetasProp);
+  const [rows, setRows] = useState<BandeiraRow[]>(bandeirasProp);
   useEffect(() => {
-    setRows(maquinetasProp);
-  }, [maquinetasProp]);
+    setRows(bandeirasProp);
+  }, [bandeirasProp]);
 
   const [modalOpen, setModalOpen] = useState(false);
-  const [editing, setEditing] = useState<MaquinetaRow | null>(null);
-  const [nome, setNome] = useState("");
-  const [cnpj, setCnpj] = useState("");
+  const [editing, setEditing] = useState<BandeiraRow | null>(null);
+  const [codigo, setCodigo] = useState("");
+  const [nomeBandeira, setNomeBandeira] = useState("");
   const [ativo, setAtivo] = useState(true);
   const [saving, setSaving] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
   const [listError, setListError] = useState<string | null>(null);
   const [confirmStatus, setConfirmStatus] = useState<{
-    row: MaquinetaRow;
+    row: BandeiraRow;
     acao: "ativar" | "inativar";
   } | null>(null);
   const [changingStatus, setChangingStatus] = useState(false);
@@ -75,8 +71,8 @@ export function MaquinetasClient({
 
   function resetForm() {
     setEditing(null);
-    setNome("");
-    setCnpj("");
+    setCodigo("");
+    setNomeBandeira("");
     setAtivo(true);
     setFormError(null);
   }
@@ -87,10 +83,10 @@ export function MaquinetasClient({
     setModalOpen(true);
   }
 
-  function openEdit(row: MaquinetaRow) {
+  function openEdit(row: BandeiraRow) {
     setEditing(row);
-    setNome(row.nome);
-    setCnpj(row.cnpj ? formatarCnpj(row.cnpj) : "");
+    setCodigo(row.codigo);
+    setNomeBandeira(row.nome_bandeira);
     setAtivo(row.ativo);
     setFormError(null);
     setModalOpen(true);
@@ -103,9 +99,14 @@ export function MaquinetasClient({
 
   async function submit(e: FormEvent) {
     e.preventDefault();
-    const nomeTrim = nome.trim();
+    const codigoTrim = codigo.trim();
+    const nomeTrim = nomeBandeira.trim();
+    if (!codigoTrim) {
+      setFormError("Informe o código da bandeira (2 dígitos).");
+      return;
+    }
     if (!nomeTrim) {
-      setFormError("Informe o nome da maquineta.");
+      setFormError("Informe o nome da bandeira.");
       return;
     }
 
@@ -113,11 +114,11 @@ export function MaquinetasClient({
     setFormError(null);
     try {
       const payload: Record<string, unknown> = {
-        nome: nomeTrim,
-        cnpj: cnpj.trim() || null,
+        codigo: codigoTrim,
+        nome_bandeira: nomeTrim,
         ativo,
       };
-      const url = editing ? `/api/maquinetas/${editing.id}` : "/api/maquinetas";
+      const url = editing ? `/api/bandeiras/${editing.id}` : "/api/bandeiras";
       const method = editing ? "PATCH" : "POST";
       const res = await fetch(url, {
         method,
@@ -125,20 +126,18 @@ export function MaquinetasClient({
         body: JSON.stringify(payload),
       });
       const json = (await res.json().catch(() => ({}))) as { error?: string };
-      if (!res.ok) throw new Error(json.error ?? "Erro ao salvar maquineta.");
+      if (!res.ok) throw new Error(json.error ?? "Erro ao salvar bandeira.");
 
       closeModal();
       setFeedback({
-        title: editing ? "Maquineta atualizada" : "Maquineta cadastrada",
+        title: editing ? "Bandeira atualizada" : "Bandeira cadastrada",
         message: editing
           ? `As alterações em "${nomeTrim}" foram salvas.`
-          : `A maquineta "${nomeTrim}" foi cadastrada com sucesso.`,
+          : `A bandeira "${nomeTrim}" foi cadastrada com sucesso.`,
       });
       router.refresh();
     } catch (err) {
-      setFormError(
-        err instanceof Error ? err.message : "Erro ao salvar maquineta.",
-      );
+      setFormError(err instanceof Error ? err.message : "Erro ao salvar bandeira.");
     } finally {
       setSaving(false);
     }
@@ -150,7 +149,7 @@ export function MaquinetasClient({
     setListError(null);
     try {
       const novoAtivo = confirmStatus.acao === "ativar";
-      const res = await fetch(`/api/maquinetas/${confirmStatus.row.id}`, {
+      const res = await fetch(`/api/bandeiras/${confirmStatus.row.id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ ativo: novoAtivo }),
@@ -162,10 +161,10 @@ export function MaquinetasClient({
         return;
       }
       setFeedback({
-        title: novoAtivo ? "Maquineta ativada" : "Maquineta desativada",
+        title: novoAtivo ? "Bandeira ativada" : "Bandeira desativada",
         message: novoAtivo
-          ? `"${confirmStatus.row.nome}" foi ativada.`
-          : `"${confirmStatus.row.nome}" foi desativada.`,
+          ? `"${confirmStatus.row.nome_bandeira}" foi ativada.`
+          : `"${confirmStatus.row.nome_bandeira}" foi desativada.`,
       });
       setConfirmStatus(null);
       router.refresh();
@@ -200,13 +199,9 @@ export function MaquinetasClient({
 
       <div className="card card-outline card-primary">
         <div className="card-header d-flex flex-wrap justify-content-between align-items-center">
-          <h3 className="card-title mb-2 mb-sm-0">Maquinetas cadastradas</h3>
-          <button
-            type="button"
-            className="btn btn-primary btn-sm"
-            onClick={openCreate}
-          >
-            <i className="fas fa-plus mr-1" aria-hidden /> Nova maquineta
+          <h3 className="card-title mb-2 mb-sm-0">Bandeiras cadastradas</h3>
+          <button type="button" className="btn btn-primary btn-sm" onClick={openCreate}>
+            <i className="fas fa-plus mr-1" aria-hidden /> Nova bandeira
           </button>
         </div>
         <div className="card-body table-responsive p-0">
@@ -214,29 +209,25 @@ export function MaquinetasClient({
             <thead>
               <tr>
                 <th style={{ width: "70px" }}>ID</th>
+                <th style={{ width: "90px" }}>Código</th>
                 <th>Nome</th>
-                <th style={{ minWidth: "160px" }}>CNPJ</th>
                 <th style={{ width: "90px" }}>Status</th>
-                <th style={{ width: "220px" }} className="text-right">
-                  Ações
-                </th>
+                <th style={{ width: "220px" }} className="text-right">Ações</th>
               </tr>
             </thead>
             <tbody>
               {rows.length === 0 ? (
                 <tr>
                   <td colSpan={5} className="text-center text-muted py-4">
-                    Nenhuma maquineta cadastrada.
+                    Nenhuma bandeira cadastrada.
                   </td>
                 </tr>
               ) : (
                 rows.map((row) => (
                   <tr key={row.id}>
                     <td>{row.id}</td>
-                    <td>{row.nome}</td>
-                    <td className="text-nowrap">
-                      {row.cnpj ? formatarCnpj(row.cnpj) : "—"}
-                    </td>
+                    <td>{row.codigo}</td>
+                    <td>{row.nome_bandeira}</td>
                     <td>
                       {row.ativo ? (
                         <span className="badge badge-success">Ativo</span>
@@ -285,7 +276,7 @@ export function MaquinetasClient({
               <form onSubmit={(e) => void submit(e)}>
                 <div className="modal-header">
                   <h5 className="modal-title" id={modalTitleId}>
-                    {editing ? "Editar maquineta" : "Nova maquineta"}
+                    {editing ? "Editar bandeira" : "Nova bandeira"}
                   </h5>
                   <button type="button" className="close" onClick={closeModal}>
                     <span aria-hidden="true">&times;</span>
@@ -299,30 +290,32 @@ export function MaquinetasClient({
                   ) : null}
 
                   <div className="form-group">
-                    <label htmlFor="maquineta-nome">Nome</label>
+                    <label htmlFor="bandeira-codigo">Código (tBand)</label>
                     <input
-                      id="maquineta-nome"
+                      id="bandeira-codigo"
                       className="form-control"
-                      placeholder="Ex.: Ton, Mercado Pago, Rede"
-                      value={nome}
-                      onChange={(e) => setNome(e.target.value)}
+                      placeholder="Ex.: 01, 02, 99"
+                      value={codigo}
+                      onChange={(e) => setCodigo(e.target.value)}
+                      maxLength={2}
                       required
                     />
+                    <small className="form-text text-muted">
+                      Código de 2 dígitos usado na NFC-e (ex.: 01 Visa, 02 Mastercard, 99
+                      Outros).
+                    </small>
                   </div>
 
                   <div className="form-group">
-                    <label htmlFor="maquineta-cnpj">CNPJ da credenciadora</label>
+                    <label htmlFor="bandeira-nome">Nome da bandeira</label>
                     <input
-                      id="maquineta-cnpj"
+                      id="bandeira-nome"
                       className="form-control"
-                      placeholder="00.000.000/0001-00"
-                      value={cnpj}
-                      onChange={(e) => setCnpj(e.target.value)}
+                      placeholder="Ex.: Visa, Mastercard, Elo"
+                      value={nomeBandeira}
+                      onChange={(e) => setNomeBandeira(e.target.value)}
+                      required
                     />
-                    <small className="form-text text-muted">
-                      CNPJ da adquirente (14 dígitos). Usado na NFC-e quando o pagamento
-                      usa esta maquineta.
-                    </small>
                   </div>
 
                   <div className="form-group mb-0">
@@ -330,11 +323,11 @@ export function MaquinetasClient({
                       <input
                         type="checkbox"
                         className="custom-control-input"
-                        id="maquineta-ativo"
+                        id="bandeira-ativo"
                         checked={ativo}
                         onChange={(e) => setAtivo(e.target.checked)}
                       />
-                      <label className="custom-control-label" htmlFor="maquineta-ativo">
+                      <label className="custom-control-label" htmlFor="bandeira-ativo">
                         Ativo
                       </label>
                     </div>
@@ -380,8 +373,8 @@ export function MaquinetasClient({
               <div className="modal-body">
                 <p className="mb-0">
                   {confirmStatus.acao === "ativar"
-                    ? `Ativar a maquineta "${confirmStatus.row.nome}"?`
-                    : `Desativar a maquineta "${confirmStatus.row.nome}"?`}
+                    ? `Ativar a bandeira "${confirmStatus.row.nome_bandeira}"?`
+                    : `Desativar a bandeira "${confirmStatus.row.nome_bandeira}"?`}
                 </p>
               </div>
               <div className="modal-footer">
@@ -396,9 +389,7 @@ export function MaquinetasClient({
                 <button
                   type="button"
                   className={
-                    confirmStatus.acao === "ativar"
-                      ? "btn btn-success"
-                      : "btn btn-danger"
+                    confirmStatus.acao === "ativar" ? "btn btn-success" : "btn btn-danger"
                   }
                   disabled={changingStatus}
                   onClick={() => void confirmarMudancaStatus()}
@@ -428,7 +419,11 @@ export function MaquinetasClient({
                 <p className="mb-0">{feedback.message}</p>
               </div>
               <div className="modal-footer border-0 pt-0">
-                <button type="button" className="btn btn-primary" onClick={() => setFeedback(null)}>
+                <button
+                  type="button"
+                  className="btn btn-primary"
+                  onClick={() => setFeedback(null)}
+                >
                   OK
                 </button>
               </div>

@@ -1,17 +1,13 @@
 import { NextResponse } from "next/server";
 import { getSession } from "@/lib/auth/session";
-import { normalizarCnpj14 } from "@/lib/documentos/cnpj";
 import { createAdminClient } from "@/lib/supabase/admin";
 
 type RouteContext = { params: Promise<{ id: string }> };
 
-function parseCnpjBody(raw: unknown): string | null | undefined {
-  if (raw === undefined) return undefined;
-  if (raw === null || raw === "") return null;
-  if (typeof raw !== "string") return null;
-  const n = normalizarCnpj14(raw);
-  if (!n) throw new Error("CNPJ inválido. Informe 14 dígitos.");
-  return n;
+function normalizarCodigoBandeira(raw: string): string | null {
+  const d = raw.replace(/\D/g, "");
+  if (d.length === 0 || d.length > 2) return null;
+  return d.padStart(2, "0").slice(0, 2);
 }
 
 export async function PATCH(request: Request, context: RouteContext) {
@@ -26,7 +22,7 @@ export async function PATCH(request: Request, context: RouteContext) {
     return NextResponse.json({ error: "ID inválido." }, { status: 400 });
   }
 
-  let body: { nome?: unknown; cnpj?: unknown; ativo?: unknown };
+  let body: { codigo?: unknown; nome_bandeira?: unknown; ativo?: unknown };
   try {
     body = await request.json();
   } catch {
@@ -36,7 +32,7 @@ export async function PATCH(request: Request, context: RouteContext) {
   const supabase = createAdminClient();
 
   const { data: existe, error: checkErr } = await supabase
-    .from("maquinetas")
+    .from("bandeiras")
     .select("id")
     .eq("id", id)
     .maybeSingle();
@@ -46,31 +42,30 @@ export async function PATCH(request: Request, context: RouteContext) {
     return NextResponse.json({ error: checkErr.message }, { status: 500 });
   }
   if (!existe) {
-    return NextResponse.json(
-      { error: "Maquineta não encontrada." },
-      { status: 404 },
-    );
+    return NextResponse.json({ error: "Bandeira não encontrada." }, { status: 404 });
   }
 
   const patch: Record<string, unknown> = {};
 
-  if (typeof body.nome !== "undefined") {
-    if (typeof body.nome !== "string" || !body.nome.trim()) {
+  if (typeof body.codigo !== "undefined") {
+    if (typeof body.codigo !== "string") {
+      return NextResponse.json({ error: "Código inválido." }, { status: 400 });
+    }
+    const codigo = normalizarCodigoBandeira(body.codigo.trim());
+    if (!codigo) {
       return NextResponse.json(
-        { error: "Nome da maquineta inválido." },
+        { error: "Código da bandeira inválido (use 2 dígitos)." },
         { status: 400 },
       );
     }
-    patch.nome = body.nome.trim();
+    patch.codigo = codigo;
   }
 
-  if (typeof body.cnpj !== "undefined") {
-    try {
-      patch.cnpj = parseCnpjBody(body.cnpj);
-    } catch (e) {
-      const msg = e instanceof Error ? e.message : "CNPJ inválido.";
-      return NextResponse.json({ error: msg }, { status: 400 });
+  if (typeof body.nome_bandeira !== "undefined") {
+    if (typeof body.nome_bandeira !== "string" || !body.nome_bandeira.trim()) {
+      return NextResponse.json({ error: "Nome da bandeira inválido." }, { status: 400 });
     }
+    patch.nome_bandeira = body.nome_bandeira.trim();
   }
 
   if (typeof body.ativo !== "undefined") {
@@ -85,17 +80,17 @@ export async function PATCH(request: Request, context: RouteContext) {
   }
 
   const { data, error } = await supabase
-    .from("maquinetas")
+    .from("bandeiras")
     .update(patch)
     .eq("id", id)
-    .select("id, nome, cnpj, ativo")
+    .select("id, codigo, nome_bandeira, ativo")
     .single();
 
   if (error) {
     console.error(error);
     if (error.code === "23505") {
       return NextResponse.json(
-        { error: "Já existe uma maquineta com esse nome." },
+        { error: "Já existe bandeira com esse código ou nome." },
         { status: 409 },
       );
     }

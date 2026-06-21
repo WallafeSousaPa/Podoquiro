@@ -53,11 +53,24 @@ function nomePaciente(
 }
 
 /** Mapeia forma de pagamento do caixa ao código `tPag` da NFC-e. */
-export function tPagDeFormaPagamento(nome: string | null | undefined): string {
+export function tPagDeFormaPagamento(
+  nome: string | null | undefined,
+  agrupamentoCaixa?: string | null,
+): string {
+  const ag = agrupamentoCaixa?.trim().toLowerCase();
+  if (ag === "pix") return "17";
+  if (ag === "cartao_credito") return "03";
+  if (ag === "cartao_debito") return "04";
+  if (ag === "dinheiro") return "01";
+
   const n = (nome ?? "").toLowerCase();
   if (n.includes("pix")) return "17";
   if (n.includes("crédito") || n.includes("credito")) return "03";
   if (n.includes("débito") || n.includes("debito")) return "04";
+  if (n.includes("cart") || n.includes("cartao") || n.includes("cartão")) {
+    if (n.includes("deb")) return "04";
+    return "03";
+  }
   if (n.includes("dinheiro")) return "01";
   if (n.includes("cheque")) return "02";
   return "99";
@@ -92,8 +105,9 @@ export async function carregarContextoNfceAtendimento(
         pagamentos (
           valor_pago,
           status_pagamento,
-          formas_pagamento ( nome ),
-          maquinetas ( nome )
+          formas_pagamento ( nome, agrupamento_caixa ),
+          maquinetas ( nome, cnpj ),
+          bandeiras ( codigo, nome_bandeira )
         )
       `,
     )
@@ -111,8 +125,12 @@ export async function carregarContextoNfceAtendimento(
     | {
         valor_pago: number;
         status_pagamento: string;
-        formas_pagamento: { nome: string | null } | { nome: string | null }[] | null;
-        maquinetas: { nome: string | null } | { nome: string | null }[] | null;
+        formas_pagamento:
+          | { nome: string | null; agrupamento_caixa: string | null }
+          | { nome: string | null; agrupamento_caixa: string | null }[]
+          | null;
+        maquinetas: { nome: string | null; cnpj: string | null } | { nome: string | null; cnpj: string | null }[] | null;
+        bandeiras: { codigo: string | null; nome_bandeira: string | null } | { codigo: string | null; nome_bandeira: string | null }[] | null;
       }[]
     | null;
   const pagamentos = (pagsRaw ?? []).map((pg) => {
@@ -120,13 +138,23 @@ export async function carregarContextoNfceAtendimento(
     const fp0 = Array.isArray(fp) ? fp[0] : fp;
     const mq = pg.maquinetas;
     const mq0 = Array.isArray(mq) ? mq[0] : mq;
+    const br = pg.bandeiras;
+    const br0 = Array.isArray(br) ? br[0] : br;
     const forma = fp0?.nome ?? null;
+    const agrupamento_caixa = fp0?.agrupamento_caixa ?? null;
+    const bandeira_codigo = br0?.codigo
+      ? String(br0.codigo).replace(/\D/g, "").padStart(2, "0").slice(0, 2)
+      : null;
     return {
       valor_pago: Number(pg.valor_pago),
       status_pagamento: String(pg.status_pagamento),
       forma,
       maquineta: mq0?.nome ?? null,
-      t_pag: tPagDeFormaPagamento(forma),
+      maquineta_cnpj: mq0?.cnpj ? String(mq0.cnpj).replace(/\D/g, "") : null,
+      bandeira_codigo,
+      bandeira_nome: br0?.nome_bandeira ?? null,
+      agrupamento_caixa,
+      t_pag: tPagDeFormaPagamento(forma, agrupamento_caixa),
     };
   });
   if (!agendamentoPagamentoQuitado(pagamentos)) {

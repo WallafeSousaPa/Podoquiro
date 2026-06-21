@@ -758,6 +758,19 @@ export function DashboardShell({
                       </li>
                       <li className="nav-item">
                         <Link
+                          href="/financeiro/parametrizacao/bandeiras"
+                          className={cx(
+                            "nav-link",
+                            pathname === "/financeiro/parametrizacao/bandeiras" &&
+                              "active",
+                          )}
+                        >
+                          <i className="far fa-dot-circle nav-icon" />
+                          <p>Bandeiras</p>
+                        </Link>
+                      </li>
+                      <li className="nav-item">
+                        <Link
                           href="/financeiro/parametrizacao/tipos-pagamento"
                           className={cx(
                             "nav-link",

@@ -1,6 +1,16 @@
 import { NextResponse } from "next/server";
 import { getSession } from "@/lib/auth/session";
+import { normalizarCnpj14 } from "@/lib/documentos/cnpj";
 import { createAdminClient } from "@/lib/supabase/admin";
+
+function parseCnpjBody(raw: unknown): string | null | undefined {
+  if (raw === undefined) return undefined;
+  if (raw === null || raw === "") return null;
+  if (typeof raw !== "string") return null;
+  const n = normalizarCnpj14(raw);
+  if (!n) throw new Error("CNPJ inválido. Informe 14 dígitos.");
+  return n;
+}
 
 export async function GET() {
   const session = await getSession();
@@ -11,7 +21,7 @@ export async function GET() {
   const supabase = createAdminClient();
   const { data, error } = await supabase
     .from("maquinetas")
-    .select("id, nome, ativo")
+    .select("id, nome, cnpj, ativo")
     .order("nome", { ascending: true });
 
   if (error) {
@@ -28,7 +38,7 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Não autorizado." }, { status: 401 });
   }
 
-  let body: { nome?: unknown; ativo?: unknown };
+  let body: { nome?: unknown; cnpj?: unknown; ativo?: unknown };
   try {
     body = await request.json();
   } catch {
@@ -43,13 +53,22 @@ export async function POST(request: Request) {
     );
   }
 
+  let cnpj: string | null = null;
+  try {
+    const parsed = parseCnpjBody(body.cnpj);
+    if (parsed !== undefined) cnpj = parsed;
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : "CNPJ inválido.";
+    return NextResponse.json({ error: msg }, { status: 400 });
+  }
+
   const ativo = typeof body.ativo === "boolean" ? body.ativo : true;
 
   const supabase = createAdminClient();
   const { data, error } = await supabase
     .from("maquinetas")
-    .insert({ nome, ativo })
-    .select("id, nome, ativo")
+    .insert({ nome, cnpj, ativo })
+    .select("id, nome, cnpj, ativo")
     .single();
 
   if (error) {

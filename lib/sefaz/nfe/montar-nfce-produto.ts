@@ -57,8 +57,12 @@ export type PagamentoDetNfce = {
   card?: {
     /** 1 = TEF integrado; 2 = POS não integrado (maquineta). */
     tpIntegra: "1" | "2";
-    tBand?: string;
-    cAut?: string;
+    /** Bandeira (obrigatório com cartão). */
+    tBand: string;
+    /** CNPJ da credenciadora (14 dígitos). */
+    cnpj14: string;
+    /** Código de autorização / NSU (obrigatório na NFC-e; use 0 se POS não integrado). */
+    cAut: string;
   };
 };
 
@@ -275,10 +279,14 @@ export function montarNfceXmlProduto(opts: MontarNfceProdutoOpts): string {
       const card = el(doc, detPag, "card");
       const tpIntegra = lp.card?.tpIntegra ?? "2";
       el(doc, card, "tpIntegra", tpIntegra);
-      const tBand = lp.card?.tBand?.replace(/\D/g, "").padStart(2, "0").slice(0, 2);
-      if (tBand) el(doc, card, "tBand", tBand);
-      const cAut = lp.card?.cAut?.trim();
-      if (cAut) el(doc, card, "cAut", cAut.slice(0, 20));
+      const tBand = (lp.card?.tBand ?? "99").replace(/\D/g, "").padStart(2, "0").slice(0, 2);
+      el(doc, card, "tBand", tBand);
+      const cnpj = (lp.card?.cnpj14 ?? "").replace(/\D/g, "");
+      if (cnpj.length === 14) {
+        el(doc, card, "CNPJ", cnpj);
+      }
+      const cAut = (lp.card?.cAut ?? "0").trim().slice(0, 20) || "0";
+      el(doc, card, "cAut", cAut);
     }
   }
 
