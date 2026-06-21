@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { QRCodeSVG } from "qrcode.react";
 
 type ProdutoApi = {
   id: string;
@@ -34,6 +35,8 @@ type EmissaoResposta = {
   cStatLote?: string | null;
   xMotivo?: string;
   protocolo?: string | null;
+  qrCode?: string;
+  urlChave?: string;
   error?: string;
 };
 
@@ -51,13 +54,6 @@ function precoBase(p: ProdutoApi): number {
 const DEST_VAZIO = {
   documento: "",
   x_nome: "",
-  x_lgr: "",
-  nro: "",
-  x_bairro: "",
-  c_mun: "",
-  x_mun: "",
-  uf: "",
-  cep: "",
 };
 
 export function ModalEmissaoNfce({ aberto, onFechar, onEmitido }: Props) {
@@ -67,7 +63,7 @@ export function ModalEmissaoNfce({ aberto, onFechar, onEmitido }: Props) {
   const [itens, setItens] = useState<ItemSelecionado[]>([]);
   const [dest, setDest] = useState({ ...DEST_VAZIO });
   const [naturezaOperacao, setNaturezaOperacao] = useState(
-    "VENDA DE MERCADORIA",
+    "VENDA AO CONSUMIDOR",
   );
 
   const [enviando, setEnviando] = useState(false);
@@ -78,7 +74,7 @@ export function ModalEmissaoNfce({ aberto, onFechar, onEmitido }: Props) {
     setBusca("");
     setItens([]);
     setDest({ ...DEST_VAZIO });
-    setNaturezaOperacao("VENDA DE MERCADORIA");
+    setNaturezaOperacao("VENDA AO CONSUMIDOR");
     setErro(null);
     setResultado(null);
     setEnviando(false);
@@ -169,33 +165,28 @@ export function ModalEmissaoNfce({ aberto, onFechar, onEmitido }: Props) {
     }
 
     const doc = dest.documento.replace(/\D/g, "");
-    if (doc.length !== 11 && doc.length !== 14) {
-      setErro("Informe um CPF (11 dígitos) ou CNPJ (14 dígitos) do destinatário.");
+    if (doc.length > 0 && doc.length !== 11 && doc.length !== 14) {
+      setErro("CPF deve ter 11 dígitos ou CNPJ 14 dígitos (ou deixe em branco para consumidor não identificado).");
       return;
     }
 
-    const destinatario: Record<string, string> = {
-      x_nome: dest.x_nome.trim(),
-      x_lgr: dest.x_lgr.trim(),
-      nro: dest.nro.trim(),
-      x_bairro: dest.x_bairro.trim(),
-      c_mun: dest.c_mun.replace(/\D/g, ""),
-      x_mun: dest.x_mun.trim(),
-      uf: dest.uf.trim().toUpperCase(),
-      cep: dest.cep.replace(/\D/g, ""),
-    };
-    if (doc.length === 11) destinatario.cpf = doc;
-    else destinatario.cnpj = doc;
+    let destinatario: Record<string, string> | undefined;
+    if (doc.length === 11 || doc.length === 14) {
+      destinatario = {};
+      if (dest.x_nome.trim()) destinatario.x_nome = dest.x_nome.trim();
+      if (doc.length === 11) destinatario.cpf = doc;
+      else destinatario.cnpj = doc;
+    }
 
     setEnviando(true);
     try {
-      const res = await fetch("/api/nfe/emitir-produto", {
+      const res = await fetch("/api/nfce/emitir", {
         method: "POST",
         credentials: "include",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          natureza_operacao: naturezaOperacao.trim() || "VENDA DE MERCADORIA",
-          destinatario,
+          natureza_operacao: naturezaOperacao.trim() || "VENDA AO CONSUMIDOR",
+          ...(destinatario ? { destinatario } : {}),
           itens: itens.map((i) => ({
             id_produto: i.id_produto,
             quantidade: i.quantidade,
@@ -204,7 +195,12 @@ export function ModalEmissaoNfce({ aberto, onFechar, onEmitido }: Props) {
       });
       const j = (await res.json()) as EmissaoResposta;
       if (!res.ok) {
-        setErro(j.error ?? "Falha ao emitir a nota.");
+        setErro(j.error ?? j.xMotivo ?? "Falha ao emitir a nota.");
+        setResultado(j);
+        return;
+      }
+      if (!j.ok) {
+        setErro(j.error ?? j.xMotivo ?? "A SEFAZ rejeitou a nota.");
         setResultado(j);
         return;
       }
@@ -233,7 +229,7 @@ export function ModalEmissaoNfce({ aberto, onFechar, onEmitido }: Props) {
           <div className="modal-header">
             <h5 className="modal-title">
               <i className="fas fa-file-invoice mr-2" aria-hidden />
-              Emitir nota de produto
+              Emitir NFC-e (modelo 65)
             </h5>
             <button
               type="button"
@@ -254,7 +250,7 @@ export function ModalEmissaoNfce({ aberto, onFechar, onEmitido }: Props) {
                 {autorizada ? (
                   <>
                     <i className="fas fa-check-circle mr-1" aria-hidden />
-                    Nota autorizada! Nº {resultado.nNF} / série {resultado.serie}.
+                    NFC-e autorizada! Nº {resultado.nNF} / série {resultado.serie}.
                     {resultado.protocolo ? (
                       <div className="small mt-1">
                         Protocolo: {resultado.protocolo}
@@ -263,6 +259,30 @@ export function ModalEmissaoNfce({ aberto, onFechar, onEmitido }: Props) {
                     {resultado.chave ? (
                       <div className="small text-monospace mt-1" style={{ wordBreak: "break-all" }}>
                         {resultado.chave}
+                      </div>
+                    ) : null}
+                    {resultado.qrCode ? (
+                      <div className="text-center mt-3">
+                        <div
+                          className="d-inline-block bg-white p-2 border rounded"
+                          aria-label="QR Code da NFC-e"
+                        >
+                          <QRCodeSVG value={resultado.qrCode} size={180} level="M" />
+                        </div>
+                        <div className="small text-muted mt-2">
+                          Consulte pela chave de acesso em:
+                        </div>
+                        {resultado.urlChave ? (
+                          <div className="small text-monospace" style={{ wordBreak: "break-all" }}>
+                            <a
+                              href={resultado.urlChave}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                            >
+                              {resultado.urlChave}
+                            </a>
+                          </div>
+                        ) : null}
                       </div>
                     ) : null}
                   </>
@@ -416,7 +436,12 @@ export function ModalEmissaoNfce({ aberto, onFechar, onEmitido }: Props) {
                 </div>
 
                 <hr />
-                <h6 className="mb-2">Destinatário</h6>
+                <h6 className="mb-2">
+                  Destinatário{" "}
+                  <span className="text-muted small font-weight-normal">
+                    (opcional — consumidor não identificado)
+                  </span>
+                </h6>
                 <div className="row">
                   <div className="col-12 col-md-4">
                     <div className="form-group">
@@ -425,6 +450,7 @@ export function ModalEmissaoNfce({ aberto, onFechar, onEmitido }: Props) {
                         id="nfce-dest-doc"
                         type="text"
                         className="form-control"
+                        placeholder="Deixe em branco se não houver"
                         value={dest.documento}
                         onChange={(e) => setDestCampo("documento", e.target.value)}
                       />
@@ -432,99 +458,13 @@ export function ModalEmissaoNfce({ aberto, onFechar, onEmitido }: Props) {
                   </div>
                   <div className="col-12 col-md-8">
                     <div className="form-group">
-                      <label htmlFor="nfce-dest-nome">Nome / Razão social</label>
+                      <label htmlFor="nfce-dest-nome">Nome (opcional)</label>
                       <input
                         id="nfce-dest-nome"
                         type="text"
                         className="form-control"
                         value={dest.x_nome}
                         onChange={(e) => setDestCampo("x_nome", e.target.value)}
-                      />
-                    </div>
-                  </div>
-                  <div className="col-12 col-md-8">
-                    <div className="form-group">
-                      <label htmlFor="nfce-dest-lgr">Logradouro</label>
-                      <input
-                        id="nfce-dest-lgr"
-                        type="text"
-                        className="form-control"
-                        value={dest.x_lgr}
-                        onChange={(e) => setDestCampo("x_lgr", e.target.value)}
-                      />
-                    </div>
-                  </div>
-                  <div className="col-6 col-md-4">
-                    <div className="form-group">
-                      <label htmlFor="nfce-dest-nro">Número</label>
-                      <input
-                        id="nfce-dest-nro"
-                        type="text"
-                        className="form-control"
-                        value={dest.nro}
-                        onChange={(e) => setDestCampo("nro", e.target.value)}
-                      />
-                    </div>
-                  </div>
-                  <div className="col-6 col-md-4">
-                    <div className="form-group">
-                      <label htmlFor="nfce-dest-bairro">Bairro</label>
-                      <input
-                        id="nfce-dest-bairro"
-                        type="text"
-                        className="form-control"
-                        value={dest.x_bairro}
-                        onChange={(e) => setDestCampo("x_bairro", e.target.value)}
-                      />
-                    </div>
-                  </div>
-                  <div className="col-6 col-md-4">
-                    <div className="form-group">
-                      <label htmlFor="nfce-dest-cmun">Cód. município (IBGE)</label>
-                      <input
-                        id="nfce-dest-cmun"
-                        type="text"
-                        className="form-control"
-                        placeholder="7 dígitos"
-                        value={dest.c_mun}
-                        onChange={(e) => setDestCampo("c_mun", e.target.value)}
-                      />
-                    </div>
-                  </div>
-                  <div className="col-6 col-md-4">
-                    <div className="form-group">
-                      <label htmlFor="nfce-dest-mun">Município</label>
-                      <input
-                        id="nfce-dest-mun"
-                        type="text"
-                        className="form-control"
-                        value={dest.x_mun}
-                        onChange={(e) => setDestCampo("x_mun", e.target.value)}
-                      />
-                    </div>
-                  </div>
-                  <div className="col-6 col-md-2">
-                    <div className="form-group">
-                      <label htmlFor="nfce-dest-uf">UF</label>
-                      <input
-                        id="nfce-dest-uf"
-                        type="text"
-                        maxLength={2}
-                        className="form-control text-uppercase"
-                        value={dest.uf}
-                        onChange={(e) => setDestCampo("uf", e.target.value)}
-                      />
-                    </div>
-                  </div>
-                  <div className="col-6 col-md-2">
-                    <div className="form-group">
-                      <label htmlFor="nfce-dest-cep">CEP</label>
-                      <input
-                        id="nfce-dest-cep"
-                        type="text"
-                        className="form-control"
-                        value={dest.cep}
-                        onChange={(e) => setDestCampo("cep", e.target.value)}
                       />
                     </div>
                   </div>
@@ -542,8 +482,8 @@ export function ModalEmissaoNfce({ aberto, onFechar, onEmitido }: Props) {
                   </div>
                 </div>
                 <p className="text-muted small mt-2 mb-0">
-                  Esta emissão usa NF-e modelo 55 de mercadoria, nacional e na
-                  mesma UF do emitente.
+                  Esta emissão usa NFC-e modelo 65 (consumidor final, operação
+                  interna), autorizada pelo SVRS com QR Code.
                 </p>
               </>
             ) : null}

@@ -1,6 +1,7 @@
 "use client";
 
 import { limitesSemanaInclusive } from "@/lib/agenda/datas-agenda";
+import { gerarDanfeNfcePdfUrl } from "@/lib/client/render-danfe-nfce-pdf";
 import { useCallback, useEffect, useState } from "react";
 import { ModalEmissaoNfce } from "./modal-emissao-nfce";
 
@@ -103,6 +104,26 @@ export function NfceClient() {
   const [testando, setTestando] = useState(false);
   const [testeResultado, setTesteResultado] = useState<TesteSefaz | null>(null);
 
+  const [danfeCarregando, setDanfeCarregando] = useState<string | null>(null);
+
+  const imprimirDanfe = useCallback(async (id: string) => {
+    setDanfeCarregando(id);
+    setError(null);
+    try {
+      const res = await fetch(`/api/nfce/danfe-dados?id=${encodeURIComponent(id)}`, {
+        credentials: "include",
+      });
+      const j = await res.json();
+      if (!res.ok) throw new Error(j.error ?? "Falha ao carregar dados do DANFE.");
+      const url = await gerarDanfeNfcePdfUrl(j);
+      window.open(url, "_blank", "noopener,noreferrer");
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Falha ao gerar o DANFE.");
+    } finally {
+      setDanfeCarregando(null);
+    }
+  }, []);
+
   const carregar = useCallback(async () => {
     setLoading(true);
     setError(null);
@@ -110,6 +131,7 @@ export function NfceClient() {
       const qs = new URLSearchParams({
         data_inicio: dataInicio,
         data_fim: dataFim,
+        modelo: "65",
       });
       if (status) qs.set("status", status);
       if (escopo) qs.set("escopo", escopo);
@@ -142,7 +164,7 @@ export function NfceClient() {
     setTestando(true);
     setTesteResultado(null);
     try {
-      const res = await fetch("/api/nfe/teste", {
+      const res = await fetch("/api/nfce/status", {
         method: "POST",
         credentials: "include",
       });
@@ -169,7 +191,7 @@ export function NfceClient() {
               Comunicação com a SEFAZ
             </h3>
             <p className="text-muted small mb-0 mt-1">
-              Consulta o status do serviço (consStatServ) diretamente na SEFAZ
+              Consulta o status do serviço da NFC-e (consStatServ no SVRS-NFCe)
               usando o certificado da empresa.
             </p>
           </div>
@@ -236,7 +258,7 @@ export function NfceClient() {
           onClick={() => setModalEmissao(true)}
         >
           <i className="fas fa-file-invoice mr-1" aria-hidden />
-          Emitir nota de produto
+          Emitir NFC-e
         </button>
       </div>
 
@@ -331,10 +353,10 @@ export function NfceClient() {
       <div className="card card-outline card-primary">
         <div className="card-header d-flex flex-wrap justify-content-between align-items-start gap-2">
           <div>
-            <h3 className="card-title mb-0">Notas de produto emitidas</h3>
+            <h3 className="card-title mb-0">NFC-e emitidas</h3>
             <p className="text-muted small mb-0 mt-1">
-              Registros enviados diretamente à SEFAZ (NF-e modelo 55 de
-              mercadoria) e testes de comunicação no período.
+              Registros enviados diretamente à SEFAZ (NFC-e modelo 65, QR Code)
+              e testes de comunicação no período.
             </p>
           </div>
           {!loading && rows.length > 0 ? (
@@ -354,12 +376,13 @@ export function NfceClient() {
                 <th style={{ minWidth: "110px" }}>Status</th>
                 <th style={{ minWidth: "180px" }}>Chave de acesso</th>
                 <th style={{ minWidth: "200px" }}>Retorno SEFAZ</th>
+                <th style={{ minWidth: "150px" }}>Ações</th>
               </tr>
             </thead>
             <tbody>
               {loading ? (
                 <tr>
-                  <td colSpan={6} className="text-center text-muted py-4">
+                  <td colSpan={7} className="text-center text-muted py-4">
                     <span
                       className="spinner-border spinner-border-sm mr-2 align-middle"
                       role="status"
@@ -370,7 +393,7 @@ export function NfceClient() {
                 </tr>
               ) : rows.length === 0 ? (
                 <tr>
-                  <td colSpan={6} className="text-center text-muted py-4">
+                  <td colSpan={7} className="text-center text-muted py-4">
                     Nenhum registro no período selecionado.
                   </td>
                 </tr>
@@ -423,6 +446,49 @@ export function NfceClient() {
                             : r.x_motivo
                           : "—"}
                       </span>
+                    </td>
+                    <td className="small text-nowrap">
+                      {r.status === "autorizada" && r.chave_acesso ? (
+                        <div className="btn-group btn-group-sm" role="group">
+                          <button
+                            type="button"
+                            className="btn btn-outline-primary"
+                            disabled={danfeCarregando === r.id}
+                            onClick={() => void imprimirDanfe(r.id)}
+                            title="Gerar DANFE-NFC-e em PDF"
+                          >
+                            {danfeCarregando === r.id ? (
+                              <span
+                                className="spinner-border spinner-border-sm align-middle"
+                                role="status"
+                                aria-hidden
+                              />
+                            ) : (
+                              <>
+                                <i className="fas fa-print mr-1" aria-hidden />
+                                DANFE
+                              </>
+                            )}
+                          </button>
+                          {typeof (r.payload_rascunho as { qr_code?: unknown } | null)?.qr_code ===
+                          "string" ? (
+                            <a
+                              className="btn btn-outline-secondary"
+                              href={
+                                (r.payload_rascunho as { qr_code: string }).qr_code
+                              }
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              title="Consultar na SEFAZ pelo QR Code"
+                            >
+                              <i className="fas fa-qrcode mr-1" aria-hidden />
+                              Consultar
+                            </a>
+                          ) : null}
+                        </div>
+                      ) : (
+                        <span className="text-muted">—</span>
+                      )}
                     </td>
                   </tr>
                 ))

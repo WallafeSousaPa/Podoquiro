@@ -7,6 +7,14 @@ type ProcItem = {
   valor_aplicado: number;
 };
 
+type ProdItem = {
+  id_produto: string;
+  nome_produto: string | null;
+  qtd: number;
+  valor_produto: number;
+  valor_final: number;
+};
+
 type PagItem = {
   forma: string | null;
   maquineta: string | null;
@@ -28,6 +36,7 @@ export type CaixaAgendamentoRow = {
   profissional_nome: string;
   nome_sala: string;
   procedimentos: ProcItem[];
+  produtos: ProdItem[];
   pagamentos: PagItem[];
 };
 
@@ -97,10 +106,12 @@ type Props = {
   onPacienteClick?: (row: CaixaAgendamentoRow) => void;
   /** Recarrega a lista do dia (ex.: botão Atualizar). */
   onAtualizar?: () => void;
-  /** Exibe coluna NFS-e (Administrador, Administrativo ou Recepção). */
+  /** Exibe coluna NFS-e / DANFE (Administrador, Administrativo ou Recepção). */
   exibirColunaNfse?: boolean;
   /** Abre emissão de NFS-e para o agendamento quitado. */
   onNfseClick?: (row: CaixaAgendamentoRow) => void;
+  /** Abre emissão de NFC-e (DANFE) para agendamento quitado com produtos. */
+  onNfceClick?: (row: CaixaAgendamentoRow) => void;
 };
 
 export function CaixaClient({
@@ -112,6 +123,7 @@ export function CaixaClient({
   onAtualizar,
   exibirColunaNfse = false,
   onNfseClick,
+  onNfceClick,
 }: Props) {
   const colCount = exibirColunaNfse ? 10 : 9;
   if (loadError) {
@@ -163,8 +175,8 @@ export function CaixaClient({
               <th style={{ minWidth: "200px" }}>Procedimentos</th>
               <th style={{ minWidth: "220px" }}>Pagamentos</th>
               {exibirColunaNfse ? (
-                <th style={{ width: "56px" }} className="text-center">
-                  NFS-e
+                <th style={{ width: "100px" }} className="text-center">
+                  NFS-e / DANFE
                 </th>
               ) : null}
             </tr>
@@ -252,16 +264,31 @@ export function CaixaClient({
                   </td>
                   {exibirColunaNfse ? (
                     <td className="text-center align-middle">
-                      {agendamentoPagamentoQuitado(r.pagamentos) && onNfseClick ? (
-                        <button
-                          type="button"
-                          className="btn btn-sm btn-outline-primary"
-                          title="Emitir NFS-e"
-                          aria-label={`Emitir NFS-e para ${r.paciente_nome}`}
-                          onClick={() => onNfseClick(r)}
-                        >
-                          <i className="fas fa-file-invoice" aria-hidden />
-                        </button>
+                      {agendamentoPagamentoQuitado(r.pagamentos) ? (
+                        <div className="btn-group btn-group-sm" role="group">
+                          {onNfseClick ? (
+                            <button
+                              type="button"
+                              className="btn btn-outline-primary"
+                              title="Emitir NFS-e"
+                              aria-label={`Emitir NFS-e para ${r.paciente_nome}`}
+                              onClick={() => onNfseClick(r)}
+                            >
+                              <i className="fas fa-file-invoice" aria-hidden />
+                            </button>
+                          ) : null}
+                          {r.produtos.length > 0 && onNfceClick ? (
+                            <button
+                              type="button"
+                              className="btn btn-outline-success"
+                              title="Emitir NFC-e (DANFE)"
+                              aria-label={`Emitir NFC-e para ${r.paciente_nome}`}
+                              onClick={() => onNfceClick(r)}
+                            >
+                              <i className="fas fa-receipt" aria-hidden />
+                            </button>
+                          ) : null}
+                        </div>
                       ) : (
                         <span className="text-muted">—</span>
                       )}

@@ -46,5 +46,30 @@ export {
   type DestinatarioProdutoNfe,
   type LinhaProdutoNfe,
 } from "./montar-nfe-produto";
+export {
+  montarNfceXmlProduto,
+  XPROD_HOMOLOGACAO,
+  type DestinatarioNfce,
+  type LinhaProdutoNfce,
+} from "./montar-nfce-produto";
+export {
+  urlNfceAutorizacaoSvrs,
+  urlNfceRetAutorizacaoSvrs,
+  urlNfceConsultaSvrs,
+  urlNfceStatusServicoSvrs,
+  urlNfceRecepcaoEventoSvrs,
+  urlQrCodeNfcePa,
+  urlConsultaChaveNfcePa,
+} from "./nfce-urls";
+export {
+  gerarQrCodeNfce,
+  inserirInfNFeSuplNfce,
+  type DadosQrCodeNfce,
+} from "./qrcode-nfce";
+export {
+  extrairDanfeNfceDoXml,
+  type DanfeNfceDados,
+  type DanfeItem,
+} from "./parse-nfce-danfe";
 export { assinarNfeXml } from "./assinar-nfe-xml";
 export { enviarLoteNfeSincrono, extrairRetornoAutorizacaoLote } from "./autorizacao-lote";

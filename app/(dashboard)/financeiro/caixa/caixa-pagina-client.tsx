@@ -8,6 +8,7 @@ import { ModalCaixaAgendamento } from "./modal-caixa-agendamento";
 import { CaixaSessaoClient } from "./caixa-sessao-client";
 import type { NotaFiscalAtendimentoRow } from "@/lib/financeiro/nota-fiscal-atendimentos-rows";
 import { ModalEmissaoNfse } from "@/app/(dashboard)/nota-fiscal/emissao/modal-emissao-nfse";
+import { ModalEmissaoNfceCaixa } from "./modal-emissao-nfce-caixa";
 
 /** Todos os lançamentos com status pago — modal só para consulta. */
 function todosPagamentosQuitadosNaLista(r: CaixaAgendamentoRow): boolean {
@@ -40,6 +41,7 @@ export function CaixaPaginaClient({ podeEmitirNfse = false }: CaixaPaginaClientP
   const [loadError, setLoadError] = useState<string | null>(null);
   const [modalRow, setModalRow] = useState<CaixaAgendamentoRow | null>(null);
   const [rowNfse, setRowNfse] = useState<NotaFiscalAtendimentoRow | null>(null);
+  const [rowNfce, setRowNfce] = useState<CaixaAgendamentoRow | null>(null);
 
   const carregarLinhas = useCallback(async (data: string) => {
     setLoadingRows(true);
@@ -99,6 +101,7 @@ export function CaixaPaginaClient({ podeEmitirNfse = false }: CaixaPaginaClientP
             onAtualizar={() => void carregarLinhas(dataRef)}
             exibirColunaNfse={podeEmitirNfse}
             onNfseClick={podeEmitirNfse ? (r) => setRowNfse(paraLinhaNfse(r)) : undefined}
+            onNfceClick={podeEmitirNfse ? (r) => setRowNfce(r) : undefined}
           />
         </div>
       </div>
@@ -115,6 +118,12 @@ export function CaixaPaginaClient({ podeEmitirNfse = false }: CaixaPaginaClientP
       <ModalEmissaoNfse
         row={rowNfse}
         onFechar={() => setRowNfse(null)}
+        onEmitido={recarregarTabela}
+      />
+
+      <ModalEmissaoNfceCaixa
+        row={rowNfce}
+        onFechar={() => setRowNfce(null)}
         onEmitido={recarregarTabela}
       />
     </>

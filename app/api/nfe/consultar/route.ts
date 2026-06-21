@@ -33,6 +33,7 @@ export async function GET(request: Request) {
   const dataFim = searchParams.get("data_fim")?.trim() ?? "";
   const status = searchParams.get("status")?.trim() ?? "";
   const escopo = searchParams.get("escopo")?.trim() ?? "";
+  const modelo = searchParams.get("modelo")?.trim() ?? "";
 
   const supabase = createAdminClient();
   let query = supabase
@@ -51,6 +52,9 @@ export async function GET(request: Request) {
   if (status) query = query.eq("status", status);
   if (escopo === "produto" || escopo === "teste") {
     query = query.eq("escopo_emissao", escopo);
+  }
+  if (modelo === "55" || modelo === "65") {
+    query = query.eq("modelo", Number(modelo));
   }
 
   const { data, error } = await query

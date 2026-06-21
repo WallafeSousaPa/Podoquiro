@@ -91,6 +91,13 @@ export async function carregarNotaFiscalAtendimentosRows(
           valor_aplicado,
           procedimentos ( procedimento )
         ),
+        agendamento_produtos (
+          id_produto,
+          qtd,
+          valor_produto,
+          valor_final,
+          produtos ( produto )
+        ),
         pagamentos (
           valor_pago,
           status_pagamento,
@@ -158,6 +165,28 @@ export async function carregarNotaFiscalAtendimentosRows(
         };
       });
 
+      const aprodsRaw = raw.agendamento_produtos as
+        | {
+            id_produto: string;
+            qtd: number;
+            valor_produto: number;
+            valor_final: number;
+            produtos: { produto: string | null } | { produto: string | null }[] | null;
+          }[]
+        | null;
+
+      const produtos = (aprodsRaw ?? []).map((ap) => {
+        const pr = ap.produtos;
+        const p0 = Array.isArray(pr) ? pr[0] : pr;
+        return {
+          id_produto: String(ap.id_produto),
+          nome_produto: p0?.produto ?? null,
+          qtd: Number(ap.qtd),
+          valor_produto: Number(ap.valor_produto),
+          valor_final: Number(ap.valor_final),
+        };
+      });
+
       const pagsRaw = raw.pagamentos as
         | {
             valor_pago: number;
@@ -197,6 +226,7 @@ export async function carregarNotaFiscalAtendimentosRows(
         profissional_nome: nomeProfissional(usr),
         nome_sala: sala?.nome_sala?.trim() || "—",
         procedimentos,
+        produtos,
         pagamentos,
       };
     })

@@ -24,6 +24,10 @@ export type ConfigNfeGlobal = {
   certificadoSenha: string;
   /** PA usa autorização centralizada no SVRS. */
   autorizadoraNfe: "SVRS";
+  /** CSC (Código de Segurança do Contribuinte) — obrigatório para o QR Code da NFC-e. */
+  csc: string;
+  /** Identificador do CSC (idCSC), ex.: "000001". */
+  idCsc: string;
 };
 
 /**
@@ -36,5 +40,7 @@ export function getConfigNfeGlobal(): ConfigNfeGlobal {
     certificadoPath: process.env.NFE_CERT_PATH?.trim() ?? "",
     certificadoSenha: process.env.NFE_CERT_PASSWORD ?? "",
     autorizadoraNfe: "SVRS",
+    csc: process.env.NFE_CSC?.trim() ?? "",
+    idCsc: process.env.NFE_CSC_ID?.trim() ?? "",
   };
 }
