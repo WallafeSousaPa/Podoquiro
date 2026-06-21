@@ -279,13 +279,13 @@ export function montarNfceXmlProduto(opts: MontarNfceProdutoOpts): string {
       const card = el(doc, detPag, "card");
       const tpIntegra = lp.card?.tpIntegra ?? "2";
       el(doc, card, "tpIntegra", tpIntegra);
-      if (tPag === "03" || tPag === "04") {
-        const tBand = (lp.card?.tBand ?? "99").replace(/\D/g, "").padStart(2, "0").slice(0, 2);
-        el(doc, card, "tBand", tBand);
-      }
       const cnpj = (lp.card?.cnpj14 ?? "").replace(/\D/g, "");
       if (cnpj.length === 14) {
         el(doc, card, "CNPJ", cnpj);
+      }
+      if (tPag === "03" || tPag === "04") {
+        const tBand = (lp.card?.tBand ?? "99").replace(/\D/g, "").padStart(2, "0").slice(0, 2);
+        el(doc, card, "tBand", tBand);
       }
       const cAut = (lp.card?.cAut ?? "0").trim().slice(0, 20) || "0";
       el(doc, card, "cAut", cAut);
