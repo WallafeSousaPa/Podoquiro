@@ -34,6 +34,7 @@ export {
   type PacienteFocusTomador,
 } from "./montar-payload";
 export { baseUrlFocusNfe, labelAmbienteFocus } from "./urls";
+export { mensagemErroFocusNfse, mensagemErroFocusNfseOuFallback } from "./mensagem-erro";
 export type {
   FocusAmbiente,
   FocusNfseEmitirBody,

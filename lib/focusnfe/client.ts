@@ -4,6 +4,7 @@ import type {
   FocusNfseRespostaConsulta,
   FocusNfseRespostaEmitir,
 } from "./types";
+import { mensagemErroFocusNfseOuFallback } from "./mensagem-erro";
 
 export class FocusNfeApiError extends Error {
   constructor(
@@ -32,19 +33,7 @@ async function parseJson(res: Response): Promise<unknown> {
 }
 
 function mensagemErro(body: unknown, fallback: string): string {
-  if (!body || typeof body !== "object") return fallback;
-  const o = body as Record<string, unknown>;
-  if (typeof o.mensagem === "string" && o.mensagem.trim()) return o.mensagem.trim();
-  const erros = o.erros;
-  if (Array.isArray(erros) && erros.length > 0) {
-    const parts = erros.map((e) => {
-      if (!e || typeof e !== "object") return String(e);
-      const item = e as { codigo?: string; mensagem?: string };
-      return [item.codigo, item.mensagem].filter(Boolean).join(": ");
-    });
-    return parts.join(" | ") || fallback;
-  }
-  return fallback;
+  return mensagemErroFocusNfseOuFallback(body, fallback);
 }
 
 export async function focusEmitirNfse(

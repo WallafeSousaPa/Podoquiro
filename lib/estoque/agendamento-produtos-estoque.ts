@@ -1,4 +1,8 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
+import {
+  registrarMovimentacaoEstoque,
+  type MovimentacaoEstoqueContext,
+} from "@/lib/estoque/registrar-movimentacao-estoque";
 
 export function somarQtdPorProduto(
   rows: { id_produto: string; qtd: number | string }[],
@@ -42,6 +46,7 @@ export async function baixarOuEstornarEstoqueMercadorias(
   supabase: SupabaseClient,
   empresaId: number,
   deltaPositivoVenda: Map<string, number>,
+  movCtx?: MovimentacaoEstoqueContext,
 ): Promise<BaixaResult> {
   for (const [idProd, deltaVendido] of deltaPositivoVenda) {
     if (Math.abs(deltaVendido) < 1e-9) continue;
@@ -71,6 +76,33 @@ export async function baixarOuEstornarEstoqueMercadorias(
     if (e2) {
       console.error(e2);
       return { ok: false, message: e2.message };
+    }
+
+    const qtdMov = Math.abs(deltaVendido);
+    if (deltaVendido > 0) {
+      await registrarMovimentacaoEstoque(supabase, {
+        id_empresa: empresaId,
+        id_produto: idProd,
+        tipo: "saida",
+        quantidade: qtdMov,
+        saldo_anterior: atual,
+        saldo_posterior: proximo,
+        origem: "venda_atendimento",
+        id_agendamento: movCtx?.id_agendamento ?? null,
+        id_usuario: movCtx?.id_usuario ?? null,
+      });
+    } else {
+      await registrarMovimentacaoEstoque(supabase, {
+        id_empresa: empresaId,
+        id_produto: idProd,
+        tipo: "entrada",
+        quantidade: qtdMov,
+        saldo_anterior: atual,
+        saldo_posterior: proximo,
+        origem: "estorno_atendimento",
+        id_agendamento: movCtx?.id_agendamento ?? null,
+        id_usuario: movCtx?.id_usuario ?? null,
+      });
     }
   }
   return { ok: true };

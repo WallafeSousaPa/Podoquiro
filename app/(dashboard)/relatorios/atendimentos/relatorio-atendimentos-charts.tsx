@@ -357,6 +357,68 @@ export function GraficoProcedimentosPizza({ data }: Props) {
   );
 }
 
+export function GraficoProdutosPizza({ data }: Props) {
+  const top = data.por_produto.slice(0, 8);
+  const restoQtd = data.por_produto.slice(8).reduce((s, p) => s + p.quantidade, 0);
+  const chartData = top.map((p) => ({
+    name: truncarNome(p.nome, 22),
+    nomeCompleto: p.nome,
+    value: p.quantidade,
+  }));
+  if (restoQtd > 0) {
+    chartData.push({ name: "Outros", nomeCompleto: "Outros produtos", value: restoQtd });
+  }
+
+  if (chartData.length === 0) {
+    return <p className="text-muted small mb-0 text-center py-4">Sem produtos no período.</p>;
+  }
+
+  const legenda = montarItensLegendaPizza(chartData);
+
+  return (
+    <div className="relatorio-atendimentos-pie-layout">
+      <div
+        className="relatorio-atendimentos-chart-wrap relatorio-atendimentos-chart-wrap--pie-only"
+        role="img"
+        aria-label="Gráfico de pizza: distribuição de produtos vendidos"
+      >
+        <ResponsiveContainer width="100%" height="100%">
+          <PieChart margin={{ top: 0, right: 0, bottom: 0, left: 0 }}>
+            <Pie
+              data={chartData}
+              dataKey="value"
+              nameKey="name"
+              cx="50%"
+              cy="50%"
+              outerRadius="85%"
+              label={false}
+              labelLine={false}
+            >
+              {chartData.map((_, i) => (
+                <Cell key={i} fill={CORES[i % CORES.length]} />
+              ))}
+            </Pie>
+            <Tooltip
+              content={({ active, payload }) => (
+                <TooltipCustom
+                  active={active}
+                  label={
+                    payload?.[0]?.payload?.nomeCompleto
+                      ? String(payload[0].payload.nomeCompleto)
+                      : undefined
+                  }
+                  payload={[{ name: "Unidades", value: Number(payload?.[0]?.value) }]}
+                />
+              )}
+            />
+          </PieChart>
+        </ResponsiveContainer>
+      </div>
+      <LegendaPizzaLista itens={legenda} />
+    </div>
+  );
+}
+
 export function GraficoStatusPizza({ data }: Props) {
   const chartData = data.por_status.map((s) => ({
     name: s.rotulo,

@@ -4,6 +4,7 @@ import { getSession } from "@/lib/auth/session";
 import { respostaSeSemPermissaoNfseNoCaixa } from "@/lib/dashboard/nota-fiscal-permissao";
 import { agendamentoPagamentoQuitado } from "@/lib/financeiro/agendamento-pagamento-quitado";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { mensagemErroFocusNfse } from "@/lib/focusnfe/mensagem-erro";
 
 function parseEmpresaId(idEmpresa: string) {
   const n = Number(idEmpresa);
@@ -167,7 +168,7 @@ export async function GET(req: Request) {
   const { data: emissao } = await supabase
     .from("nfse_focus_emissoes")
     .select(
-      "id, focus_ref, status, numero_nfse, codigo_verificacao, numero_rps, serie_rps, valor_servicos, discriminacao, url_danfse, error_message, created_at, updated_at",
+      "id, focus_ref, status, numero_nfse, codigo_verificacao, numero_rps, serie_rps, valor_servicos, discriminacao, url_danfse, error_message, payload_resposta, created_at, updated_at",
     )
     .eq("id_empresa", empresaId)
     .eq("id_agendamento", idAgendamento)
@@ -233,6 +234,25 @@ export async function GET(req: Request) {
           uf: pac.uf,
         }
       : null,
-    nfse: emissao ?? null,
+    nfse: emissao
+      ? {
+          id: emissao.id,
+          focus_ref: emissao.focus_ref,
+          status: emissao.status,
+          numero_nfse: emissao.numero_nfse,
+          codigo_verificacao: emissao.codigo_verificacao,
+          numero_rps: emissao.numero_rps,
+          serie_rps: emissao.serie_rps,
+          valor_servicos: emissao.valor_servicos,
+          discriminacao: emissao.discriminacao,
+          url_danfse: emissao.url_danfse,
+          error_message:
+            mensagemErroFocusNfse(emissao.error_message) ??
+            mensagemErroFocusNfse(emissao.payload_resposta) ??
+            emissao.error_message,
+          created_at: emissao.created_at,
+          updated_at: emissao.updated_at,
+        }
+      : null,
   });
 }

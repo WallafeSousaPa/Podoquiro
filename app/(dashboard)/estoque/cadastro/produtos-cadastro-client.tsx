@@ -8,6 +8,7 @@ import {
   useId,
   useState,
 } from "react";
+import { ModalHistoricoEstoqueProduto } from "./modal-historico-estoque-produto";
 
 export type EmpresaListaItem = {
   id: number;
@@ -147,6 +148,7 @@ export function ProdutosCadastroClient({
   const [feedback, setFeedback] = useState<{ title: string; message: string } | null>(
     null,
   );
+  const [historicoProduto, setHistoricoProduto] = useState<ProdutoRow | null>(null);
 
   const [filtroEmpresaId, setFiltroEmpresaId] = useState(() =>
     String(empresaIdPadrao),
@@ -594,7 +596,15 @@ export function ProdutosCadastroClient({
                       )}
                     </td>
                     <td className="text-muted small">{row.sku ?? "—"}</td>
-                    <td>{row.produto}</td>
+                    <td>
+                      <button
+                        type="button"
+                        className="btn btn-link btn-sm p-0 text-left font-weight-normal"
+                        onClick={() => setHistoricoProduto(row)}
+                      >
+                        {row.produto}
+                      </button>
+                    </td>
                     <td className="text-right">{formatBRL(row.preco)}</td>
                     <td className="text-right">{row.qtd_estoque}</td>
                     <td>
@@ -1024,6 +1034,14 @@ export function ProdutosCadastroClient({
             </div>
           </div>
         </ModalBackdrop>
+      ) : null}
+
+      {historicoProduto ? (
+        <ModalHistoricoEstoqueProduto
+          idProduto={historicoProduto.id}
+          nomeProduto={historicoProduto.produto}
+          onClose={() => setHistoricoProduto(null)}
+        />
       ) : null}
     </>
   );

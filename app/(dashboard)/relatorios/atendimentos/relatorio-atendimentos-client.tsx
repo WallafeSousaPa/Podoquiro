@@ -8,6 +8,7 @@ import {
   GraficoAtendimentosPorDia,
   GraficoAtendimentosPorPodologo,
   GraficoProcedimentosPizza,
+  GraficoProdutosPizza,
   GraficoStatusPizza,
   GraficoRetornos,
 } from "./relatorio-atendimentos-charts";
@@ -118,6 +119,12 @@ export function RelatorioAtendimentosClient() {
         `${p.rank};${p.nome};${p.quantidade};${p.valor_total.toFixed(2)};${p.percentual}`,
       );
     }
+    linhas.push("", "Ranking produtos", "Posição;Produto;Unidades;Valor;%");
+    for (const p of data.por_produto) {
+      linhas.push(
+        `${p.rank};${p.nome};${p.quantidade};${p.valor_total.toFixed(2)};${p.percentual}`,
+      );
+    }
     const blob = new Blob(["\uFEFF" + linhas.join("\n")], {
       type: "text/csv;charset=utf-8",
     });
@@ -129,7 +136,7 @@ export function RelatorioAtendimentosClient() {
   };
 
   const resumoTexto = data
-    ? `${data.resumo.total_atendimentos} atendimentos, valor total ${fmtBrl(data.resumo.valor_total)}, ${data.retornos.resumo.solicitados} retornos solicitados no período.`
+    ? `${data.resumo.total_atendimentos} atendimentos, valor total ${fmtBrl(data.resumo.valor_total)}, ${data.resumo.total_procedimentos_lancados} procedimentos, ${data.resumo.total_produtos_lancados} unidades de produtos (${fmtBrl(data.resumo.valor_produtos)}), ${data.retornos.resumo.solicitados} retornos solicitados no período.`
     : "";
 
   return (
@@ -301,6 +308,57 @@ export function RelatorioAtendimentosClient() {
             </div>
           </div>
 
+          {data.resumo.total_produtos_lancados > 0 ? (
+            <div className="row relatorio-atendimentos-kpi mb-3">
+              <div className="col-6 col-lg-3 mb-2 d-flex">
+                <div className="info-box bg-primary">
+                  <span className="info-box-icon">
+                    <i className="fas fa-box-open" aria-hidden />
+                  </span>
+                  <div className="info-box-content">
+                    <span className="info-box-text">Unidades vendidas</span>
+                    <span className="info-box-number">{data.resumo.total_produtos_lancados}</span>
+                  </div>
+                </div>
+              </div>
+              <div className="col-6 col-lg-3 mb-2 d-flex">
+                <div className="info-box bg-teal">
+                  <span className="info-box-icon">
+                    <i className="fas fa-shopping-bag" aria-hidden />
+                  </span>
+                  <div className="info-box-content">
+                    <span className="info-box-text">Valor em produtos</span>
+                    <span className="info-box-number small">
+                      {fmtBrl(data.resumo.valor_produtos)}
+                    </span>
+                  </div>
+                </div>
+              </div>
+              <div className="col-6 col-lg-3 mb-2 d-flex">
+                <div className="info-box bg-indigo">
+                  <span className="info-box-icon">
+                    <i className="fas fa-tags" aria-hidden />
+                  </span>
+                  <div className="info-box-content">
+                    <span className="info-box-text">Produtos distintos</span>
+                    <span className="info-box-number">{data.resumo.produtos_distintos}</span>
+                  </div>
+                </div>
+              </div>
+              <div className="col-6 col-lg-3 mb-2 d-flex">
+                <div className="info-box bg-orange">
+                  <span className="info-box-icon">
+                    <i className="fas fa-procedures" aria-hidden />
+                  </span>
+                  <div className="info-box-content">
+                    <span className="info-box-text">Procedimentos</span>
+                    <span className="info-box-number">{data.resumo.total_procedimentos_lancados}</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          ) : null}
+
           <div className="d-flex flex-wrap justify-content-between align-items-center mb-2">
             <p className="small text-muted mb-2 mb-md-0">
               Período: <strong>{fmtDataRef(data.periodo.data_inicio)}</strong> a{" "}
@@ -338,17 +396,27 @@ export function RelatorioAtendimentosClient() {
                 </div>
               </div>
             </div>
-            <div className="col-12 col-md-6 mb-3 d-flex">
+            <div className="col-12 col-lg-4 mb-3 d-flex">
               <div className="card relatorio-atendimentos-chart-card h-100 w-100">
                 <div className="card-header py-2">
-                  <h3 className="card-title h6 mb-0">Procedimentos</h3>
+                  <h3 className="card-title h6 mb-0">Procedimentos (serviços)</h3>
                 </div>
                 <div className="card-body">
                   <GraficoProcedimentosPizza data={data} />
                 </div>
               </div>
             </div>
-            <div className="col-12 col-md-6 mb-3 d-flex">
+            <div className="col-12 col-lg-4 mb-3 d-flex">
+              <div className="card relatorio-atendimentos-chart-card h-100 w-100">
+                <div className="card-header py-2">
+                  <h3 className="card-title h6 mb-0">Produtos (mercadorias)</h3>
+                </div>
+                <div className="card-body">
+                  <GraficoProdutosPizza data={data} />
+                </div>
+              </div>
+            </div>
+            <div className="col-12 col-lg-4 mb-3 d-flex">
               <div className="card relatorio-atendimentos-chart-card h-100 w-100">
                 <div className="card-header py-2">
                   <h3 className="card-title h6 mb-0">Por status</h3>
@@ -373,7 +441,7 @@ export function RelatorioAtendimentosClient() {
           </div>
 
           <div className="row">
-            <div className="col-12 col-xl-6 mb-3 d-flex">
+            <div className="col-12 col-xl-4 mb-3 d-flex">
               <div className="card w-100">
                 <div className="card-header py-2">
                   <h3 className="card-title h6 mb-0">Ranking de podólogos</h3>
@@ -422,7 +490,7 @@ export function RelatorioAtendimentosClient() {
                 </div>
               </div>
             </div>
-            <div className="col-12 col-xl-6 mb-3 d-flex">
+            <div className="col-12 col-xl-4 mb-3 d-flex">
               <div className="card w-100">
                 <div className="card-header py-2">
                   <h3 className="card-title h6 mb-0">Ranking de procedimentos</h3>
@@ -453,6 +521,51 @@ export function RelatorioAtendimentosClient() {
                       ) : (
                         data.por_procedimento.map((p) => (
                           <tr key={p.id_procedimento}>
+                            <td className="relatorio-atendimentos-tabela-rank">{p.rank}</td>
+                            <td>{p.nome}</td>
+                            <td className="text-right">{p.quantidade}</td>
+                            <td className="text-right d-none d-sm-table-cell">
+                              {fmtBrl(p.valor_total)}
+                            </td>
+                          </tr>
+                        ))
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
+            <div className="col-12 col-xl-4 mb-3 d-flex">
+              <div className="card w-100">
+                <div className="card-header py-2">
+                  <h3 className="card-title h6 mb-0">Ranking de produtos</h3>
+                </div>
+                <div className="card-body p-0 table-responsive">
+                  <table className="table table-sm table-hover mb-0">
+                    <thead>
+                      <tr>
+                        <th scope="col" className="relatorio-atendimentos-tabela-rank">
+                          #
+                        </th>
+                        <th scope="col">Produto</th>
+                        <th scope="col" className="text-right">
+                          Unid.
+                        </th>
+                        <th scope="col" className="text-right d-none d-sm-table-cell">
+                          Valor
+                        </th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {data.por_produto.length === 0 ? (
+                        <tr>
+                          <td colSpan={4} className="text-muted text-center py-3">
+                            Nenhum produto lançado.
+                          </td>
+                        </tr>
+                      ) : (
+                        data.por_produto.map((p) => (
+                          <tr key={p.id_produto}>
                             <td className="relatorio-atendimentos-tabela-rank">{p.rank}</td>
                             <td>{p.nome}</td>
                             <td className="text-right">{p.quantidade}</td>

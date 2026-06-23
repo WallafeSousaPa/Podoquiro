@@ -4,6 +4,8 @@ import type { NotaFiscalAtendimentoRow } from "@/lib/financeiro/nota-fiscal-aten
 import {
   bloqueiaReemissaoFocusNfse,
   cpfValidoParaTomadorNfse,
+  mensagemErroFocusNfse,
+  mensagemErroFocusNfseOuFallback,
   podeCancelarFocusNfse,
   statusInternoDeFocus,
 } from "@/lib/focusnfe";
@@ -57,7 +59,11 @@ type DetalheResponse = {
 
 type ConsultarRes = {
   emissao?: NfseEmissao;
-  focus?: { status?: string; mensagem?: string };
+  focus?: {
+    status?: string;
+    mensagem?: string;
+    erros?: { codigo?: string; mensagem?: string; correcao?: string }[];
+  };
   error?: string;
 };
 
@@ -364,9 +370,9 @@ export function ModalEmissaoNfse({ row, onFechar, onEmitido }: Props) {
       }
       if (interno === "erro") {
         throw new Error(
-          j.emissao?.error_message ??
-            j.focus?.mensagem ??
-            "A prefeitura rejeitou a autorização da NFS-e.",
+          mensagemErroFocusNfse(j.emissao?.error_message) ??
+            mensagemErroFocusNfse(j.focus) ??
+            mensagemErroFocusNfseOuFallback(null),
         );
       }
     }
@@ -569,6 +575,14 @@ export function ModalEmissaoNfse({ row, onFechar, onEmitido }: Props) {
             {okMsg ? (
               <div className="alert alert-success" role="alert">
                 {okMsg}
+              </div>
+            ) : null}
+
+            {nfExistente &&
+            statusInternoDeFocus(nfExistente.status) === "erro" &&
+            nfExistente.error_message ? (
+              <div className="alert alert-danger" role="alert">
+                <strong>Última tentativa rejeitada:</strong> {nfExistente.error_message}
               </div>
             ) : null}
 

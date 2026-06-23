@@ -3,6 +3,7 @@ import { FocusNfeApiError, focusConsultarNfse } from "./client";
 import { obterConfigFocusNfe, obterTokenFocusNfe } from "./config";
 import { statusInternoDeFocus } from "./montar-payload";
 import type { FocusNfseRespostaConsulta } from "./types";
+import { mensagemErroFocusNfse } from "./mensagem-erro";
 
 /** Campos da emissão usados como fallback ao montar o patch de atualização. */
 export type EmissaoFocusParcial = {
@@ -40,7 +41,10 @@ export function montarPatchEmissaoFocus(
     caminho_xml_nota_fiscal:
       consulta.caminho_xml_nota_fiscal ?? emissao.caminho_xml_nota_fiscal ?? null,
     payload_resposta: consulta,
-    error_message: interno === "erro" ? (consulta.mensagem ?? null) : null,
+    error_message:
+      interno === "erro"
+        ? (mensagemErroFocusNfse(consulta) ?? consulta.mensagem ?? null)
+        : null,
     emitted_at: interno === "autorizado" ? new Date().toISOString() : null,
   };
 }

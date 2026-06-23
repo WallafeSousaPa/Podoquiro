@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { getSession } from "@/lib/auth/session";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { registrarMovimentacaoEstoque } from "@/lib/estoque/registrar-movimentacao-estoque";
 
 function parseEmpresaId(idEmpresa: string) {
   const n = Number(idEmpresa);
@@ -35,6 +36,10 @@ export async function PATCH(request: Request, context: RouteContext) {
     return NextResponse.json({ error: "Empresa inválida." }, { status: 400 });
   }
 
+  const sessionUserId = Number(session.sub);
+  const idUsuario =
+    Number.isFinite(sessionUserId) && sessionUserId > 0 ? sessionUserId : null;
+
   const { id: idParam } = await context.params;
   if (!isUuid(idParam)) {
     return NextResponse.json({ error: "ID inválido." }, { status: 400 });
@@ -51,7 +56,7 @@ export async function PATCH(request: Request, context: RouteContext) {
 
   const { data: existe, error: checkErr } = await supabase
     .from("produtos")
-    .select("id")
+    .select("id, servico, qtd_estoque")
     .eq("id", idParam)
     .eq("id_empresa", empresaId)
     .maybeSingle();
@@ -277,6 +282,24 @@ export async function PATCH(request: Request, context: RouteContext) {
       );
     }
     return NextResponse.json({ error: error.message }, { status: 500 });
+  }
+
+  if (typeof patch.qtd_estoque === "number" && !existe.servico) {
+    const saldoAnterior = Number(existe.qtd_estoque);
+    const saldoPosterior = patch.qtd_estoque as number;
+    const diff = saldoPosterior - saldoAnterior;
+    if (diff !== 0) {
+      await registrarMovimentacaoEstoque(supabase, {
+        id_empresa: empresaId,
+        id_produto: idParam,
+        tipo: diff > 0 ? "entrada" : "saida",
+        quantidade: Math.abs(diff),
+        saldo_anterior: saldoAnterior,
+        saldo_posterior: saldoPosterior,
+        origem: "ajuste_manual",
+        id_usuario: idUsuario,
+      });
+    }
   }
 
   return NextResponse.json({ data });

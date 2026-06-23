@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { getSession } from "@/lib/auth/session";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { registrarMovimentacaoEstoque } from "@/lib/estoque/registrar-movimentacao-estoque";
 
 function parseEmpresaId(idEmpresa: string) {
   const n = Number(idEmpresa);
@@ -93,6 +94,10 @@ export async function POST(request: Request) {
   if (!empresaId) {
     return NextResponse.json({ error: "Empresa inválida." }, { status: 400 });
   }
+
+  const sessionUserId = Number(session.sub);
+  const idUsuario =
+    Number.isFinite(sessionUserId) && sessionUserId > 0 ? sessionUserId : null;
 
   let body: Record<string, unknown>;
   try {
@@ -264,6 +269,19 @@ export async function POST(request: Request) {
       );
     }
     return NextResponse.json({ error: error.message }, { status: 500 });
+  }
+
+  if (!servico && qtd_estoque > 0 && data?.id) {
+    await registrarMovimentacaoEstoque(supabase, {
+      id_empresa: empresaId,
+      id_produto: data.id as string,
+      tipo: "entrada",
+      quantidade: qtd_estoque,
+      saldo_anterior: 0,
+      saldo_posterior: qtd_estoque,
+      origem: "cadastro",
+      id_usuario: idUsuario,
+    });
   }
 
   return NextResponse.json({ data });

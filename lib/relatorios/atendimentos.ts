@@ -35,6 +35,15 @@ export type RelatorioAtendimentosPorProcedimento = {
   rank: number;
 };
 
+export type RelatorioAtendimentosPorProduto = {
+  id_produto: string;
+  nome: string;
+  quantidade: number;
+  valor_total: number;
+  percentual: number;
+  rank: number;
+};
+
 export type RelatorioAtendimentosPorStatus = {
   status: string;
   rotulo: string;
@@ -76,9 +85,13 @@ export type RelatorioAtendimentosData = {
     podologos_ativos: number;
     procedimentos_distintos: number;
     total_procedimentos_lancados: number;
+    produtos_distintos: number;
+    total_produtos_lancados: number;
+    valor_produtos: number;
   };
   por_podologo: RelatorioAtendimentosPorPodologo[];
   por_procedimento: RelatorioAtendimentosPorProcedimento[];
+  por_produto: RelatorioAtendimentosPorProduto[];
   por_status: RelatorioAtendimentosPorStatus[];
   por_dia: RelatorioAtendimentosPorDia[];
   retornos: RelatorioAtendimentosRetornos;
@@ -217,8 +230,40 @@ export async function gerarRelatorioAtendimentos(
     }
   }
 
+  type ProdLinha = { id_produto: string; nome: string; qtd: number; valor: number };
+  const prodsPorAg = new Map<number, ProdLinha[]>();
+  if (idsAg.length > 0) {
+    const { data: prodRows, error: prodErr } = await supabase
+      .from("agendamento_produtos")
+      .select("id_agendamento, id_produto, qtd, valor_final, produtos ( produto )")
+      .in("id_agendamento", idsAg);
+    if (prodErr) throw new Error(prodErr.message);
+
+    for (const row of prodRows ?? []) {
+      const idAg = row.id_agendamento as number;
+      const idProd = String(row.id_produto);
+      const qtd = Number(row.qtd) || 0;
+      const valor = Number(row.valor_final) || 0;
+      const pr = row.produtos as
+        | { produto: string }
+        | { produto: string }[]
+        | null;
+      const p0 = Array.isArray(pr) ? pr[0] : pr;
+      const lista = prodsPorAg.get(idAg) ?? [];
+      lista.push({
+        id_produto: idProd,
+        qtd,
+        valor,
+        nome: String(p0?.produto ?? "—"),
+      });
+      prodsPorAg.set(idAg, lista);
+    }
+  }
+
   type ProcAcc = { id_procedimento: number; nome: string; quantidade: number; valor_total: number };
   const procAcc = new Map<number, ProcAcc>();
+  type ProdAcc = { id_produto: string; nome: string; quantidade: number; valor_total: number };
+  const prodAcc = new Map<string, ProdAcc>();
 
   for (const row of rows) {
     const procs = procsPorAg.get(row.id) ?? [];
@@ -235,6 +280,21 @@ export async function gerarRelatorioAtendimentos(
     }
   }
 
+  for (const row of rows) {
+    const prods = prodsPorAg.get(row.id) ?? [];
+    for (const p of prods) {
+      const cur = prodAcc.get(p.id_produto) ?? {
+        id_produto: p.id_produto,
+        nome: p.nome,
+        quantidade: 0,
+        valor_total: 0,
+      };
+      cur.quantidade += p.qtd;
+      cur.valor_total += p.valor;
+      prodAcc.set(p.id_produto, cur);
+    }
+  }
+
   const podologoAcc = new Map<
     number,
     { id_usuario: number; nome: string; quantidade: number; valor_total: number }
@@ -248,6 +308,8 @@ export async function gerarRelatorioAtendimentos(
 
   let valorTotalGeral = 0;
   let totalProcedimentosLancados = 0;
+  let totalProdutosLancados = 0;
+  let valorProdutosGeral = 0;
   let retornosSolicitados = 0;
   let retornosAgendados = 0;
   let retornosPendentes = 0;
@@ -284,6 +346,12 @@ export async function gerarRelatorioAtendimentos(
     }
 
     totalProcedimentosLancados += (procsPorAg.get(row.id) ?? []).length;
+
+    const prodsAg = prodsPorAg.get(row.id) ?? [];
+    for (const pr of prodsAg) {
+      totalProdutosLancados += pr.qtd;
+      valorProdutosGeral += pr.valor;
+    }
 
     if (row.agendar_retorno === true) {
       retornosSolicitados += 1;
@@ -339,6 +407,14 @@ export async function gerarRelatorioAtendimentos(
   }));
   const procRanked = atribuirRankSimples(procComPct).sort((a, b) => a.rank - b.rank);
 
+  const prodBase = [...prodAcc.values()];
+  const totalProdQtd = prodBase.reduce((s, p) => s + p.quantidade, 0);
+  const prodComPct = prodBase.map((p) => ({
+    ...p,
+    percentual: pct(p.quantidade, totalProdQtd),
+  }));
+  const prodRanked = atribuirRankSimples(prodComPct).sort((a, b) => a.rank - b.rank);
+
   const porStatus: RelatorioAtendimentosPorStatus[] = [...statusAcc.entries()]
     .map(([status, v]) => ({
       status,
@@ -365,9 +441,13 @@ export async function gerarRelatorioAtendimentos(
       podologos_ativos: podologoAcc.size,
       procedimentos_distintos: procAcc.size,
       total_procedimentos_lancados: totalProcedimentosLancados,
+      produtos_distintos: prodAcc.size,
+      total_produtos_lancados: Math.round(totalProdutosLancados * 10000) / 10000,
+      valor_produtos: Math.round(valorProdutosGeral * 100) / 100,
     },
     por_podologo: podologosRanked,
     por_procedimento: procRanked,
+    por_produto: prodRanked,
     por_status: porStatus,
     por_dia: porDia,
     retornos: {

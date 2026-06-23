@@ -830,7 +830,10 @@ export async function PATCH(request: Request, context: RouteContext) {
         produtosInsert.map((r) => ({ id_produto: r.id_produto, qtd: r.qtd })),
       );
       const delta = deltaVendaEntreMapas(oldMap, newMap);
-      const est = await baixarOuEstornarEstoqueMercadorias(supabase, empresaId, delta);
+      const est = await baixarOuEstornarEstoqueMercadorias(supabase, empresaId, delta, {
+        id_agendamento: id,
+        id_usuario: sessionUserId,
+      });
       if (!est.ok) {
         return NextResponse.json(
           { error: `Não foi possível atualizar o estoque: ${est.message}` },
@@ -989,7 +992,10 @@ export async function PATCH(request: Request, context: RouteContext) {
         produtosInsertPR.map((r) => ({ id_produto: r.id_produto, qtd: r.qtd })),
       );
       const deltaPR = deltaVendaEntreMapas(oldMapPR, newMapPR);
-      const estPR = await baixarOuEstornarEstoqueMercadorias(supabase, empresaId, deltaPR);
+      const estPR = await baixarOuEstornarEstoqueMercadorias(supabase, empresaId, deltaPR, {
+        id_agendamento: id,
+        id_usuario: sessionUserId,
+      });
       if (!estPR.ok) {
         await tentarLogErroApi(request, supabase, session, {
           origem: `api:agendamentos:PATCH:${id}:estoque_recepcao`,
@@ -1136,7 +1142,10 @@ export async function PATCH(request: Request, context: RouteContext) {
     }
     const map = somarQtdPorProduto(apLinhas ?? []);
     if (map.size > 0) {
-      const est = await baixarOuEstornarEstoqueMercadorias(supabase, empresaId, map);
+      const est = await baixarOuEstornarEstoqueMercadorias(supabase, empresaId, map, {
+        id_agendamento: id,
+        id_usuario: sessionUserId,
+      });
       if (!est.ok) {
         return NextResponse.json(
           { error: `Não foi possível atualizar o estoque: ${est.message}` },

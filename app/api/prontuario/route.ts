@@ -345,7 +345,10 @@ async function postProntuarioSalvar(request: Request) {
   }
   const mapEstoque = somarQtdPorProduto(apLinhasEstoque ?? []);
   if (mapEstoque.size > 0) {
-    const est = await baixarOuEstornarEstoqueMercadorias(supabase, empresaId, mapEstoque);
+    const est = await baixarOuEstornarEstoqueMercadorias(supabase, empresaId, mapEstoque, {
+      id_agendamento: idAgendamento,
+      id_usuario: sessionUserId,
+    });
     if (!est.ok) {
       return NextResponse.json(
         { error: `Não foi possível atualizar o estoque: ${est.message}` },
