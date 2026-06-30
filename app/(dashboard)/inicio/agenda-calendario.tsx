@@ -92,6 +92,18 @@ function logRespostaErroApiAgendamento(
   }
 }
 
+async function parseJsonRespostaAgenda<T>(res: Response): Promise<T> {
+  const ct = res.headers.get("content-type") ?? "";
+  if (!ct.includes("application/json")) {
+    throw new Error(
+      res.status === 404
+        ? "Agenda indisponível (404). Pare o servidor, apague a pasta .next e rode npm run dev de novo."
+        : `Resposta inválida da API da agenda (HTTP ${res.status}).`,
+    );
+  }
+  return res.json() as Promise<T>;
+}
+
 type UsuarioCol = {
   id: number;
   nome: string;
@@ -896,8 +908,8 @@ export function AgendaCalendario({
             : limitesMesInclusive(dataDia);
         url = `/api/agenda/periodo?inicio=${encodeURIComponent(inicio)}&fim=${encodeURIComponent(fim)}`;
       }
-      const res = await fetch(url);
-      const json = (await res.json()) as {
+      const res = await fetch(url, { credentials: "include" });
+      const json = await parseJsonRespostaAgenda<{
         error?: string;
         usuarios?: UsuarioCol[];
         agendamentos?: AgendamentoDia[];
@@ -905,7 +917,7 @@ export function AgendaCalendario({
         ocultarSecaoPagamentosAgenda?: boolean;
         perfil_admin_agenda?: boolean;
         agenda_cor_corte_tecnico?: string | null;
-      };
+      }>(res);
       if (!res.ok) throw new Error(json.error ?? "Erro ao carregar agenda.");
       setUsuarios(json.usuarios ?? []);
       setAgendamentos(json.agendamentos ?? []);

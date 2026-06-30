@@ -1,4 +1,8 @@
 import { NextResponse } from "next/server";
+import {
+  assinarFotosProntuario,
+  parsePathsFotosProntuario,
+} from "@/lib/prontuario/fotos-storage";
 import { getSession } from "@/lib/auth/session";
 import { createAdminClient } from "@/lib/supabase/admin";
 
@@ -73,7 +77,8 @@ export async function GET(_request: Request, context: RouteContext) {
       agendamento_produtos (
         qtd,
         produtos ( produto )
-      )
+      ),
+      prontuario_paciente ( fotos )
     `,
     )
     .eq("id_paciente", idPaciente)
@@ -86,7 +91,8 @@ export async function GET(_request: Request, context: RouteContext) {
     return NextResponse.json({ error: aErr.message }, { status: 500 });
   }
 
-  const data = (rows ?? []).map((r) => {
+  const data = await Promise.all(
+    (rows ?? []).map(async (r) => {
     const uRaw = r.usuarios as
       | { nome_completo?: string | null; usuario?: string | null }
       | { nome_completo?: string | null; usuario?: string | null }[]
@@ -127,6 +133,15 @@ export async function GET(_request: Request, context: RouteContext) {
       };
     });
 
+    const prRaw = r.prontuario_paciente as { fotos?: unknown } | { fotos?: unknown }[] | null;
+    const pr0 = Array.isArray(prRaw) ? prRaw[0] : prRaw;
+    const paths = parsePathsFotosProntuario(pr0?.fotos);
+    const fotosAssinadas = await assinarFotosProntuario(supabase, paths);
+    const fotos = fotosAssinadas.map((f, i) => ({
+      label: `Foto ${i + 1}`,
+      url: f.url,
+    }));
+
     return {
       id: r.id as number,
       status: String(r.status ?? "pendente"),
@@ -140,8 +155,11 @@ export async function GET(_request: Request, context: RouteContext) {
       sala_nome: s0?.nome_sala?.trim() || "Sala",
       procedimentos,
       produtos,
+      qtd_fotos: fotos.length,
+      fotos,
     };
-  });
+  }),
+  );
 
   return NextResponse.json({ data });
 }

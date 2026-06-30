@@ -68,6 +68,11 @@ type PacienteItem = {
   ativo: boolean;
 };
 
+type FotoRegistro = {
+  label: string;
+  url: string;
+};
+
 type PacienteAtendimentoItem = {
   id: number;
   status: string;
@@ -81,6 +86,8 @@ type PacienteAtendimentoItem = {
   sala_nome: string;
   procedimentos: { nome: string; valor_aplicado: number }[];
   produtos: { nome: string; qtd: number }[];
+  qtd_fotos: number;
+  fotos: FotoRegistro[];
 };
 
 type PacienteAnamneseItem = {
@@ -94,6 +101,14 @@ type PacienteAnamneseItem = {
   glicemia: string | null;
   responsavel_nome: string;
   condicao_nome: string | null;
+  qtd_fotos: number;
+  fotos: FotoRegistro[];
+};
+
+type ModalFotosCtx = {
+  titulo: string;
+  subtitulo?: string;
+  fotos: FotoRegistro[];
 };
 
 function badgeAgendamentoStatus(status: string): { label: string; className: string } {
@@ -196,6 +211,115 @@ function fmtDataHoraAg(iso: string) {
   } catch {
     return iso;
   }
+}
+
+function BotaoDataComFotos({
+  dataFmt,
+  qtdFotos,
+  onAbrirFotos,
+}: {
+  dataFmt: string;
+  qtdFotos: number;
+  onAbrirFotos: () => void;
+}) {
+  if (qtdFotos <= 0) {
+    return <span>{dataFmt}</span>;
+  }
+  return (
+    <button
+      type="button"
+      className="btn btn-link btn-sm p-0 align-baseline font-weight-bold text-dark text-decoration-none"
+      onClick={onAbrirFotos}
+      title={`Ver ${qtdFotos} foto${qtdFotos === 1 ? "" : "s"}`}
+    >
+      {dataFmt}
+      <span className="badge badge-light border ml-1 font-weight-normal">
+        <i className="fas fa-camera mr-1 text-muted" aria-hidden />
+        {qtdFotos}
+      </span>
+    </button>
+  );
+}
+
+function ModalFotosRegistro({
+  ctx,
+  onClose,
+}: {
+  ctx: ModalFotosCtx;
+  onClose: () => void;
+}) {
+  const titleId = useId();
+  return (
+    <>
+      <div
+        className="modal fade show"
+        style={{ display: "block", zIndex: 1090 }}
+        tabIndex={-1}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby={titleId}
+      >
+        <div className="modal-dialog modal-lg modal-dialog-centered modal-dialog-scrollable" role="document">
+          <div className="modal-content">
+            <div className="modal-header">
+              <h5 className="modal-title" id={titleId}>
+                {ctx.titulo}
+              </h5>
+              <button type="button" className="close" onClick={onClose} aria-label="Fechar">
+                <span aria-hidden="true">&times;</span>
+              </button>
+            </div>
+            <div className="modal-body">
+              {ctx.subtitulo ? (
+                <p className="text-muted small mb-3">{ctx.subtitulo}</p>
+              ) : null}
+              {ctx.fotos.length === 0 ? (
+                <p className="text-muted mb-0">Nenhuma foto neste registro.</p>
+              ) : (
+                <div className="row">
+                  {ctx.fotos.map((foto) => (
+                    <div key={`${foto.label}-${foto.url}`} className="col-12 col-sm-6 mb-3">
+                      <div className="border rounded p-2 h-100">
+                        <div className="small text-muted mb-2">{foto.label}</div>
+                        <a href={foto.url} target="_blank" rel="noopener noreferrer">
+                          <img
+                            src={foto.url}
+                            alt={foto.label}
+                            className="img-fluid rounded border"
+                            style={{ width: "100%", maxHeight: 280, objectFit: "cover" }}
+                            loading="lazy"
+                          />
+                        </a>
+                        <a
+                          href={foto.url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="btn btn-link btn-sm p-0 mt-2"
+                        >
+                          Abrir imagem
+                        </a>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+            <div className="modal-footer">
+              <button type="button" className="btn btn-secondary" onClick={onClose}>
+                Fechar
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div
+        className="modal-backdrop fade show"
+        style={{ zIndex: 1085 }}
+        role="presentation"
+        onClick={onClose}
+      />
+    </>
+  );
 }
 
 type Props = {
@@ -333,6 +457,7 @@ export function PacientesCadastroClient({ pacientes, loadError }: Props) {
   const [anamneses, setAnamneses] = useState<PacienteAnamneseItem[]>([]);
   const [anamnesesLoading, setAnamnesesLoading] = useState(false);
   const [anamnesesError, setAnamnesesError] = useState<string | null>(null);
+  const [modalFotos, setModalFotos] = useState<ModalFotosCtx | null>(null);
   const [cpf, setCpf] = useState("");
   const [nomePrincipal, setNomePrincipal] = useState("");
   const [usarNomeSocial, setUsarNomeSocial] = useState(false);
@@ -434,6 +559,7 @@ export function PacientesCadastroClient({ pacientes, loadError }: Props) {
 
   function closeDetalhesPaciente() {
     setDetalhePaciente(null);
+    setModalFotos(null);
     setAtendimentosRealizados([]);
     setAtendimentosError(null);
     setAtendimentosLoading(false);
@@ -461,8 +587,15 @@ export function PacientesCadastroClient({ pacientes, loadError }: Props) {
           error?: string;
         };
         if (cancelled) return;
-        if (res.ok) setAtendimentosRealizados(json.data ?? []);
-        else setAtendimentosError(json.error ?? "Erro ao carregar atendimentos.");
+        if (res.ok) {
+          setAtendimentosRealizados(
+            (json.data ?? []).map((row) => ({
+              ...row,
+              qtd_fotos: row.qtd_fotos ?? row.fotos?.length ?? 0,
+              fotos: row.fotos ?? [],
+            })),
+          );
+        } else setAtendimentosError(json.error ?? "Erro ao carregar atendimentos.");
       } catch (e) {
         if (!cancelled) {
           setAtendimentosError(
@@ -482,8 +615,15 @@ export function PacientesCadastroClient({ pacientes, loadError }: Props) {
           error?: string;
         };
         if (cancelled) return;
-        if (res.ok) setAnamneses(json.data ?? []);
-        else setAnamnesesError(json.error ?? "Erro ao carregar anamneses.");
+        if (res.ok) {
+          setAnamneses(
+            (json.data ?? []).map((row) => ({
+              ...row,
+              qtd_fotos: row.qtd_fotos ?? row.fotos?.length ?? 0,
+              fotos: row.fotos ?? [],
+            })),
+          );
+        } else setAnamnesesError(json.error ?? "Erro ao carregar anamneses.");
       } catch (e) {
         if (!cancelled) {
           setAnamnesesError(
@@ -1137,7 +1277,17 @@ export function PacientesCadastroClient({ pacientes, loadError }: Props) {
                           />
                           <div className="small">
                             <div className="font-weight-bold text-dark">
-                              {fmtDataHoraAg(ag.data_hora_inicio)}
+                              <BotaoDataComFotos
+                                dataFmt={fmtDataHoraAg(ag.data_hora_inicio)}
+                                qtdFotos={ag.qtd_fotos}
+                                onAbrirFotos={() =>
+                                  setModalFotos({
+                                    titulo: "Fotos do atendimento",
+                                    subtitulo: `${fmtDataHoraAg(ag.data_hora_inicio)} · Ag. #${ag.id} · ${ag.profissional_nome}`,
+                                    fotos: ag.fotos,
+                                  })
+                                }
+                              />
                               <span className="text-muted font-weight-normal">
                                 {" "}
                                 — {fmtDataHoraAg(ag.data_hora_fim)}
@@ -1257,7 +1407,17 @@ export function PacientesCadastroClient({ pacientes, loadError }: Props) {
                           />
                           <div className="small">
                             <div className="font-weight-bold text-dark">
-                              {fmtDataHoraAg(ev.data)}
+                              <BotaoDataComFotos
+                                dataFmt={fmtDataHoraAg(ev.data)}
+                                qtdFotos={ev.qtd_fotos}
+                                onAbrirFotos={() =>
+                                  setModalFotos({
+                                    titulo: "Fotos da anamnese",
+                                    subtitulo: `${fmtDataHoraAg(ev.data)} · Reg. #${ev.id} · ${ev.responsavel_nome}`,
+                                    fotos: ev.fotos,
+                                  })
+                                }
+                              />
                               <span className="text-muted font-weight-normal">
                                 {" "}
                                 · Reg. #{ev.id}
@@ -1325,6 +1485,10 @@ export function PacientesCadastroClient({ pacientes, loadError }: Props) {
             </div>
           </div>
         </ModalBackdrop>
+      ) : null}
+
+      {modalFotos ? (
+        <ModalFotosRegistro ctx={modalFotos} onClose={() => setModalFotos(null)} />
       ) : null}
 
       {modalOpen ? (

@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { SELECT_PACIENTES_EVOLUCAO_VINCULOS } from "@/lib/avaliacoes/evolucao";
+import { montarFotosAnamnese } from "@/lib/avaliacoes/fotos-evolucao-public";
 import { getSession } from "@/lib/auth/session";
 import { createAdminClient } from "@/lib/supabase/admin";
 
@@ -58,6 +59,7 @@ export async function GET(request: Request, context: RouteContext) {
 
   const selectAnamneses =
     "id, data, ativo, observacao, tratamento_sugerido, forma_contato, pressao_arterial, glicemia, " +
+    "foto_plantar_direito, foto_plantar_esquerdo, foto_dorso_direito, foto_dorso_esquerdo, foto_doc_termo_consentimento, " +
     "usuarios ( nome_completo, usuario ), " +
     SELECT_PACIENTES_EVOLUCAO_VINCULOS;
 
@@ -78,6 +80,8 @@ export async function GET(request: Request, context: RouteContext) {
     console.error(evErr);
     return NextResponse.json({ error: evErr.message }, { status: 500 });
   }
+
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL?.trim() ?? "";
 
   const rawRows = (rows ?? []) as unknown as Record<string, unknown>[];
   const data = rawRows.map((r) => {
@@ -100,6 +104,8 @@ export async function GET(request: Request, context: RouteContext) {
       }
     }
 
+    const fotos = montarFotosAnamnese(r, supabaseUrl);
+
     return {
       id: r.id as number,
       data: String(r.data),
@@ -113,6 +119,8 @@ export async function GET(request: Request, context: RouteContext) {
       glicemia: typeof r.glicemia === "string" ? r.glicemia.trim() || null : null,
       responsavel_nome: nomeResponsavelEmbed(u0),
       condicao_nome: nomesCond.length ? nomesCond.join(", ") : null,
+      qtd_fotos: fotos.length,
+      fotos,
     };
   });
 

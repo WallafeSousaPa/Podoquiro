@@ -70,6 +70,10 @@ function rotaLiberadaRecepcao(pathname: string): boolean {
     return true;
   if (pathname === "/pacientes/avaliacoes" || pathname.startsWith("/pacientes/avaliacoes/"))
     return true;
+  if (pathname === "/atendimentos/agendar" || pathname.startsWith("/atendimentos/agendar/"))
+    return true;
+  if (pathname === "/atendimentos/confirmar" || pathname.startsWith("/atendimentos/confirmar/"))
+    return true;
   if (pathname === "/financeiro/caixa" || pathname.startsWith("/financeiro/caixa/"))
     return true;
   return false;
@@ -317,6 +321,55 @@ export function DashboardShell({
                     className={cx(
                       "nav-item",
                       "has-treeview",
+                      openAtendimentos && "menu-open",
+                    )}
+                  >
+                    <a
+                      href="#"
+                      className={cx("nav-link", isAtendimentos && "active")}
+                      onClick={(e) => {
+                        e.preventDefault();
+                        setOpenAtendimentos((v) => !v);
+                      }}
+                    >
+                      <i className="nav-icon fas fa-notes-medical" />
+                      <p>
+                        Atendimentos
+                        <i className="right fas fa-angle-left" />
+                      </p>
+                    </a>
+                    <ul className="nav nav-treeview">
+                      <li className="nav-item">
+                        <Link
+                          href="/atendimentos/agendar"
+                          className={cx(
+                            "nav-link",
+                            pathname === "/atendimentos/agendar" && "active",
+                          )}
+                        >
+                          <i className="far fa-circle nav-icon" />
+                          <p>Agendar</p>
+                        </Link>
+                      </li>
+                      <li className="nav-item">
+                        <Link
+                          href="/atendimentos/confirmar"
+                          className={cx(
+                            "nav-link",
+                            pathname === "/atendimentos/confirmar" && "active",
+                          )}
+                        >
+                          <i className="far fa-circle nav-icon" />
+                          <p>Confirmar</p>
+                        </Link>
+                      </li>
+                    </ul>
+                  </li>
+
+                  <li
+                    className={cx(
+                      "nav-item",
+                      "has-treeview",
                       openPacientes && "menu-open",
                     )}
                   >
@@ -401,29 +454,53 @@ export function DashboardShell({
                 </>
               ) : (
                 <>
-              {menuAtendimento ? (
-                <li
-                  className={cx(
-                    "nav-item",
-                    "has-treeview",
-                    openAtendimentos && "menu-open",
-                  )}
+              <li
+                className={cx(
+                  "nav-item",
+                  "has-treeview",
+                  openAtendimentos && "menu-open",
+                )}
+              >
+                <a
+                  href="#"
+                  className={cx("nav-link", isAtendimentos && "active")}
+                  onClick={(e) => {
+                    e.preventDefault();
+                    setOpenAtendimentos((v) => !v);
+                  }}
                 >
-                  <a
-                    href="#"
-                    className={cx("nav-link", isAtendimentos && "active")}
-                    onClick={(e) => {
-                      e.preventDefault();
-                      setOpenAtendimentos((v) => !v);
-                    }}
-                  >
-                    <i className="nav-icon fas fa-notes-medical" />
-                    <p>
-                      Atendimentos
-                      <i className="right fas fa-angle-left" />
-                    </p>
-                  </a>
-                  <ul className="nav nav-treeview">
+                  <i className="nav-icon fas fa-notes-medical" />
+                  <p>
+                    Atendimentos
+                    <i className="right fas fa-angle-left" />
+                  </p>
+                </a>
+                <ul className="nav nav-treeview">
+                  <li className="nav-item">
+                    <Link
+                      href="/atendimentos/agendar"
+                      className={cx(
+                        "nav-link",
+                        pathname === "/atendimentos/agendar" && "active",
+                      )}
+                    >
+                      <i className="far fa-circle nav-icon" />
+                      <p>Agendar</p>
+                    </Link>
+                  </li>
+                  <li className="nav-item">
+                    <Link
+                      href="/atendimentos/confirmar"
+                      className={cx(
+                        "nav-link",
+                        pathname === "/atendimentos/confirmar" && "active",
+                      )}
+                    >
+                      <i className="far fa-circle nav-icon" />
+                      <p>Confirmar</p>
+                    </Link>
+                  </li>
+                  {menuAtendimento ? (
                     <li className="nav-item">
                       <Link
                         href="/atendimentos/atendimento"
@@ -436,9 +513,9 @@ export function DashboardShell({
                         <p>Atendimento</p>
                       </Link>
                     </li>
-                  </ul>
-                </li>
-              ) : null}
+                  ) : null}
+                </ul>
+              </li>
 
               <li
                 className={cx(
