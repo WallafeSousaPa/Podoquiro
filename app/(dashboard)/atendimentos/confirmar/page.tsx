@@ -18,7 +18,7 @@ export default async function ConfirmarAtendimentoPage() {
         <div className="container-fluid">
           <div className="row mb-2">
             <div className="col-sm-6">
-              <h1 className="m-0 text-dark">Confirmar agendamento</h1>
+              <h1 className="m-0 text-dark">Agendamentos</h1>
             </div>
             <div className="col-sm-6">
               <ol className="breadcrumb float-sm-right">
@@ -26,7 +26,7 @@ export default async function ConfirmarAtendimentoPage() {
                   <a href="/inicio">Início</a>
                 </li>
                 <li className="breadcrumb-item">Atendimentos</li>
-                <li className="breadcrumb-item active">Confirmar</li>
+                <li className="breadcrumb-item active">Agendamentos</li>
               </ol>
             </div>
           </div>

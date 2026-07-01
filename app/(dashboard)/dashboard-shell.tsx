@@ -341,26 +341,16 @@ export function DashboardShell({
                     <ul className="nav nav-treeview">
                       <li className="nav-item">
                         <Link
-                          href="/atendimentos/agendar"
-                          className={cx(
-                            "nav-link",
-                            pathname === "/atendimentos/agendar" && "active",
-                          )}
-                        >
-                          <i className="far fa-circle nav-icon" />
-                          <p>Agendar</p>
-                        </Link>
-                      </li>
-                      <li className="nav-item">
-                        <Link
                           href="/atendimentos/confirmar"
                           className={cx(
                             "nav-link",
-                            pathname === "/atendimentos/confirmar" && "active",
+                            (pathname === "/atendimentos/confirmar" ||
+                              pathname === "/atendimentos/agendar") &&
+                              "active",
                           )}
                         >
                           <i className="far fa-circle nav-icon" />
-                          <p>Confirmar</p>
+                          <p>Agendamentos</p>
                         </Link>
                       </li>
                     </ul>
@@ -478,26 +468,16 @@ export function DashboardShell({
                 <ul className="nav nav-treeview">
                   <li className="nav-item">
                     <Link
-                      href="/atendimentos/agendar"
-                      className={cx(
-                        "nav-link",
-                        pathname === "/atendimentos/agendar" && "active",
-                      )}
-                    >
-                      <i className="far fa-circle nav-icon" />
-                      <p>Agendar</p>
-                    </Link>
-                  </li>
-                  <li className="nav-item">
-                    <Link
                       href="/atendimentos/confirmar"
                       className={cx(
                         "nav-link",
-                        pathname === "/atendimentos/confirmar" && "active",
+                        (pathname === "/atendimentos/confirmar" ||
+                          pathname === "/atendimentos/agendar") &&
+                          "active",
                       )}
                     >
                       <i className="far fa-circle nav-icon" />
-                      <p>Confirmar</p>
+                      <p>Agendamentos</p>
                     </Link>
                   </li>
                   {menuAtendimento ? (

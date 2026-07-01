@@ -5,6 +5,7 @@ import {
   useCallback,
   useEffect,
   useId,
+  useMemo,
   useState,
 } from "react";
 import {
@@ -12,6 +13,7 @@ import {
   urlWhatsAppComTexto,
   urlWhatsAppPaciente,
 } from "@/lib/whatsapp/paciente";
+import { NovoAgendamentoModal } from "./novo-agendamento-modal";
 
 type LinksPagamento = {
   linkAsaas: string | null;
@@ -202,6 +204,7 @@ type TaxaPagamento = {
   valor: number;
   status: string;
   expira_em: string | null;
+  pago_em: string | null;
   link_asaas: string | null;
 };
 
@@ -235,6 +238,22 @@ function fmtMoeda(v: number): string {
   return v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 }
 
+function pad2(n: number): string {
+  return String(n).padStart(2, "0");
+}
+
+function hojeLocal(): string {
+  const d = new Date();
+  return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
+}
+
+const PAGAMENTO_BADGE: Record<string, { cls: string; label: string }> = {
+  pago: { cls: "success", label: "Pago" },
+  pendente: { cls: "warning", label: "Pendente" },
+  expirado: { cls: "secondary", label: "Expirado" },
+  cancelado: { cls: "secondary", label: "Cancelado" },
+};
+
 export function ConfirmarAtendimentoClient({
   nomeEmpresaCurto,
 }: {
@@ -245,36 +264,73 @@ export function ConfirmarAtendimentoClient({
   const [lista, setLista] = useState<AgendamentoConfirmacao[]>([]);
   const [taxaPadrao, setTaxaPadrao] = useState(0);
   const [filtroStatus, setFiltroStatus] = useState<"pendente" | "confirmado" | "todos">(
-    "pendente",
+    "todos",
   );
+  const [dataDe, setDataDe] = useState<string>(hojeLocal);
+  const [dataAte, setDataAte] = useState<string>(hojeLocal);
+  const [busca, setBusca] = useState("");
+  const [filtroPagamento, setFiltroPagamento] = useState<
+    "todos" | "pago" | "pendente" | "expirado" | "cancelado" | "sem"
+  >("todos");
   const [acaoId, setAcaoId] = useState<number | null>(null);
   const [linksPorAgendamento, setLinksPorAgendamento] = useState<
     Record<number, LinksPagamento>
   >({});
   const [modalLinks, setModalLinks] = useState<LinksPagamento | null>(null);
+  const [modalNovoAberto, setModalNovoAberto] = useState(false);
 
-  const carregar = useCallback(async () => {
-    setCarregando(true);
-    setErro(null);
-    try {
-      const res = await fetch(
-        `/api/atendimentos/confirmacao?status=${filtroStatus}&dias=45`,
-        { credentials: "include" },
-      );
-      const json = await res.json();
-      if (!res.ok) throw new Error(json.error ?? "Erro ao carregar.");
-      setLista((json.data ?? []) as AgendamentoConfirmacao[]);
-      setTaxaPadrao(Number(json.taxa_agendamento_padrao ?? 0));
-    } catch (e) {
-      setErro(e instanceof Error ? e.message : "Erro ao carregar.");
-    } finally {
-      setCarregando(false);
-    }
-  }, [filtroStatus]);
+  const carregar = useCallback(
+    async (opts?: { silent?: boolean }) => {
+      if (!opts?.silent) setCarregando(true);
+      setErro(null);
+      try {
+        const params = new URLSearchParams({
+          status: filtroStatus,
+          de: dataDe,
+          ate: dataAte,
+        });
+        const res = await fetch(`/api/atendimentos/confirmacao?${params.toString()}`, {
+          credentials: "include",
+        });
+        const json = await res.json();
+        if (!res.ok) throw new Error(json.error ?? "Erro ao carregar.");
+        setLista((json.data ?? []) as AgendamentoConfirmacao[]);
+        setTaxaPadrao(Number(json.taxa_agendamento_padrao ?? 0));
+      } catch (e) {
+        if (!opts?.silent) setErro(e instanceof Error ? e.message : "Erro ao carregar.");
+      } finally {
+        if (!opts?.silent) setCarregando(false);
+      }
+    },
+    [filtroStatus, dataDe, dataAte],
+  );
 
   useEffect(() => {
     void carregar();
+    // Atualiza o status de pagamento automaticamente (polling no servidor consulta o Asaas).
+    const interval = setInterval(() => {
+      void carregar({ silent: true });
+    }, 30_000);
+    return () => clearInterval(interval);
   }, [carregar]);
+
+  const listaFiltrada = useMemo(() => {
+    const termo = busca.trim().toLowerCase();
+    return lista.filter((ag) => {
+      if (termo) {
+        const alvo = `${ag.paciente_nome} ${ag.paciente_telefone ?? ""} ${ag.profissional_nome}`.toLowerCase();
+        if (!alvo.includes(termo)) return false;
+      }
+      if (filtroPagamento !== "todos") {
+        if (filtroPagamento === "sem") {
+          if (ag.taxa_pagamento) return false;
+        } else if ((ag.taxa_pagamento?.status ?? null) !== filtroPagamento) {
+          return false;
+        }
+      }
+      return true;
+    });
+  }, [lista, busca, filtroPagamento]);
 
   async function confirmar(id: number) {
     setAcaoId(id);
@@ -351,24 +407,108 @@ export function ConfirmarAtendimentoClient({
 
   return (
     <div className="card card-outline card-info">
-      <div className="card-header">
-        <h3 className="card-title">Confirmar agendamentos</h3>
-        <div className="card-tools">
-          <select
-            className="form-control form-control-sm"
-            value={filtroStatus}
-            onChange={(e) =>
-              setFiltroStatus(e.target.value as "pendente" | "confirmado" | "todos")
-            }
-            aria-label="Filtrar por status"
+      <div className="card-header d-flex align-items-center">
+        <h3 className="card-title mb-0">Agendamentos</h3>
+        <div className="card-tools ml-auto">
+          <button
+            type="button"
+            className="btn btn-sm btn-primary"
+            onClick={() => setModalNovoAberto(true)}
           >
-            <option value="pendente">Pendentes</option>
-            <option value="confirmado">Confirmados</option>
-            <option value="todos">Pendentes e confirmados</option>
-          </select>
+            <i className="fas fa-plus" aria-hidden /> Novo agendamento
+          </button>
         </div>
       </div>
       <div className="card-body p-0">
+        <div className="border-bottom p-3">
+          <div className="form-row align-items-end">
+            <div className="col-6 col-md-2 form-group mb-2">
+              <label className="small mb-1" htmlFor="filtro-de">
+                De
+              </label>
+              <input
+                id="filtro-de"
+                type="date"
+                className="form-control form-control-sm"
+                value={dataDe}
+                max={dataAte || undefined}
+                onChange={(e) => setDataDe(e.target.value)}
+              />
+            </div>
+            <div className="col-6 col-md-2 form-group mb-2">
+              <label className="small mb-1" htmlFor="filtro-ate">
+                Até
+              </label>
+              <input
+                id="filtro-ate"
+                type="date"
+                className="form-control form-control-sm"
+                value={dataAte}
+                min={dataDe || undefined}
+                onChange={(e) => setDataAte(e.target.value)}
+              />
+            </div>
+            <div className="col-6 col-md-2 form-group mb-2">
+              <label className="small mb-1" htmlFor="filtro-status">
+                Status
+              </label>
+              <select
+                id="filtro-status"
+                className="form-control form-control-sm"
+                value={filtroStatus}
+                onChange={(e) =>
+                  setFiltroStatus(e.target.value as "pendente" | "confirmado" | "todos")
+                }
+              >
+                <option value="todos">Todos</option>
+                <option value="pendente">Pendentes</option>
+                <option value="confirmado">Confirmados</option>
+              </select>
+            </div>
+            <div className="col-6 col-md-2 form-group mb-2">
+              <label className="small mb-1" htmlFor="filtro-pagamento">
+                Pagamento
+              </label>
+              <select
+                id="filtro-pagamento"
+                className="form-control form-control-sm"
+                value={filtroPagamento}
+                onChange={(e) =>
+                  setFiltroPagamento(
+                    e.target.value as
+                      | "todos"
+                      | "pago"
+                      | "pendente"
+                      | "expirado"
+                      | "cancelado"
+                      | "sem",
+                  )
+                }
+              >
+                <option value="todos">Todos</option>
+                <option value="pago">Pago</option>
+                <option value="pendente">Pendente</option>
+                <option value="expirado">Expirado</option>
+                <option value="cancelado">Cancelado</option>
+                <option value="sem">Sem link</option>
+              </select>
+            </div>
+            <div className="col-12 col-md-4 form-group mb-2">
+              <label className="small mb-1" htmlFor="filtro-busca">
+                Buscar
+              </label>
+              <input
+                id="filtro-busca"
+                type="search"
+                className="form-control form-control-sm"
+                placeholder="Paciente, telefone ou profissional"
+                value={busca}
+                onChange={(e) => setBusca(e.target.value)}
+              />
+            </div>
+          </div>
+        </div>
+
         {erro ? (
           <div className="alert alert-danger m-3 mb-0" role="alert">
             {erro}
@@ -388,7 +528,7 @@ export function ConfirmarAtendimentoClient({
 
         {carregando ? (
           <p className="text-muted p-3">Carregando…</p>
-        ) : lista.length === 0 ? (
+        ) : listaFiltrada.length === 0 ? (
           <p className="text-muted p-3 mb-0">Nenhum agendamento encontrado.</p>
         ) : (
           <div className="table-responsive">
@@ -404,7 +544,7 @@ export function ConfirmarAtendimentoClient({
                 </tr>
               </thead>
               <tbody>
-                {lista.map((ag) => {
+                {listaFiltrada.map((ag) => {
                   const cache = linksPorAgendamento[ag.id];
                   const links = linksDeAgendamento(ag, cache);
                   const busy = acaoId === ag.id;
@@ -430,13 +570,26 @@ export function ConfirmarAtendimentoClient({
                       </td>
                       <td>
                         {ag.taxa_pagamento ? (
-                          <span className="small">
-                            {fmtMoeda(ag.taxa_pagamento.valor)} — {ag.taxa_pagamento.status}
-                          </span>
+                          <>
+                            <span
+                              className={`badge badge-${
+                                PAGAMENTO_BADGE[ag.taxa_pagamento.status]?.cls ?? "secondary"
+                              }`}
+                            >
+                              {PAGAMENTO_BADGE[ag.taxa_pagamento.status]?.label ??
+                                ag.taxa_pagamento.status}
+                            </span>
+                            <div className="text-muted small mt-1">
+                              {fmtMoeda(ag.taxa_pagamento.valor)}
+                              {ag.taxa_pagamento.status === "pago" && ag.taxa_pagamento.pago_em
+                                ? ` · pago em ${fmtDataHora(ag.taxa_pagamento.pago_em)}`
+                                : null}
+                            </div>
+                          </>
                         ) : (
                           <span className="text-muted small">Sem link</span>
                         )}
-                        {links ? (
+                        {links && ag.taxa_pagamento?.status === "pendente" ? (
                           <div className="small mt-1">
                             <button
                               type="button"
@@ -500,6 +653,13 @@ export function ConfirmarAtendimentoClient({
       </div>
       {modalLinks ? (
         <ModalLinksPagamento dados={modalLinks} onFechar={() => setModalLinks(null)} />
+      ) : null}
+      {modalNovoAberto ? (
+        <NovoAgendamentoModal
+          dataPadrao={dataDe}
+          onFechar={() => setModalNovoAberto(false)}
+          onCriado={() => void carregar({ silent: true })}
+        />
       ) : null}
     </div>
   );

@@ -43,7 +43,20 @@ export async function GET(request: Request) {
 
   const url = new URL(request.url);
   const statusParam = url.searchParams.get("status")?.trim() ?? "pendente";
-  const dias = Math.min(Math.max(Number(url.searchParams.get("dias") ?? 30), 1), 90);
+
+  const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+  const hoje = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "America/Sao_Paulo",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(new Date());
+  const deParam = url.searchParams.get("de")?.trim();
+  const ateParam = url.searchParams.get("ate")?.trim();
+  const de = deParam && DATE_RE.test(deParam) ? deParam : hoje;
+  const ate = ateParam && DATE_RE.test(ateParam) ? ateParam : de;
+  const inicioIso = `${de}T00:00:00.000-03:00`;
+  const fimIso = `${ate}T23:59:59.999-03:00`;
 
   const statusList =
     statusParam === "todos"
@@ -57,10 +70,6 @@ export async function GET(request: Request) {
     getPodeVerTodosAgendamentos(supabase, sessionUserId),
     getUsuarioAgendaSomentePropriaColuna(supabase, sessionUserId),
   ]);
-
-  const agora = new Date();
-  const limite = new Date(agora);
-  limite.setDate(limite.getDate() + dias);
 
   let q = supabase
     .from("agendamentos")
@@ -77,13 +86,13 @@ export async function GET(request: Request) {
       pacientes ( nome_completo, nome_social, telefone ),
       usuarios ( nome_completo, usuario ),
       salas ( nome_sala ),
-      agendamento_taxa_rede ( id, token, valor, status, expira_em, created_at, asaas_payment_link_id, asaas_payment_link_url, id_agendamento )
+      agendamento_taxa_rede ( id, token, valor, status, expira_em, pago_em, created_at, asaas_payment_link_id, asaas_payment_link_url, id_agendamento )
     `,
     )
     .eq("id_empresa", empresaId)
     .in("status", [...statusList])
-    .gte("data_hora_inicio", agora.toISOString())
-    .lte("data_hora_inicio", limite.toISOString())
+    .gte("data_hora_inicio", inicioIso)
+    .lte("data_hora_inicio", fimIso)
     .order("data_hora_inicio", { ascending: true });
 
   if (!podeVerTodos || somentePropriaColuna) {
@@ -110,6 +119,7 @@ export async function GET(request: Request) {
     valor: number;
     status: string;
     expira_em: string | null;
+    pago_em: string | null;
     created_at: string;
     asaas_payment_link_id: string | null;
     asaas_payment_link_url: string | null;
@@ -164,9 +174,9 @@ export async function GET(request: Request) {
 
     const taxasRaw = row.agendamento_taxa_rede as TaxaRow | TaxaRow[] | null;
     const taxas = Array.isArray(taxasRaw) ? taxasRaw : taxasRaw ? [taxasRaw] : [];
-    const taxaAtiva = taxas
-      .filter((t) => t.status === "pendente")
-      .sort((a, b) => b.created_at.localeCompare(a.created_at))[0] ?? null;
+    const porRecencia = [...taxas].sort((a, b) => b.created_at.localeCompare(a.created_at));
+    // Prioriza taxa paga; senão, a mais recente (pendente/expirada/cancelada).
+    const taxaAtiva = porRecencia.find((t) => t.status === "pago") ?? porRecencia[0] ?? null;
 
     return {
       id: row.id as number,
@@ -190,6 +200,7 @@ export async function GET(request: Request) {
             valor: Number(taxaAtiva.valor),
             status: taxaAtiva.status,
             expira_em: taxaAtiva.expira_em,
+            pago_em: taxaAtiva.pago_em,
             link_asaas: taxaAtiva.asaas_payment_link_url,
           }
         : null,
