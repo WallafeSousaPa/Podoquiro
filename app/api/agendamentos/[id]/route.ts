@@ -35,6 +35,10 @@ import {
 import { dataReferenciaBrasilia } from "@/lib/financeiro/data-referencia-brasilia";
 import { obterSituacaoCaixaDia } from "@/lib/financeiro/caixa-situacao-dia";
 import { parsePagamentosAgendamentoBody } from "@/lib/financeiro/parse-pagamentos-agendamento";
+import {
+  somarTaxaAgendamentoPaga,
+  totalAReceberCaixaComTaxa,
+} from "@/lib/financeiro/taxa-agendamento-caixa";
 import { getSession } from "@/lib/auth/session";
 import { tentarLogErroApi } from "@/lib/aplicacao/tentar-log-erro-api";
 import { createAdminClient } from "@/lib/supabase/admin";
@@ -186,12 +190,23 @@ export async function GET(request: Request, context: RouteContext) {
     !somentePropriaColunaGet &&
     (podeVerTodosGet || idUsuarioAg === sessionUserId);
 
+  let taxaAgendamentoPaga = 0;
+  try {
+    taxaAgendamentoPaga = await somarTaxaAgendamentoPaga(supabase, id);
+  } catch (e) {
+    console.error(e);
+  }
+  const valorTotalAg = Number(row.valor_total);
+  const valorTotalAReceber = totalAReceberCaixaComTaxa(valorTotalAg, taxaAgendamentoPaga);
+
   return NextResponse.json({
     data: {
       ...row,
       valor_bruto: Number(row.valor_bruto),
       desconto: Number(row.desconto),
-      valor_total: Number(row.valor_total),
+      valor_total: valorTotalAg,
+      taxa_agendamento_paga: taxaAgendamentoPaga,
+      valor_total_a_receber: valorTotalAReceber,
       agendar_retorno: Boolean(row.agendar_retorno),
       id_retorno:
         row.id_retorno != null && Number(row.id_retorno) > 0
@@ -1088,13 +1103,29 @@ export async function PATCH(request: Request, context: RouteContext) {
     }
     const pagamentos = parsed.pagamentos;
 
-    const valorTotalEsperado = calcularValorTotal(valorBruto, desconto);
+    let taxaAgendamentoPaga = 0;
+    try {
+      taxaAgendamentoPaga = await somarTaxaAgendamentoPaga(supabase, id);
+    } catch (e) {
+      console.error(e);
+      return NextResponse.json(
+        { error: e instanceof Error ? e.message : "Erro ao verificar taxa de agendamento." },
+        { status: 500 },
+      );
+    }
+
+    const valorTotalBruto = calcularValorTotal(valorBruto, desconto);
+    const valorTotalEsperado = totalAReceberCaixaComTaxa(valorTotalBruto, taxaAgendamentoPaga);
     const somaPagamentos =
       Math.round(pagamentos.reduce((s, p) => s + p.valor_pago, 0) * 100) / 100;
     if (Math.abs(somaPagamentos - valorTotalEsperado) > 0.02) {
+      const msgTaxa =
+        taxaAgendamentoPaga > 0
+          ? ` (total do atendimento ${valorTotalBruto.toFixed(2).replace(".", ",")} menos taxa de agendamento já paga ${taxaAgendamentoPaga.toFixed(2).replace(".", ",")})`
+          : "";
       return NextResponse.json(
         {
-          error: `A soma dos pagamentos (${somaPagamentos.toFixed(2).replace(".", ",")}) deve ser igual ao total do agendamento (${valorTotalEsperado.toFixed(2).replace(".", ",")}), com base na soma dos procedimentos e produtos${desconto > 0 ? ` e no desconto de ${desconto}%` : ""}.`,
+          error: `A soma dos pagamentos (${somaPagamentos.toFixed(2).replace(".", ",")}) deve ser igual ao total a receber (${valorTotalEsperado.toFixed(2).replace(".", ",")})${msgTaxa}, com base na soma dos procedimentos e produtos${desconto > 0 ? ` e no desconto de ${desconto}%` : ""}.`,
         },
         { status: 400 },
       );

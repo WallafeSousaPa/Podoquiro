@@ -10,12 +10,14 @@ import type { NotaFiscalAtendimentoRow } from "@/lib/financeiro/nota-fiscal-aten
 import { ModalEmissaoNfse } from "@/app/(dashboard)/nota-fiscal/emissao/modal-emissao-nfse";
 import { ModalEmissaoNfceCaixa } from "./modal-emissao-nfce-caixa";
 
-/** Todos os lançamentos com status pago — modal só para consulta. */
+import { agendamentoPagamentoQuitado } from "@/lib/financeiro/agendamento-pagamento-quitado";
+
+/** Todos os lançamentos quitados — modal só para consulta. */
 function todosPagamentosQuitadosNaLista(r: CaixaAgendamentoRow): boolean {
-  return (
-    r.pagamentos.length > 0 &&
-    r.pagamentos.every((p) => p.status_pagamento === "pago")
-  );
+  return agendamentoPagamentoQuitado(r.pagamentos, {
+    valor_total: r.valor_total,
+    taxa_agendamento_paga: r.taxa_agendamento_paga,
+  });
 }
 
 function dataLocalYmd(): string {

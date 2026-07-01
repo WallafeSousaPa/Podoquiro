@@ -10,6 +10,7 @@ import {
   useState,
 } from "react";
 import { calcularValorTotal } from "@/lib/agenda/totais";
+import { totalAReceberCaixaComTaxa } from "@/lib/financeiro/taxa-agendamento-caixa";
 import { agendamentoExigeRetornoNoCaixa } from "@/lib/agenda/retorno-agendamento";
 import { formaPagamentoEhCartao } from "@/lib/financeiro/forma-pagamento-cartao";
 import { ModalAgendarRetornoCaixa } from "@/components/modal-agendar-retorno-caixa";
@@ -62,6 +63,9 @@ type AgDetail = {
   valor_bruto: number;
   desconto: number;
   valor_total: number;
+  /** Taxa de agendamento já paga online (Asaas) — abatida no caixa. */
+  taxa_agendamento_paga?: number;
+  valor_total_a_receber?: number;
   procedimentos: {
     id: number;
     id_procedimento: number;
@@ -616,7 +620,10 @@ export function ModalCaixaAgendamento({
         100;
       const vbProd = subtotalProdutosAgendamento(produtosLinhas, produtosCat);
       const vb = Math.round((vbProc + vbProd) * 100) / 100;
-      const totalEsperado = calcularValorTotal(vb, descontoAgendamentoNum);
+      const totalEsperado = totalAReceberCaixaComTaxa(
+        calcularValorTotal(vb, descontoAgendamentoNum),
+        detalheAg.taxa_agendamento_paga ?? 0,
+      );
       const somaPg =
         Math.round(
           pagamentos.reduce(
@@ -627,8 +634,12 @@ export function ModalCaixaAgendamento({
 
       if (detalheAg.status === "realizado") {
         if (Math.abs(somaPg - totalEsperado) > 0.02) {
+          const taxaMsg =
+            (detalheAg.taxa_agendamento_paga ?? 0) > 0
+              ? ` (já descontada taxa de agendamento paga de ${fmtBrl(detalheAg.taxa_agendamento_paga ?? 0)})`
+              : "";
           setErro(
-            `A soma dos pagamentos (${fmtBrl(somaPg)}) deve ser igual ao total do agendamento (${fmtBrl(totalEsperado)}): soma dos procedimentos e produtos${
+            `A soma dos pagamentos (${fmtBrl(somaPg)}) deve ser igual ao total a receber (${fmtBrl(totalEsperado)})${taxaMsg}: soma dos procedimentos e produtos${
               mostrarDescontoProdutosCaixa && descontoAgendamentoNum > 0
                 ? ` com ${descontoAgendamentoNum}% de desconto`
                 : ""
@@ -717,7 +728,10 @@ export function ModalCaixaAgendamento({
         100;
       const vbProd = subtotalProdutosAgendamento(produtosLinhas, produtosCat);
       const brutoAg = Math.round((vbProc + vbProd) * 100) / 100;
-      const totalEsp = calcularValorTotal(brutoAg, descontoAgendamentoNum);
+      const totalEsp = totalAReceberCaixaComTaxa(
+        calcularValorTotal(brutoAg, descontoAgendamentoNum),
+        detalheAg.taxa_agendamento_paga ?? 0,
+      );
 
       if (detalheAg.status === "realizado") {
         if (detalheAg.pagamentos_nao_carregados_por_perfil) {
@@ -734,8 +748,12 @@ export function ModalCaixaAgendamento({
             ) * 100,
           ) / 100;
         if (Math.abs(somaPgR - totalEsp) > 0.02) {
+          const taxaMsgR =
+            (detalheAg.taxa_agendamento_paga ?? 0) > 0
+              ? ` (já descontada taxa de agendamento paga de ${fmtBrl(detalheAg.taxa_agendamento_paga ?? 0)})`
+              : "";
           setErro(
-            `A soma dos pagamentos (${fmtBrl(somaPgR)}) deve ser igual ao total do agendamento (${fmtBrl(totalEsp)}). Ajuste os valores antes de salvar.`,
+            `A soma dos pagamentos (${fmtBrl(somaPgR)}) deve ser igual ao total a receber (${fmtBrl(totalEsp)})${taxaMsgR}. Ajuste os valores antes de salvar.`,
           );
           return;
         }
@@ -871,10 +889,17 @@ export function ModalCaixaAgendamento({
           subtotalProdutosAgendamento(produtosLinhas, produtosCat)) *
           100,
       ) / 100;
-    const totalEsperado = calcularValorTotal(brutoAg, descontoAgendamentoNum);
+    const totalEsperado = totalAReceberCaixaComTaxa(
+      calcularValorTotal(brutoAg, descontoAgendamentoNum),
+      detalheAg.taxa_agendamento_paga ?? 0,
+    );
     if (Math.abs(somaPg - totalEsperado) > 0.02) {
+      const taxaMsgOnly =
+        (detalheAg.taxa_agendamento_paga ?? 0) > 0
+          ? ` (já descontada taxa de agendamento paga de ${fmtBrl(detalheAg.taxa_agendamento_paga ?? 0)})`
+          : "";
       setErro(
-        `A soma dos pagamentos (${fmtBrl(somaPg)}) deve ser igual ao total do agendamento (${fmtBrl(totalEsperado)}). Ajuste os valores antes de salvar.`,
+        `A soma dos pagamentos (${fmtBrl(somaPg)}) deve ser igual ao total a receber (${fmtBrl(totalEsperado)})${taxaMsgOnly}. Ajuste os valores antes de salvar.`,
       );
       return;
     }
@@ -990,10 +1015,16 @@ export function ModalCaixaAgendamento({
     [somaProcedimentos, somaProdutos],
   );
 
-  const totalEsperadoRecebimento = useMemo(() => {
+  const taxaAgendamentoPaga = detalhe?.taxa_agendamento_paga ?? 0;
+
+  const totalBrutoComDesconto = useMemo(() => {
     if (!detalhe) return 0;
     return calcularValorTotal(somaBrutaAgendamento, descontoAgendamentoNum);
   }, [detalhe, somaBrutaAgendamento, descontoAgendamentoNum]);
+
+  const totalEsperadoRecebimento = useMemo(() => {
+    return totalAReceberCaixaComTaxa(totalBrutoComDesconto, taxaAgendamentoPaga);
+  }, [totalBrutoComDesconto, taxaAgendamentoPaga]);
 
   const somaPagamentos = useMemo(
     () =>
@@ -1092,6 +1123,16 @@ export function ModalCaixaAgendamento({
                       <li>Profissional: {row.profissional_nome}</li>
                       <li>Status: {badgeStatusAg(detalhe.status)}</li>
                     </ul>
+
+                    {taxaAgendamentoPaga > 0 ? (
+                      <div className="alert alert-info py-2 small mb-3" role="status">
+                        Taxa de agendamento de <strong>{fmtBrl(taxaAgendamentoPaga)}</strong>{" "}
+                        já foi paga online e será descontada do total nesta baixa.
+                        {totalEsperadoRecebimento <= 0.02 ? (
+                          <> Não há valor restante a receber neste atendimento.</>
+                        ) : null}
+                      </div>
+                    ) : null}
 
                     {podeAcessarCaixaAgendamento &&
                     somenteVisualizar &&
@@ -1619,12 +1660,36 @@ export function ModalCaixaAgendamento({
                                       </small>
                                     </div>
                                     <span className="text-muted d-block w-100 mt-1">
+                                      <strong>Total do atendimento:</strong>{" "}
+                                      {fmtBrl(totalBrutoComDesconto)}
+                                      {taxaAgendamentoPaga > 0 ? (
+                                        <>
+                                          {" · "}
+                                          <strong className="text-info">
+                                            Taxa agend. já paga:
+                                          </strong>{" "}
+                                          − {fmtBrl(taxaAgendamentoPaga)}
+                                        </>
+                                      ) : null}
+                                      {" · "}
                                       <strong>Total a receber:</strong>{" "}
                                       {fmtBrl(totalEsperadoRecebimento)}
                                     </span>
                                   </>
                                 ) : (
-                                  <span>
+                                  <span className="d-block w-100">
+                                    <strong>Total do atendimento:</strong>{" "}
+                                    {fmtBrl(totalBrutoComDesconto)}
+                                    {taxaAgendamentoPaga > 0 ? (
+                                      <>
+                                        {" · "}
+                                        <strong className="text-info">
+                                          Taxa agend. já paga:
+                                        </strong>{" "}
+                                        − {fmtBrl(taxaAgendamentoPaga)}
+                                      </>
+                                    ) : null}
+                                    {" · "}
                                     <strong>Total a receber:</strong>{" "}
                                     {fmtBrl(totalEsperadoRecebimento)}
                                   </span>

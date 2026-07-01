@@ -222,6 +222,8 @@ export async function carregarNotaFiscalAtendimentosRows(
         valor_bruto: Number(raw.valor_bruto),
         desconto: Number(raw.desconto),
         valor_total: Number(raw.valor_total),
+        taxa_agendamento_paga: 0,
+        valor_total_a_receber: Number(raw.valor_total),
         paciente_nome: nomePaciente(pac),
         profissional_nome: nomeProfissional(usr),
         nome_sala: sala?.nome_sala?.trim() || "—",

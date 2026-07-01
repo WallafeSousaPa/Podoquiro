@@ -13,8 +13,6 @@ import {
   urlWhatsAppComTexto,
   urlWhatsAppPaciente,
 } from "@/lib/whatsapp/paciente";
-import { NovoAgendamentoModal } from "./novo-agendamento-modal";
-
 type LinksPagamento = {
   linkAsaas: string | null;
   linkApp: string;
@@ -277,7 +275,6 @@ export function ConfirmarAtendimentoClient({
     Record<number, LinksPagamento>
   >({});
   const [modalLinks, setModalLinks] = useState<LinksPagamento | null>(null);
-  const [modalNovoAberto, setModalNovoAberto] = useState(false);
 
   const carregar = useCallback(
     async (opts?: { silent?: boolean }) => {
@@ -407,17 +404,8 @@ export function ConfirmarAtendimentoClient({
 
   return (
     <div className="card card-outline card-info">
-      <div className="card-header d-flex align-items-center">
+      <div className="card-header">
         <h3 className="card-title mb-0">Agendamentos</h3>
-        <div className="card-tools ml-auto">
-          <button
-            type="button"
-            className="btn btn-sm btn-primary"
-            onClick={() => setModalNovoAberto(true)}
-          >
-            <i className="fas fa-plus" aria-hidden /> Novo agendamento
-          </button>
-        </div>
       </div>
       <div className="card-body p-0">
         <div className="border-bottom p-3">
@@ -653,13 +641,6 @@ export function ConfirmarAtendimentoClient({
       </div>
       {modalLinks ? (
         <ModalLinksPagamento dados={modalLinks} onFechar={() => setModalLinks(null)} />
-      ) : null}
-      {modalNovoAberto ? (
-        <NovoAgendamentoModal
-          dataPadrao={dataDe}
-          onFechar={() => setModalNovoAberto(false)}
-          onCriado={() => void carregar({ silent: true })}
-        />
       ) : null}
     </div>
   );

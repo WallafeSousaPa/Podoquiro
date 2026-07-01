@@ -32,6 +32,8 @@ export type CaixaAgendamentoRow = {
   valor_bruto: number;
   desconto: number;
   valor_total: number;
+  taxa_agendamento_paga: number;
+  valor_total_a_receber: number;
   paciente_nome: string;
   profissional_nome: string;
   nome_sala: string;
@@ -170,7 +172,7 @@ export function CaixaClient({
               <th>Sala</th>
               <th style={{ width: "110px" }}>Status</th>
               <th className="text-right" style={{ minWidth: "88px" }}>
-                Total
+                A receber
               </th>
               <th style={{ minWidth: "200px" }}>Procedimentos</th>
               <th style={{ minWidth: "220px" }}>Pagamentos</th>
@@ -221,7 +223,12 @@ export function CaixaClient({
                   <td>{r.nome_sala}</td>
                   <td>{badgeStatusAgendamento(r.status)}</td>
                   <td className="text-right text-nowrap font-weight-bold">
-                    {fmtBrl(r.valor_total)}
+                    {fmtBrl(r.valor_total_a_receber)}
+                    {r.taxa_agendamento_paga > 0 ? (
+                      <div className="small text-muted font-weight-normal">
+                        Total {fmtBrl(r.valor_total)} · taxa −{fmtBrl(r.taxa_agendamento_paga)}
+                      </div>
+                    ) : null}
                   </td>
                   <td className="small">
                     <ul className="list-unstyled mb-0">
@@ -264,7 +271,10 @@ export function CaixaClient({
                   </td>
                   {exibirColunaNfse ? (
                     <td className="text-center align-middle">
-                      {agendamentoPagamentoQuitado(r.pagamentos) ? (
+                      {agendamentoPagamentoQuitado(r.pagamentos, {
+                        valor_total: r.valor_total,
+                        taxa_agendamento_paga: r.taxa_agendamento_paga,
+                      }) ? (
                         <div className="btn-group btn-group-sm" role="group">
                           {onNfseClick ? (
                             <button

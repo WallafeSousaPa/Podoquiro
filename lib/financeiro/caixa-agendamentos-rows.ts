@@ -1,5 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { CaixaAgendamentoRow } from "@/app/(dashboard)/financeiro/caixa/caixa-client";
+import { totalAReceberCaixaComTaxa } from "@/lib/financeiro/taxa-agendamento-caixa";
 
 function nomePaciente(
   p:
@@ -89,7 +90,8 @@ export async function carregarCaixaAgendamentosRows(
           status_pagamento,
           formas_pagamento ( nome ),
           maquinetas ( nome )
-        )
+        ),
+        agendamento_taxa_rede ( valor, status )
       `,
     )
     .eq("id_empresa", empresaId)
@@ -193,6 +195,17 @@ export async function carregarCaixaAgendamentosRows(
         };
     });
 
+    const taxasRaw = raw.agendamento_taxa_rede as
+      | { valor: number; status: string }
+      | { valor: number; status: string }[]
+      | null;
+    const taxas = Array.isArray(taxasRaw) ? taxasRaw : taxasRaw ? [taxasRaw] : [];
+    const taxaAgendamentoPaga = taxas
+      .filter((t) => t.status === "pago")
+      .reduce((s, t) => s + Number(t.valor), 0);
+    const valorTotal = Number(raw.valor_total);
+    const valorTotalAReceber = totalAReceberCaixaComTaxa(valorTotal, taxaAgendamentoPaga);
+
     return {
       id: raw.id as number,
       id_paciente: raw.id_paciente as number,
@@ -202,7 +215,9 @@ export async function carregarCaixaAgendamentosRows(
       status: String(raw.status),
       valor_bruto: Number(raw.valor_bruto),
       desconto: Number(raw.desconto),
-      valor_total: Number(raw.valor_total),
+      valor_total: valorTotal,
+      taxa_agendamento_paga: Math.round(taxaAgendamentoPaga * 100) / 100,
+      valor_total_a_receber: valorTotalAReceber,
       paciente_nome: nomePaciente(pac),
       profissional_nome: nomeProfissional(usr),
       nome_sala: sala?.nome_sala?.trim() || "—",
