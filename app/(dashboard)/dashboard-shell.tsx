@@ -913,6 +913,18 @@ export function DashboardShell({
                     </li>
                     <li className="nav-item">
                       <Link
+                        href="/relatorios/clientes-ausentes"
+                        className={cx(
+                          "nav-link",
+                          pathname === "/relatorios/clientes-ausentes" && "active",
+                        )}
+                      >
+                        <i className="far fa-circle nav-icon" />
+                        <p>Clientes ausentes</p>
+                      </Link>
+                    </li>
+                    <li className="nav-item">
+                      <Link
                         href="/relatorios/intervalos-vagos"
                         className={cx(
                           "nav-link",
