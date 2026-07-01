@@ -14,7 +14,7 @@ import {
 } from "@/lib/whatsapp/paciente";
 
 type LinksPagamento = {
-  linkRede: string | null;
+  linkAsaas: string | null;
   linkApp: string;
   valor: number;
   paciente: string;
@@ -64,7 +64,7 @@ function linksDeAgendamento(
   const token = ag.taxa_pagamento?.token;
   if (!token) return null;
   return {
-    linkRede: ag.taxa_pagamento?.link_rede ?? null,
+    linkAsaas: ag.taxa_pagamento?.link_asaas ?? null,
     linkApp: linkAppTaxa(token),
     valor: ag.taxa_pagamento?.valor ?? 0,
     paciente: ag.paciente_nome,
@@ -109,17 +109,17 @@ function ModalLinksPagamento({
               {dados.paymentLinkId ? (
                 <>
                   {" "}
-                  · ID Rede: <code>{dados.paymentLinkId}</code>
+                  · ID Asaas: <code>{dados.paymentLinkId}</code>
                 </>
               ) : null}
             </p>
 
             <div className="form-group">
               <label className="d-flex justify-content-between align-items-center">
-                <span>1. Checkout Rede (Pix / cartão)</span>
-                {dados.linkRede ? (
+                <span>1. Checkout Asaas (Pix / cartão / boleto)</span>
+                {dados.linkAsaas ? (
                   <a
-                    href={dados.linkRede}
+                    href={dados.linkAsaas}
                     target="_blank"
                     rel="noopener noreferrer"
                     className="btn btn-sm btn-primary"
@@ -128,26 +128,26 @@ function ModalLinksPagamento({
                   </a>
                 ) : null}
               </label>
-              {dados.linkRede ? (
+              {dados.linkAsaas ? (
                 <div className="input-group input-group-sm">
                   <input
                     type="text"
                     className="form-control font-monospace small"
                     readOnly
-                    value={dados.linkRede}
+                    value={dados.linkAsaas}
                   />
                   <div className="input-group-append">
                     <button
                       type="button"
                       className="btn btn-outline-secondary"
-                      onClick={() => void copiar(dados.linkRede!, "rede")}
+                      onClick={() => void copiar(dados.linkAsaas!, "asaas")}
                     >
-                      {copiado === "rede" ? "Copiado" : "Copiar"}
+                      {copiado === "asaas" ? "Copiado" : "Copiar"}
                     </button>
                   </div>
                 </div>
               ) : (
-                <p className="text-warning small mb-0">Link Rede indisponível.</p>
+                <p className="text-warning small mb-0">Link Asaas indisponível.</p>
               )}
             </div>
 
@@ -181,7 +181,7 @@ function ModalLinksPagamento({
                 </div>
               </div>
               <p className="text-muted small mt-2 mb-0">
-                Use o link 1 para pagar direto na Rede; o link 2 redireciona o paciente pelo app.
+                Use o link 1 para pagar direto no Asaas; o link 2 redireciona o paciente pelo app.
               </p>
             </div>
           </div>
@@ -202,7 +202,7 @@ type TaxaPagamento = {
   valor: number;
   status: string;
   expira_em: string | null;
-  link_rede: string | null;
+  link_asaas: string | null;
 };
 
 type AgendamentoConfirmacao = {
@@ -306,13 +306,13 @@ export function ConfirmarAtendimentoClient({
       });
       const json = await res.json();
       if (!res.ok) throw new Error(json.error ?? "Erro ao gerar link.");
-      const linkRede = (json.data?.link_pagamento_rede as string | undefined) ?? null;
+      const linkAsaas = (json.data?.link_pagamento_asaas as string | undefined) ?? null;
       const linkApp = json.data?.link_pagamento as string | undefined;
       const token = json.data?.token as string | undefined;
       const valorResp = Number(json.data?.valor ?? valor ?? taxaPadrao);
       const ag = lista.find((a) => a.id === id);
       const links: LinksPagamento = {
-        linkRede,
+        linkAsaas,
         linkApp: linkApp ?? (token ? linkAppTaxa(token) : ""),
         valor: valorResp,
         paciente: ag?.paciente_nome ?? "Paciente",
@@ -339,7 +339,7 @@ export function ConfirmarAtendimentoClient({
     const cache = linksPorAgendamento[ag.id];
     const links = linksDeAgendamento(ag, cache);
     const link =
-      links?.linkRede ?? links?.linkApp ?? null;
+      links?.linkAsaas ?? links?.linkApp ?? null;
     const texto = montarMensagemWhatsappConfirmacaoHorario({
       nomePaciente: ag.paciente_nome,
       nomeEmpresa: nomeEmpresaCurto,
@@ -463,7 +463,7 @@ export function ConfirmarAtendimentoClient({
                           type="button"
                           className="btn btn-sm btn-outline-primary mr-1"
                           disabled={busy}
-                          title="Gera link de pagamento via Rede"
+                          title="Gera link de pagamento via Asaas"
                           onClick={() => void gerarLinkPagamento(ag.id, taxaPadrao || undefined)}
                         >
                           Link pagamento
@@ -487,16 +487,16 @@ export function ConfirmarAtendimentoClient({
         )}
       </div>
       <div className="card-footer text-muted small">
-        Pagamento via <strong>Link de Pagamento Rede</strong> (
+        Pagamento via <strong>Link de Pagamento Asaas</strong> (
         <a
-          href="https://developer.userede.com.br/link-pagamento"
+          href="https://docs.asaas.com/docs/creating-a-payment-link"
           target="_blank"
           rel="noopener noreferrer"
         >
           documentação
         </a>
-        ). No simulador, a confirmação do pagamento é feita por consulta automática (polling) —
-        ainda não há webhook.
+        ). A confirmação do pagamento é feita por consulta automática (polling) e também por webhook,
+        se configurado no painel do Asaas.
       </div>
       {modalLinks ? (
         <ModalLinksPagamento dados={modalLinks} onFechar={() => setModalLinks(null)} />

@@ -3,10 +3,9 @@ import {
   getPodeVerTodosAgendamentos,
   getUsuarioAgendaSomentePropriaColuna,
 } from "@/lib/agenda/permissoes-calendario";
+import { obterConfigAsaas } from "@/lib/asaas";
+import { sincronizarTaxaComPaymentLinkAsaas } from "@/lib/asaas/sincronizar-taxa";
 import { getSession } from "@/lib/auth/session";
-import { obterConfigRede } from "@/lib/rede";
-import { normalizarUrlCheckoutPaymentLinkRede } from "@/lib/rede/payment-link";
-import { sincronizarTaxaComPaymentLinkRede } from "@/lib/rede/sincronizar-taxa-payment-link";
 import { createAdminClient } from "@/lib/supabase/admin";
 
 function parseEmpresaId(idEmpresa: string) {
@@ -78,7 +77,7 @@ export async function GET(request: Request) {
       pacientes ( nome_completo, nome_social, telefone ),
       usuarios ( nome_completo, usuario ),
       salas ( nome_sala ),
-      agendamento_taxa_rede ( id, token, valor, status, expira_em, created_at, rede_payment_link_id, rede_payment_link_url, id_agendamento )
+      agendamento_taxa_rede ( id, token, valor, status, expira_em, created_at, asaas_payment_link_id, asaas_payment_link_url, id_agendamento )
     `,
     )
     .eq("id_empresa", empresaId)
@@ -112,28 +111,28 @@ export async function GET(request: Request) {
     status: string;
     expira_em: string | null;
     created_at: string;
-    rede_payment_link_id: string | null;
-    rede_payment_link_url: string | null;
+    asaas_payment_link_id: string | null;
+    asaas_payment_link_url: string | null;
     id_agendamento: number;
   };
 
-  const redeConfig = obterConfigRede();
-  if (redeConfig) {
+  const asaasConfig = obterConfigAsaas();
+  if (asaasConfig) {
     const pendentes = (data ?? [])
       .flatMap((row) => {
         const taxasRaw = row.agendamento_taxa_rede as TaxaRow | TaxaRow[] | null;
         const taxas = Array.isArray(taxasRaw) ? taxasRaw : taxasRaw ? [taxasRaw] : [];
-        return taxas.filter((t) => t.status === "pendente" && t.rede_payment_link_id);
+        return taxas.filter((t) => t.status === "pendente" && t.asaas_payment_link_id);
       })
       .slice(0, 15);
 
     const results = await Promise.allSettled(
       pendentes.map((t) =>
-        sincronizarTaxaComPaymentLinkRede(supabase, redeConfig, {
+        sincronizarTaxaComPaymentLinkAsaas(supabase, asaasConfig, {
           id: t.id,
           id_agendamento: t.id_agendamento,
           status: t.status,
-          rede_payment_link_id: t.rede_payment_link_id,
+          asaas_payment_link_id: t.asaas_payment_link_id,
         }),
       ),
     );
@@ -191,13 +190,7 @@ export async function GET(request: Request) {
             valor: Number(taxaAtiva.valor),
             status: taxaAtiva.status,
             expira_em: taxaAtiva.expira_em,
-            link_rede:
-              redeConfig && taxaAtiva.rede_payment_link_url
-                ? normalizarUrlCheckoutPaymentLinkRede(
-                    taxaAtiva.rede_payment_link_url,
-                    redeConfig,
-                  )
-                : taxaAtiva.rede_payment_link_url,
+            link_asaas: taxaAtiva.asaas_payment_link_url,
           }
         : null,
     };

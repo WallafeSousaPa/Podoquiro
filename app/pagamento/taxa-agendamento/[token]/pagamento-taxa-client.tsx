@@ -6,7 +6,7 @@ type DadosPagamento = {
   token: string;
   valor: number;
   status: string;
-  link_pagamento_rede: string | null;
+  link_pagamento_asaas: string | null;
   expira_em: string | null;
   pago_em: string | null;
   nome_empresa: string | null;
@@ -109,14 +109,14 @@ export function PagamentoTaxaClient({ token }: { token: string }) {
         ) : (
           <>
             <p className="small text-muted mb-3">
-              Você será direcionado ao checkout seguro da Rede (Pix ou cartão).
+              Você será direcionado ao checkout seguro do Asaas (Pix, cartão ou boleto).
               {dados.expira_em ? (
                 <> Válido até {fmtDataHora(dados.expira_em)}.</>
               ) : null}
             </p>
-            {dados.link_pagamento_rede ? (
+            {dados.link_pagamento_asaas ? (
               <a
-                href={dados.link_pagamento_rede}
+                href={dados.link_pagamento_asaas}
                 className="btn btn-primary btn-lg"
                 target="_blank"
                 rel="noopener noreferrer"

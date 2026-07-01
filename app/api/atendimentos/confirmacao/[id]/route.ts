@@ -3,8 +3,8 @@ import {
   getPodeVerTodosAgendamentos,
   getUsuarioAgendaSomentePropriaColuna,
 } from "@/lib/agenda/permissoes-calendario";
+import { criarLinkPagamentoAsaas, expiraEmFromEndDate, obterConfigAsaas } from "@/lib/asaas";
 import { getSession } from "@/lib/auth/session";
-import { criarLinkPagamentoRede, expiraEmFromPaymentLink, obterConfigRede } from "@/lib/rede";
 import { urlPublicaPagamentoTaxa } from "@/lib/rede/url-pagamento";
 import { createAdminClient } from "@/lib/supabase/admin";
 
@@ -76,19 +76,18 @@ export async function POST(_request: Request, context: RouteContext) {
   return NextResponse.json({ data: { id: idAgendamento, status: "confirmado" } });
 }
 
-/** Gera link de pagamento da taxa via Link de Pagamento Rede. */
+/** Gera link de pagamento da taxa via Link de Pagamento Asaas. */
 export async function PUT(request: Request, context: RouteContext) {
   const session = await getSession();
   if (!session) {
     return NextResponse.json({ error: "Não autorizado." }, { status: 401 });
   }
 
-  const redeConfig = obterConfigRede();
-  if (!redeConfig) {
+  const asaasConfig = obterConfigAsaas();
+  if (!asaasConfig) {
     return NextResponse.json(
       {
-        error:
-          "Integração Rede não configurada. Defina REDE_CLIENT_ID, REDE_CLIENT_SECRET e REDE_MERCHANT_ID no servidor.",
+        error: "Integração Asaas não configurada. Defina ASAAS_API_KEY no servidor.",
       },
       { status: 503 },
     );
@@ -156,29 +155,27 @@ export async function PUT(request: Request, context: RouteContext) {
     );
   }
 
-  const descricao = `Taxa agend. #${idAgendamento}`.slice(0, 50);
+  const descricao = `Taxa de agendamento #${idAgendamento}`;
 
   let linkResult;
   try {
-    linkResult = await criarLinkPagamentoRede(redeConfig, {
+    linkResult = await criarLinkPagamentoAsaas(asaasConfig, {
       valorReais: valor,
+      nome: `Taxa de agendamento #${idAgendamento}`,
       descricao,
       diasExpiracao: 7,
-      paymentOptions: ["pix", "credit"],
+      externalReference: `agendamento:${idAgendamento}`,
     });
   } catch (e) {
     console.error(e);
     return NextResponse.json(
-      { error: e instanceof Error ? e.message : "Erro ao criar link de pagamento na Rede." },
+      { error: e instanceof Error ? e.message : "Erro ao criar link de pagamento no Asaas." },
       { status: 502 },
     );
   }
 
-  const expiraDetalhe = expiraEmFromPaymentLink(
-    (linkResult.respostaBruta as { expirationDate?: string })?.expirationDate ?? null,
-  );
   const expiraEm =
-    expiraDetalhe ??
+    expiraEmFromEndDate(linkResult.endDate) ??
     new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
 
   await supabase
@@ -194,9 +191,9 @@ export async function PUT(request: Request, context: RouteContext) {
       id_empresa: empresaId,
       valor,
       status: "pendente",
-      rede_payment_link_id: linkResult.paymentLinkId,
-      rede_payment_link_url: linkResult.url,
-      rede_resposta: linkResult.respostaBruta as object,
+      asaas_payment_link_id: linkResult.paymentLinkId,
+      asaas_payment_link_url: linkResult.url,
+      asaas_resposta: linkResult.respostaBruta as object,
       expira_em: expiraEm,
     })
     .select("id, token, valor, status, expira_em")
@@ -217,7 +214,7 @@ export async function PUT(request: Request, context: RouteContext) {
       status: ins.status,
       expira_em: ins.expira_em,
       link_pagamento: linkPagamento,
-      link_pagamento_rede: linkResult.url,
+      link_pagamento_asaas: linkResult.url,
       payment_link_id: linkResult.paymentLinkId,
     },
   });

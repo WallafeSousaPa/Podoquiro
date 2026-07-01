@@ -1,7 +1,6 @@
 import { NextResponse } from "next/server";
-import { obterConfigRede } from "@/lib/rede";
-import { normalizarUrlCheckoutPaymentLinkRede } from "@/lib/rede/payment-link";
-import { sincronizarTaxaComPaymentLinkRede } from "@/lib/rede/sincronizar-taxa-payment-link";
+import { obterConfigAsaas } from "@/lib/asaas";
+import { sincronizarTaxaComPaymentLinkAsaas } from "@/lib/asaas/sincronizar-taxa";
 import { createAdminClient } from "@/lib/supabase/admin";
 
 type RouteContext = { params: Promise<{ token: string }> };
@@ -25,8 +24,8 @@ export async function GET(_request: Request, context: RouteContext) {
       token,
       valor,
       status,
-      rede_payment_link_id,
-      rede_payment_link_url,
+      asaas_payment_link_id,
+      asaas_payment_link_url,
       expira_em,
       pago_em,
       id_agendamento,
@@ -49,25 +48,21 @@ export async function GET(_request: Request, context: RouteContext) {
     return NextResponse.json({ error: "Pagamento não encontrado." }, { status: 404 });
   }
 
-  const redeConfig = obterConfigRede();
-  const linkRedeRaw = row.rede_payment_link_url as string | null;
-  const linkPagamentoRede =
-    redeConfig && linkRedeRaw
-      ? normalizarUrlCheckoutPaymentLinkRede(linkRedeRaw, redeConfig)
-      : linkRedeRaw;
+  const asaasConfig = obterConfigAsaas();
+  const linkPagamentoAsaas = row.asaas_payment_link_url as string | null;
 
   if (
-    redeConfig &&
+    asaasConfig &&
     row.status === "pendente" &&
-    row.rede_payment_link_id &&
-    typeof row.rede_payment_link_id === "string"
+    row.asaas_payment_link_id &&
+    typeof row.asaas_payment_link_id === "string"
   ) {
     try {
-      const sync = await sincronizarTaxaComPaymentLinkRede(supabase, redeConfig, {
+      const sync = await sincronizarTaxaComPaymentLinkAsaas(supabase, asaasConfig, {
         id: row.id as number,
         id_agendamento: row.id_agendamento as number,
         status: row.status as string,
-        rede_payment_link_id: row.rede_payment_link_id,
+        asaas_payment_link_id: row.asaas_payment_link_id,
       });
       if (sync.atualizado) {
         row.status = sync.status;
@@ -114,7 +109,7 @@ export async function GET(_request: Request, context: RouteContext) {
       token: row.token,
       valor: Number(row.valor),
       status: row.status,
-      link_pagamento_rede: linkPagamentoRede,
+      link_pagamento_asaas: linkPagamentoAsaas,
       expira_em: row.expira_em,
       pago_em: row.pago_em,
       nome_empresa: emp?.nome_fantasia?.trim() || null,
