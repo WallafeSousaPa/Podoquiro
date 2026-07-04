@@ -1,5 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { RedeConfig } from "./config";
+import { registrarCaixaMovimentoTaxaSePago } from "@/lib/financeiro/caixa-movimento";
 import { obterAccessTokenRede } from "./oauth";
 
 export type RedeTransacaoConsulta = {
@@ -159,6 +160,11 @@ export async function processarPagamentoTaxaRede(
   }
 
   if (taxaRow.status === "pago") {
+    try {
+      await registrarCaixaMovimentoTaxaSePago(supabase, taxaRow.id);
+    } catch (e) {
+      console.error("caixa_movimento taxa rede:", e);
+    }
     return {
       ok: true,
       idTaxa: taxaRow.id,
@@ -208,6 +214,12 @@ export async function processarPagamentoTaxaRede(
   if (tid) patchTaxa.rede_tid = tid;
 
   await supabase.from("agendamento_taxa_rede").update(patchTaxa).eq("id", taxaRow.id);
+
+  try {
+    await registrarCaixaMovimentoTaxaSePago(supabase, taxaRow.id);
+  } catch (e) {
+    console.error("caixa_movimento taxa rede:", e);
+  }
 
   await supabase
     .from("agendamentos")

@@ -54,6 +54,7 @@ type SessaoJson = {
     numero_caixa: string;
     data_lancamento: string;
     responsavel_nome: string;
+    valor_fundo?: number;
   } | null;
   fechamento: {
     id: number;
@@ -89,11 +90,14 @@ export function CaixaSessaoClient({
 }: CaixaSessaoClientProps) {
   const modalFechamentoId = useId();
   const modalDivergenciaId = useId();
+  const modalAbrirCaixaId = useId();
   const [sessao, setSessao] = useState<SessaoJson | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   const [abrindo, setAbrindo] = useState(false);
+  const [modalAbrir, setModalAbrir] = useState(false);
+  const [fundoCaixaTexto, setFundoCaixaTexto] = useState("0,00");
   const [modalFechar, setModalFechar] = useState(false);
   const [fechando, setFechando] = useState(false);
   const [vDin, setVDin] = useState("0");
@@ -177,23 +181,38 @@ export function CaixaSessaoClient({
     };
   }, [modalFechar, dataRef]);
 
-  async function abrirCaixa() {
+  async function abrirCaixa(fundoCaixa: number) {
     setAbrindo(true);
     setError(null);
     try {
       const res = await fetch("/api/financeiro/caixa/abertura", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ data_referencia: dataRef, numero_caixa: "01" }),
+        body: JSON.stringify({
+          data_referencia: dataRef,
+          fundo_caixa: fundoCaixa,
+        }),
       });
       const j = (await res.json()) as { error?: string };
       if (!res.ok) throw new Error(j.error ?? "Erro ao abrir caixa.");
+      setModalAbrir(false);
+      setFundoCaixaTexto("0,00");
       await carregar();
     } catch (e) {
       setError(e instanceof Error ? e.message : "Erro ao abrir.");
     } finally {
       setAbrindo(false);
     }
+  }
+
+  function handleSubmitAbrirCaixa(e: React.FormEvent) {
+    e.preventDefault();
+    const fundo = parseMoneyCliente(fundoCaixaTexto);
+    if (Number.isNaN(fundo)) {
+      setError("Informe um fundo de caixa válido (≥ 0).");
+      return;
+    }
+    void abrirCaixa(fundo);
   }
 
   async function executarFechamento() {
@@ -303,9 +322,13 @@ export function CaixaSessaoClient({
                     type="button"
                     className="btn btn-success"
                     disabled={abrindo}
-                    onClick={() => void abrirCaixa()}
+                    onClick={() => {
+                      setError(null);
+                      setFundoCaixaTexto("0,00");
+                      setModalAbrir(true);
+                    }}
                   >
-                    {abrindo ? "Abrindo…" : "Abrir caixa"}
+                    Abrir caixa
                   </button>
                 </div>
               </div>
@@ -315,6 +338,13 @@ export function CaixaSessaoClient({
                 {fmtDataHora(sessao.abertura!.data_lancamento)} —{" "}
                 {sessao.abertura!.responsavel_nome} (caixa{" "}
                 {sessao.abertura!.numero_caixa})
+                {(sessao.abertura!.valor_fundo ?? 0) > 0 ? (
+                  <>
+                    {" "}
+                    · <strong>Fundo:</strong>{" "}
+                    {fmtBrl(sessao.abertura!.valor_fundo ?? 0)}
+                  </>
+                ) : null}
               </div>
             )}
 
@@ -705,6 +735,78 @@ export function CaixaSessaoClient({
             style={{ zIndex: 1055 }}
             role="presentation"
             onClick={() => !fechando && setDivergencias(null)}
+          />
+        </>
+      ) : null}
+
+      {modalAbrir ? (
+        <>
+          <div
+            className="modal fade show"
+            style={{ display: "block", zIndex: 1050 }}
+            tabIndex={-1}
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby={modalAbrirCaixaId}
+          >
+            <div className="modal-dialog modal-dialog-centered" role="document">
+              <div className="modal-content">
+                <form onSubmit={handleSubmitAbrirCaixa}>
+                  <div className="modal-header">
+                    <h5 className="modal-title" id={modalAbrirCaixaId}>
+                      Abrir caixa
+                    </h5>
+                    <button
+                      type="button"
+                      className="close"
+                      aria-label="Fechar"
+                      disabled={abrindo}
+                      onClick={() => setModalAbrir(false)}
+                    >
+                      <span aria-hidden="true">&times;</span>
+                    </button>
+                  </div>
+                  <div className="modal-body">
+                    <p className="text-muted small mb-3">
+                      Informe o fundo de caixa em dinheiro para troco, se houver.
+                      Deixe zero caso não tenha valor inicial.
+                    </p>
+                    <div className="form-group mb-0">
+                      <label htmlFor="caixa-fundo-inicial">Fundo de caixa (R$)</label>
+                      <input
+                        id="caixa-fundo-inicial"
+                        type="text"
+                        inputMode="decimal"
+                        className="form-control"
+                        value={fundoCaixaTexto}
+                        disabled={abrindo}
+                        onChange={(e) => setFundoCaixaTexto(e.target.value)}
+                        placeholder="0,00"
+                      />
+                    </div>
+                  </div>
+                  <div className="modal-footer">
+                    <button
+                      type="button"
+                      className="btn btn-secondary"
+                      disabled={abrindo}
+                      onClick={() => setModalAbrir(false)}
+                    >
+                      Cancelar
+                    </button>
+                    <button type="submit" className="btn btn-success" disabled={abrindo}>
+                      {abrindo ? "Abrindo…" : "Confirmar abertura"}
+                    </button>
+                  </div>
+                </form>
+              </div>
+            </div>
+          </div>
+          <div
+            className="modal-backdrop fade show"
+            style={{ zIndex: 1045 }}
+            role="presentation"
+            onClick={() => !abrindo && setModalAbrir(false)}
           />
         </>
       ) : null}

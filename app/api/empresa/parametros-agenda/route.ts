@@ -25,7 +25,7 @@ export async function GET() {
   const supabase = createAdminClient();
   const { data, error } = await supabase
     .from("empresas")
-    .select("agenda_cor_corte_tecnico")
+    .select("agenda_cor_corte_tecnico, agendamentos_confirmacao")
     .eq("id", empresaId)
     .maybeSingle();
 
@@ -38,6 +38,7 @@ export async function GET() {
   return NextResponse.json({
     agenda_cor_corte_tecnico: raw ?? null,
     agenda_cor_corte_tecnico_resolvida: corCorteTecnicoAgendaResolvida(raw),
+    agendamentos_confirmacao: data?.agendamentos_confirmacao === true,
   });
 }
 
@@ -52,7 +53,7 @@ export async function PATCH(request: Request) {
     return NextResponse.json({ error: "Empresa inválida." }, { status: 400 });
   }
 
-  let body: { agenda_cor_corte_tecnico?: string | null };
+  let body: { agenda_cor_corte_tecnico?: string | null; agendamentos_confirmacao?: unknown };
   try {
     body = await request.json();
   } catch {
@@ -60,30 +61,48 @@ export async function PATCH(request: Request) {
   }
 
   const rawIn = body.agenda_cor_corte_tecnico;
-  let valorDb: string | null = null;
-  if (rawIn === null || typeof rawIn === "undefined") {
+  let valorDb: string | null | undefined = undefined;
+  if (typeof rawIn !== "undefined") {
     valorDb = null;
-  } else if (typeof rawIn === "string" && rawIn.trim() === "") {
-    valorDb = null;
-  } else if (typeof rawIn === "string") {
-    const parsed = parseHexCorAgenda(rawIn.trim());
-    if (!parsed) {
-      return NextResponse.json(
-        { error: "Informe uma cor hexadecimal válida (#RRGGBB), ou vazio para o padrão do sistema." },
-        { status: 400 },
-      );
+    if (rawIn === null) {
+      valorDb = null;
+    } else if (typeof rawIn === "string" && rawIn.trim() === "") {
+      valorDb = null;
+    } else if (typeof rawIn === "string") {
+      const parsed = parseHexCorAgenda(rawIn.trim());
+      if (!parsed) {
+        return NextResponse.json(
+          {
+            error:
+              "Informe uma cor hexadecimal válida (#RRGGBB), ou vazio para o padrão do sistema.",
+          },
+          { status: 400 },
+        );
+      }
+      valorDb = parsed;
+    } else {
+      return NextResponse.json({ error: "agenda_cor_corte_tecnico inválido." }, { status: 400 });
     }
-    valorDb = parsed;
-  } else {
-    return NextResponse.json({ error: "agenda_cor_corte_tecnico inválido." }, { status: 400 });
+  }
+
+  const patch: Record<string, unknown> = {};
+  if (typeof valorDb !== "undefined") {
+    patch.agenda_cor_corte_tecnico = valorDb;
+  }
+  if (typeof body.agendamentos_confirmacao !== "undefined") {
+    patch.agendamentos_confirmacao = body.agendamentos_confirmacao === true;
+  }
+
+  if (Object.keys(patch).length === 0) {
+    return NextResponse.json({ error: "Nenhum parâmetro informado." }, { status: 400 });
   }
 
   const supabase = createAdminClient();
   const { data, error } = await supabase
     .from("empresas")
-    .update({ agenda_cor_corte_tecnico: valorDb })
+    .update(patch)
     .eq("id", empresaId)
-    .select("agenda_cor_corte_tecnico")
+    .select("agenda_cor_corte_tecnico, agendamentos_confirmacao")
     .maybeSingle();
 
   if (error) {
@@ -95,5 +114,6 @@ export async function PATCH(request: Request) {
   return NextResponse.json({
     agenda_cor_corte_tecnico: atual ?? null,
     agenda_cor_corte_tecnico_resolvida: corCorteTecnicoAgendaResolvida(atual),
+    agendamentos_confirmacao: data?.agendamentos_confirmacao === true,
   });
 }

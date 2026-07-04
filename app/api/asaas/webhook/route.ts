@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 import { obterConfigAsaas } from "@/lib/asaas";
 import { statusInternoTaxaFromAsaas } from "@/lib/asaas/payment-link";
+import { registrarCaixaMovimentoTaxaSePago } from "@/lib/financeiro/caixa-movimento";
+import { labelFormaPagamentoFromAsaasBillingType } from "@/lib/financeiro/taxa-forma-pagamento";
 import { createAdminClient } from "@/lib/supabase/admin";
 
 /**
@@ -60,6 +62,18 @@ export async function POST(request: Request) {
   }
 
   if (taxa.status === "pago" || taxa.status === "cancelado" || taxa.status === "expirado") {
+  if (taxa.status === "pago") {
+    try {
+      await registrarCaixaMovimentoTaxaSePago(supabase, taxa.id as number, {
+        formaPagamento:
+          labelFormaPagamentoFromAsaasBillingType(
+            typeof payment.billingType === "string" ? payment.billingType : null,
+          ) ?? undefined,
+      });
+    } catch (e) {
+      console.error("caixa_movimento taxa asaas:", e);
+    }
+  }
     return NextResponse.json({ ok: true, atualizado: false });
   }
 
@@ -71,6 +85,20 @@ export async function POST(request: Request) {
   if (map.status === "pago") patch.pago_em = new Date().toISOString();
 
   await supabase.from("agendamento_taxa_rede").update(patch).eq("id", taxa.id);
+
+  if (map.status === "pago") {
+    const billingType =
+      typeof payment.billingType === "string" ? payment.billingType : null;
+    const forma =
+      labelFormaPagamentoFromAsaasBillingType(billingType) ?? undefined;
+    try {
+      await registrarCaixaMovimentoTaxaSePago(supabase, taxa.id as number, {
+        formaPagamento: forma,
+      });
+    } catch (e) {
+      console.error("caixa_movimento taxa asaas:", e);
+    }
+  }
 
   if (map.confirmarAgendamento) {
     await supabase

@@ -7,7 +7,7 @@ export default async function ConfirmarAtendimentoPage() {
   const session = await getSession();
   if (!session) redirect("/login");
 
-  const { nomeCompleto, nomeEmpresaComId, nomeEmpresaCurto, somenteMenuInicio } =
+  const { nomeCompleto, nomeEmpresaComId, nomeEmpresaCurto, somenteMenuInicio, podePersonalizarMensagemWhatsappTaxa } =
     await getNomesSaudacao(session.sub, session.usuario, session.idEmpresa);
 
   if (somenteMenuInicio) redirect("/inicio");
@@ -38,7 +38,10 @@ export default async function ConfirmarAtendimentoPage() {
           <p className="text-muted small mb-3">
             Olá, <strong>{nomeCompleto}</strong> — <strong>{nomeEmpresaComId}</strong>.
           </p>
-          <ConfirmarAtendimentoClient nomeEmpresaCurto={nomeEmpresaCurto} />
+          <ConfirmarAtendimentoClient
+            nomeEmpresaCurto={nomeEmpresaCurto}
+            podePersonalizarMensagemWhatsapp={podePersonalizarMensagemWhatsappTaxa}
+          />
         </div>
       </section>
     </>

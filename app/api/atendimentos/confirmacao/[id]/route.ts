@@ -4,6 +4,7 @@ import {
   getUsuarioAgendaSomentePropriaColuna,
 } from "@/lib/agenda/permissoes-calendario";
 import { criarLinkPagamentoAsaas, expiraEmFromEndDate, obterConfigAsaas } from "@/lib/asaas";
+import { confirmarAgendamentoComTaxaDinheiro } from "@/lib/financeiro/confirmacao-taxa-dinheiro";
 import { getSession } from "@/lib/auth/session";
 import { urlPublicaPagamentoTaxa } from "@/lib/rede/url-pagamento";
 import { createAdminClient } from "@/lib/supabase/admin";
@@ -15,8 +16,8 @@ function parseEmpresaId(idEmpresa: string) {
 
 type RouteContext = { params: Promise<{ id: string }> };
 
-/** Confirma agendamento (status → confirmado). */
-export async function POST(_request: Request, context: RouteContext) {
+/** Confirma agendamento (status → confirmado). Com confirmação por taxa, só via link pago ou dinheiro. */
+export async function POST(request: Request, context: RouteContext) {
   const session = await getSession();
   if (!session) {
     return NextResponse.json({ error: "Não autorizado." }, { status: 401 });
@@ -34,11 +35,29 @@ export async function POST(_request: Request, context: RouteContext) {
     return NextResponse.json({ error: "ID inválido." }, { status: 400 });
   }
 
+  let body: { pagamento_dinheiro?: unknown; valor?: unknown } = {};
+  try {
+    body = await request.json();
+  } catch {
+    body = {};
+  }
+
+  const pagamentoDinheiro = body.pagamento_dinheiro === true;
+
   const supabase = createAdminClient();
   const [podeVerTodos, somentePropriaColuna] = await Promise.all([
     getPodeVerTodosAgendamentos(supabase, sessionUserId),
     getUsuarioAgendaSomentePropriaColuna(supabase, sessionUserId),
   ]);
+
+  const { data: empRow } = await supabase
+    .from("empresas")
+    .select("taxa_agendamento_valor, agendamentos_confirmacao")
+    .eq("id", empresaId)
+    .maybeSingle();
+
+  const exigeConfirmacaoPorTaxa = empRow?.agendamentos_confirmacao === true;
+  const taxaPadrao = Number(empRow?.taxa_agendamento_valor ?? 0);
 
   const { data: ag, error: agErr } = await supabase
     .from("agendamentos")
@@ -61,6 +80,47 @@ export async function POST(_request: Request, context: RouteContext) {
       { error: "Só é possível confirmar agendamentos pendentes ou já confirmados." },
       { status: 400 },
     );
+  }
+
+  if (exigeConfirmacaoPorTaxa) {
+    if (ag.status === "confirmado") {
+      return NextResponse.json({ data: { id: idAgendamento, status: "confirmado" } });
+    }
+
+    if (!pagamentoDinheiro) {
+      return NextResponse.json(
+        {
+          error:
+            "Confirmação manual desativada. Gere o link de pagamento ou confirme com taxa em dinheiro.",
+        },
+        { status: 400 },
+      );
+    }
+
+    const valorBody = body.valor != null ? Number(body.valor) : NaN;
+    const valor =
+      Number.isFinite(valorBody) && valorBody > 0 ? valorBody : taxaPadrao;
+
+    try {
+      const result = await confirmarAgendamentoComTaxaDinheiro(supabase, {
+        idAgendamento,
+        idEmpresa: empresaId,
+        valor,
+      });
+      return NextResponse.json({
+        data: {
+          id: idAgendamento,
+          status: "confirmado",
+          taxa_dinheiro: true,
+          valor_taxa: result.valor,
+        },
+      });
+    } catch (e) {
+      return NextResponse.json(
+        { error: e instanceof Error ? e.message : "Erro ao confirmar com dinheiro." },
+        { status: 400 },
+      );
+    }
   }
 
   const { error: updErr } = await supabase

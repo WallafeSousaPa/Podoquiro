@@ -33,7 +33,7 @@ export async function GET(request: Request) {
 
   const { data: lancs, error: lErr } = await supabase
     .from("caixa_lancamentos")
-    .select("id, tipo, numero_caixa, data_lancamento, data_referencia, id_responsavel")
+    .select("id, tipo, numero_caixa, data_lancamento, data_referencia, id_responsavel, valor_fundo")
     .eq("id_empresa", empresaId)
     .eq("data_referencia", dataRef)
     .order("data_lancamento", { ascending: true });
@@ -130,6 +130,7 @@ export async function GET(request: Request) {
           id_responsavel: aberturaAtual.id_responsavel as number,
           responsavel_nome:
             nomesPorId[aberturaAtual.id_responsavel as number] ?? "—",
+          valor_fundo: Number(aberturaAtual.valor_fundo ?? 0),
         }
       : null,
     fechamento: fechamentoMaisRecente

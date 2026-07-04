@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { obterConfigAsaas } from "@/lib/asaas";
 import { sincronizarTaxaComPaymentLinkAsaas } from "@/lib/asaas/sincronizar-taxa";
+import { registrarCaixaMovimentoTaxaSePago } from "@/lib/financeiro/caixa-movimento";
 import { createAdminClient } from "@/lib/supabase/admin";
 
 type RouteContext = { params: Promise<{ token: string }> };
@@ -72,6 +73,14 @@ export async function GET(_request: Request, context: RouteContext) {
       }
     } catch (e) {
       console.error("sync payment link:", e);
+    }
+  }
+
+  if (row.status === "pago") {
+    try {
+      await registrarCaixaMovimentoTaxaSePago(supabase, row.id as number);
+    } catch (e) {
+      console.error("caixa_movimento taxa token:", e);
     }
   }
 

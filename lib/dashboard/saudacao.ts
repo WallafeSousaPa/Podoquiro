@@ -5,6 +5,7 @@ import {
   grupoUsuariosMenuNotaFiscal,
   grupoUsuariosMenuRestritoBalcao,
   grupoUsuariosNfseNoCaixa,
+  grupoUsuariosPodePersonalizarMensagemWhatsappTaxa,
   grupoUsuariosRelatorioCaixa,
   grupoUsuariosSomenteMenuInicioCalendario,
 } from "@/lib/dashboard/menu-grupo";
@@ -30,6 +31,8 @@ export type SaudacaoNomes = {
   podeVerMenuNotaFiscal: boolean;
   /** Coluna NFS-e no Caixa (Administrador, Administrativo ou Recepção). */
   podeEmitirNfseNoCaixa: boolean;
+  /** Editar mensagem WhatsApp da taxa de agendamento (Recepção, Administrativo, Administrador). */
+  podePersonalizarMensagemWhatsappTaxa: boolean;
 };
 
 /**
@@ -48,6 +51,7 @@ export const getNomesSaudacao = cache(
     let podeVerRelatorioCaixa = false;
     let podeVerMenuNotaFiscal = false;
     let podeEmitirNfseNoCaixa = false;
+    let podePersonalizarMensagemWhatsappTaxa = false;
 
     if (Number.isFinite(userId) && userId > 0 && Number.isFinite(empresaId) && empresaId > 0) {
       const supabase = createAdminClient();
@@ -79,6 +83,8 @@ export const getNomesSaudacao = cache(
       podeAgendarRetroativo = isAdministrador;
       podeVerRelatorioCaixa = grupoUsuariosRelatorioCaixa(nomeGrupo);
       podeEmitirNfseNoCaixa = grupoUsuariosNfseNoCaixa(nomeGrupo);
+      podePersonalizarMensagemWhatsappTaxa =
+        grupoUsuariosPodePersonalizarMensagemWhatsappTaxa(nomeGrupo);
     }
 
     const nomeEmpresaComId = nomeFantasia
@@ -99,6 +105,7 @@ export const getNomesSaudacao = cache(
       podeVerRelatorioCaixa,
       podeVerMenuNotaFiscal,
       podeEmitirNfseNoCaixa,
+      podePersonalizarMensagemWhatsappTaxa,
     };
   },
 );

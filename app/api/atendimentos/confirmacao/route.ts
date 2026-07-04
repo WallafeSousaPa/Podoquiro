@@ -86,7 +86,7 @@ export async function GET(request: Request) {
       pacientes ( nome_completo, nome_social, telefone ),
       usuarios ( nome_completo, usuario ),
       salas ( nome_sala ),
-      agendamento_taxa_rede ( id, token, valor, status, expira_em, pago_em, created_at, asaas_payment_link_id, asaas_payment_link_url, id_agendamento )
+      agendamento_taxa_rede ( id, token, valor, status, expira_em, pago_em, pago_em_dinheiro, created_at, asaas_payment_link_id, asaas_payment_link_url, id_agendamento )
     `,
     )
     .eq("id_empresa", empresaId)
@@ -107,11 +107,12 @@ export async function GET(request: Request) {
 
   const { data: empRow } = await supabase
     .from("empresas")
-    .select("taxa_agendamento_valor, nome_fantasia")
+    .select("taxa_agendamento_valor, nome_fantasia, agendamentos_confirmacao")
     .eq("id", empresaId)
     .maybeSingle();
 
   const taxaPadrao = Number(empRow?.taxa_agendamento_valor ?? 0);
+  const agendamentosConfirmacao = empRow?.agendamentos_confirmacao === true;
 
   type TaxaRow = {
     id: number;
@@ -120,6 +121,7 @@ export async function GET(request: Request) {
     status: string;
     expira_em: string | null;
     pago_em: string | null;
+    pago_em_dinheiro: boolean;
     created_at: string;
     asaas_payment_link_id: string | null;
     asaas_payment_link_url: string | null;
@@ -201,6 +203,7 @@ export async function GET(request: Request) {
             status: taxaAtiva.status,
             expira_em: taxaAtiva.expira_em,
             pago_em: taxaAtiva.pago_em,
+            pago_em_dinheiro: taxaAtiva.pago_em_dinheiro === true,
             link_asaas: taxaAtiva.asaas_payment_link_url,
           }
         : null,
@@ -210,6 +213,7 @@ export async function GET(request: Request) {
   return NextResponse.json({
     data: rows,
     taxa_agendamento_padrao: taxaPadrao,
+    agendamentos_confirmacao: agendamentosConfirmacao,
     nome_empresa: empRow?.nome_fantasia?.trim() || null,
   });
 }

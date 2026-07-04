@@ -1,5 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { RedeConfig } from "./config";
+import { registrarCaixaMovimentoTaxaSePago } from "@/lib/financeiro/caixa-movimento";
 import {
   consultarLinkPagamentoRede,
   expiraEmFromPaymentLink,
@@ -25,6 +26,13 @@ export async function sincronizarTaxaComPaymentLinkRede(
   }
 
   if (taxa.status === "pago" || taxa.status === "cancelado" || taxa.status === "expirado") {
+    if (taxa.status === "pago") {
+      try {
+        await registrarCaixaMovimentoTaxaSePago(supabase, taxa.id);
+      } catch (e) {
+        console.error("caixa_movimento taxa rede sync:", e);
+      }
+    }
     return { atualizado: false, status: taxa.status, statusRede: null };
   }
 
@@ -50,6 +58,14 @@ export async function sincronizarTaxaComPaymentLinkRede(
   }
 
   await supabase.from("agendamento_taxa_rede").update(patch).eq("id", taxa.id);
+
+  if (map.status === "pago") {
+    try {
+      await registrarCaixaMovimentoTaxaSePago(supabase, taxa.id);
+    } catch (e) {
+      console.error("caixa_movimento taxa rede sync:", e);
+    }
+  }
 
   if (map.confirmarAgendamento) {
     await supabase

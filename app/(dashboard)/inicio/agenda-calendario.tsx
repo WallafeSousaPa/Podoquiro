@@ -729,6 +729,9 @@ export function AgendaCalendario({
   const [modalImportPlanilhaOpen, setModalImportPlanilhaOpen] = useState(false);
   /** Valor em `empresas.agenda_cor_corte_tecnico` (null = usar padrão #7105ab na UI). */
   const [agendaCorCorteTecnicoRaw, setAgendaCorCorteTecnicoRaw] = useState<string | null>(null);
+  /** Exige taxa paga (link ou dinheiro) para confirmar agendamento. */
+  const [agendamentosConfirmacao, setAgendamentosConfirmacao] = useState(false);
+  const [agendamentosConfirmacaoModal, setAgendamentosConfirmacaoModal] = useState(false);
   /** Rascunho hex no modal Parametrização (#RRGGBB). */
   const [corCorteTecnicoModal, setCorCorteTecnicoModal] = useState(COR_CORTE_TECNICO_AGENDA_PADRAO);
 
@@ -917,6 +920,7 @@ export function AgendaCalendario({
         ocultarSecaoPagamentosAgenda?: boolean;
         perfil_admin_agenda?: boolean;
         agenda_cor_corte_tecnico?: string | null;
+        agendamentos_confirmacao?: boolean;
       }>(res);
       if (!res.ok) throw new Error(json.error ?? "Erro ao carregar agenda.");
       setUsuarios(json.usuarios ?? []);
@@ -925,6 +929,7 @@ export function AgendaCalendario({
       setOcultarSecaoPagamentosAgenda(!!json.ocultarSecaoPagamentosAgenda);
       setPerfilAdminAgenda(json.perfil_admin_agenda === true);
       setAgendaCorCorteTecnicoRaw(json.agenda_cor_corte_tecnico ?? null);
+      setAgendamentosConfirmacao(json.agendamentos_confirmacao === true);
     } catch (e) {
       setLoadError(e instanceof Error ? e.message : "Erro ao carregar.");
     } finally {
@@ -1024,14 +1029,19 @@ export function AgendaCalendario({
       const resCor = await fetch("/api/empresa/parametros-agenda", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ agenda_cor_corte_tecnico: corParaApi }),
+        body: JSON.stringify({
+          agenda_cor_corte_tecnico: corParaApi,
+          agendamentos_confirmacao: agendamentosConfirmacaoModal,
+        }),
       });
       const jCor = (await resCor.json()) as {
         error?: string;
         agenda_cor_corte_tecnico?: string | null;
+        agendamentos_confirmacao?: boolean;
       };
-      if (!resCor.ok) throw new Error(jCor.error ?? "Erro ao salvar cor da agenda.");
+      if (!resCor.ok) throw new Error(jCor.error ?? "Erro ao salvar parâmetros da agenda.");
       setAgendaCorCorteTecnicoRaw(jCor.agenda_cor_corte_tecnico ?? null);
+      setAgendamentosConfirmacao(jCor.agendamentos_confirmacao === true);
 
       setModalParametrizacaoOpen(false);
       router.refresh();
@@ -1055,7 +1065,8 @@ export function AgendaCalendario({
   useEffect(() => {
     if (!modalParametrizacaoOpen) return;
     setCorCorteTecnicoModal(corCorteTecnicoAgendaResolvida(agendaCorCorteTecnicoRaw));
-  }, [modalParametrizacaoOpen, agendaCorCorteTecnicoRaw]);
+    setAgendamentosConfirmacaoModal(agendamentosConfirmacao);
+  }, [modalParametrizacaoOpen, agendaCorCorteTecnicoRaw, agendamentosConfirmacao]);
 
   async function carregarListasAuxiliares() {
     const [pr, sa] = await Promise.all([fetch("/api/pacientes"), fetch("/api/salas")]);
@@ -2528,7 +2539,10 @@ export function AgendaCalendario({
             if (!salvandoGrupos) setModalParametrizacaoOpen(false);
           }}
         >
-          <div className="modal-dialog modal-dialog-centered" role="document">
+          <div
+            className="modal-dialog modal-dialog-centered modal-dialog-scrollable"
+            role="document"
+          >
             <div className="modal-content">
               <div className="modal-header">
                 <h5 className="modal-title" id={modalParametrizacaoTitleId}>
@@ -2619,6 +2633,30 @@ export function AgendaCalendario({
                 >
                   Restaurar cor padrão ({COR_CORTE_TECNICO_AGENDA_PADRAO})
                 </button>
+                <hr className="my-4" />
+                <p className="font-weight-bold mb-2">Confirmação de agendamentos</p>
+                <p className="text-muted small mb-3">
+                  Quando ativo, o agendamento só passa para <strong>Confirmado</strong> após o
+                  pagamento da taxa pelo link ou mediante confirmação em{" "}
+                  <strong>dinheiro</strong> em Atendimentos → Agendamentos. A opção Confirmado no
+                  modal de edição da agenda fica oculta.
+                </p>
+                <div className="custom-control custom-checkbox">
+                  <input
+                    type="checkbox"
+                    className="custom-control-input"
+                    id="agenda-agendamentos-confirmacao-taxa"
+                    checked={agendamentosConfirmacaoModal}
+                    onChange={(e) => setAgendamentosConfirmacaoModal(e.target.checked)}
+                    disabled={salvandoGrupos}
+                  />
+                  <label
+                    className="custom-control-label"
+                    htmlFor="agenda-agendamentos-confirmacao-taxa"
+                  >
+                    Exigir taxa de agendamento para confirmar horário
+                  </label>
+                </div>
               </div>
               <div className="modal-footer">
                 <button
@@ -3304,7 +3342,9 @@ export function AgendaCalendario({
                         onChange={(e) => setStatusAg(e.target.value)}
                       >
                         <option value="pendente">Pendente</option>
-                        <option value="confirmado">Confirmado</option>
+                        {!agendamentosConfirmacao || statusAg === "confirmado" ? (
+                          <option value="confirmado">Confirmado</option>
+                        ) : null}
                         <option value="em_andamento">Em andamento</option>
                         <option value="realizado">Realizado</option>
                         <option value="cancelado">Cancelado</option>

@@ -778,6 +778,20 @@ export function DashboardShell({
                       <p>Caixa</p>
                     </Link>
                   </li>
+                  {podeVerRelatorioCaixa ? (
+                    <li className="nav-item">
+                      <Link
+                        href="/financeiro/caixa-movimento"
+                        className={cx(
+                          "nav-link",
+                          pathname === "/financeiro/caixa-movimento" && "active",
+                        )}
+                      >
+                        <i className="far fa-circle nav-icon" />
+                        <p>Caixa Movimento</p>
+                      </Link>
+                    </li>
+                  ) : null}
                   <li
                     className={cx(
                       "nav-item",
@@ -913,6 +927,18 @@ export function DashboardShell({
                       >
                         <i className="far fa-circle nav-icon" />
                         <p>Intervalos vagos</p>
+                      </Link>
+                    </li>
+                    <li className="nav-item">
+                      <Link
+                        href="/relatorios/comparativo"
+                        className={cx(
+                          "nav-link",
+                          pathname === "/relatorios/comparativo" && "active",
+                        )}
+                      >
+                        <i className="far fa-circle nav-icon" />
+                        <p>Comparativo</p>
                       </Link>
                     </li>
                   </ul>

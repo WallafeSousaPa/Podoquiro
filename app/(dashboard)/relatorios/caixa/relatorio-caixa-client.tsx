@@ -71,6 +71,20 @@ type HistoricoJson = {
   error?: string;
 };
 
+type MovimentoTaxaRow = {
+  id: number;
+  data_movimentacao: string;
+  descricao: string;
+  forma_pagamento: string;
+  valor: number;
+  atendimento_id: number | null;
+};
+
+type MovimentoDiaJson = {
+  data?: MovimentoTaxaRow[];
+  error?: string;
+};
+
 /** Todos os pagamentos do agendamento com status pago — modal só leitura (igual à tela Caixa). */
 function todosPagamentosQuitadosNaLista(r: CaixaAgendamentoRow): boolean {
   return (
@@ -90,6 +104,7 @@ export function RelatorioCaixaClient() {
   const modalDiaId = useId();
   const [diaDetalheModal, setDiaDetalheModal] = useState<string | null>(null);
   const [modalAgRows, setModalAgRows] = useState<CaixaAgendamentoRow[]>([]);
+  const [modalTaxasRows, setModalTaxasRows] = useState<MovimentoTaxaRow[]>([]);
   const [modalAgLoading, setModalAgLoading] = useState(false);
   const [modalAgError, setModalAgError] = useState<string | null>(null);
   const [modalRowAgendamento, setModalRowAgendamento] =
@@ -99,11 +114,20 @@ export function RelatorioCaixaClient() {
     setModalAgLoading(true);
     setModalAgError(null);
     try {
-      const res = await fetch(
-        `/api/financeiro/caixa/agendamentos-pagos?data=${encodeURIComponent(ymd)}`,
-      );
-      const j = (await res.json()) as { rows?: CaixaAgendamentoRow[]; error?: string };
-      if (!res.ok) throw new Error(j.error ?? "Erro ao carregar agendamentos.");
+      const params = new URLSearchParams({
+        de: ymd,
+        ate: ymd,
+        tipo_entrada: "taxa_agendamento",
+      });
+      const [resAg, resTaxas] = await Promise.all([
+        fetch(`/api/financeiro/caixa/agendamentos-pagos?data=${encodeURIComponent(ymd)}`),
+        fetch(`/api/financeiro/caixa/movimento?${params.toString()}`, {
+          credentials: "include",
+        }),
+      ]);
+      const j = (await resAg.json()) as { rows?: CaixaAgendamentoRow[]; error?: string };
+      const jt = (await resTaxas.json()) as MovimentoDiaJson;
+      if (!resAg.ok) throw new Error(j.error ?? "Erro ao carregar agendamentos.");
       const list = Array.isArray(j.rows) ? j.rows : [];
       list.sort((a, b) => {
         const ta = new Date(a.data_hora_inicio).getTime();
@@ -112,11 +136,17 @@ export function RelatorioCaixaClient() {
         return a.id - b.id;
       });
       setModalAgRows(list);
+      if (!resTaxas.ok) {
+        setModalTaxasRows([]);
+      } else {
+        setModalTaxasRows(Array.isArray(jt.data) ? jt.data : []);
+      }
     } catch (e) {
       setModalAgError(
         e instanceof Error ? e.message : "Não foi possível carregar o dia.",
       );
       setModalAgRows([]);
+      setModalTaxasRows([]);
     } finally {
       setModalAgLoading(false);
     }
@@ -126,6 +156,7 @@ export function RelatorioCaixaClient() {
     setDiaDetalheModal(null);
     setModalRowAgendamento(null);
     setModalAgRows([]);
+    setModalTaxasRows([]);
     setModalAgError(null);
   }, []);
 
@@ -208,7 +239,7 @@ export function RelatorioCaixaClient() {
             Período baseado na <strong>data de referência</strong> do caixa (dia
             operacional). No fechamento, os valores são os informados na conferência.
             Clique na <strong>data de referência</strong> na tabela abaixo para ver
-            atendimentos e pagamentos daquele dia.
+            taxas de agendamento recebidas e atendimentos pagos naquele dia.
           </p>
         </div>
       </div>
@@ -320,7 +351,7 @@ export function RelatorioCaixaClient() {
               <div className="modal-content">
                 <div className="modal-header">
                   <h5 className="modal-title" id={modalDiaId}>
-                    Atendimentos e pagamentos — {fmtDataRef(diaDetalheModal)}
+                    Movimentação do dia — {fmtDataRef(diaDetalheModal)}
                   </h5>
                   <button
                     type="button"
@@ -332,6 +363,43 @@ export function RelatorioCaixaClient() {
                   </button>
                 </div>
                 <div className="modal-body">
+                  {modalTaxasRows.length > 0 ? (
+                    <div className="mb-4">
+                      <h6 className="font-weight-bold mb-2">
+                        Taxas de agendamento recebidas
+                      </h6>
+                      <div className="table-responsive">
+                        <table className="table table-sm table-striped mb-0">
+                          <thead>
+                            <tr>
+                              <th>Horário</th>
+                              <th>Descrição</th>
+                              <th>Forma</th>
+                              <th>Atendimento</th>
+                              <th className="text-right">Valor</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {modalTaxasRows.map((t) => (
+                              <tr key={t.id}>
+                                <td>{fmtDataHora(t.data_movimentacao)}</td>
+                                <td>{t.descricao}</td>
+                                <td>{t.forma_pagamento}</td>
+                                <td>
+                                  {t.atendimento_id ? `#${t.atendimento_id}` : "—"}
+                                </td>
+                                <td className="text-right text-success font-weight-bold">
+                                  {fmtBrl(t.valor)}
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+                  ) : null}
+
+                  <h6 className="font-weight-bold mb-2">Atendimentos realizados</h6>
                   <CaixaClient
                       rows={modalAgRows}
                       loadError={modalAgError}

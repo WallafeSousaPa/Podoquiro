@@ -1,6 +1,8 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { AsaasConfig } from "./config";
 import { consultarPagamentoDoLinkAsaas, statusInternoTaxaFromAsaas } from "./payment-link";
+import { labelFormaPagamentoFromAsaasBillingType } from "@/lib/financeiro/taxa-forma-pagamento";
+import { registrarCaixaMovimentoTaxaSePago } from "@/lib/financeiro/caixa-movimento";
 
 type TaxaRow = {
   id: number;
@@ -21,6 +23,13 @@ export async function sincronizarTaxaComPaymentLinkAsaas(
   }
 
   if (taxa.status === "pago" || taxa.status === "cancelado" || taxa.status === "expirado") {
+    if (taxa.status === "pago") {
+      try {
+        await registrarCaixaMovimentoTaxaSePago(supabase, taxa.id);
+      } catch (e) {
+        console.error("caixa_movimento taxa asaas sync:", e);
+      }
+    }
     return { atualizado: false, status: taxa.status, statusAsaas: null };
   }
 
@@ -43,6 +52,18 @@ export async function sincronizarTaxaComPaymentLinkAsaas(
   }
 
   await supabase.from("agendamento_taxa_rede").update(patch).eq("id", taxa.id);
+
+  if (map.status === "pago") {
+    const forma =
+      labelFormaPagamentoFromAsaasBillingType(detalhe.billingType) ?? undefined;
+    try {
+      await registrarCaixaMovimentoTaxaSePago(supabase, taxa.id, {
+        formaPagamento: forma,
+      });
+    } catch (e) {
+      console.error("caixa_movimento taxa asaas sync:", e);
+    }
+  }
 
   if (map.confirmarAgendamento) {
     await supabase

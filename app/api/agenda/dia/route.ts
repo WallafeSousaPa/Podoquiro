@@ -76,7 +76,7 @@ export async function GET(request: Request) {
 
   const { data: empCor } = await supabase
     .from("empresas")
-    .select("agenda_cor_corte_tecnico")
+    .select("agenda_cor_corte_tecnico, agendamentos_confirmacao")
     .eq("id", empresaId)
     .maybeSingle();
   const agenda_cor_corte_tecnico = (empCor?.agenda_cor_corte_tecnico as string | null) ?? null;
@@ -374,6 +374,7 @@ export async function GET(request: Request) {
   return NextResponse.json({
     data,
     agenda_cor_corte_tecnico,
+    agendamentos_confirmacao: empCor?.agendamentos_confirmacao === true,
     gruposCalendario: (gruposRows ?? []).map((g) => ({
       id: g.id,
       grupo_usuarios: g.grupo_usuarios as string,

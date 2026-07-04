@@ -151,10 +151,11 @@ export function ModalCaixaAgendamento({
 }: Props) {
   const titleId = useId();
   const modalAbrirCaixaTitleId = useId();
-  const abrirCaixaPromptRef = useRef<{ resolve: (aceita: boolean) => void } | null>(
-    null,
-  );
+  const abrirCaixaPromptRef = useRef<{
+    resolve: (result: { ok: boolean; fundo: number }) => void;
+  } | null>(null);
   const [modalAbrirCaixaAberto, setModalAbrirCaixaAberto] = useState(false);
+  const [fundoCaixaAbrirTexto, setFundoCaixaAbrirTexto] = useState("0,00");
   const [loading, setLoading] = useState(true);
   const [salvando, setSalvando] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
@@ -377,16 +378,41 @@ export function ModalCaixaAgendamento({
       const p = abrirCaixaPromptRef.current;
       if (p) {
         abrirCaixaPromptRef.current = null;
-        p.resolve(false);
+        p.resolve({ ok: false, fundo: 0 });
       }
     };
   }, []);
+
+  function parseMoneyModal(v: string): number {
+    const t = v.trim().replace(/\s/g, "");
+    if (t === "") return 0;
+    const lastComma = t.lastIndexOf(",");
+    const lastDot = t.lastIndexOf(".");
+    let normalized: string;
+    if (lastComma !== -1 && lastComma > lastDot) {
+      normalized = t.replace(/\./g, "").replace(",", ".");
+    } else {
+      normalized = t.replace(/,/g, "");
+    }
+    const n = Number(normalized);
+    return Number.isFinite(n) && n >= 0 ? Math.round(n * 100) / 100 : NaN;
+  }
 
   function responderModalAbrirCaixa(aceita: boolean) {
     const p = abrirCaixaPromptRef.current;
     abrirCaixaPromptRef.current = null;
     setModalAbrirCaixaAberto(false);
-    p?.resolve(aceita);
+    if (!aceita) {
+      p?.resolve({ ok: false, fundo: 0 });
+      return;
+    }
+    const fundo = parseMoneyModal(fundoCaixaAbrirTexto);
+    if (Number.isNaN(fundo)) {
+      setErro("Informe um fundo de caixa válido (≥ 0).");
+      p?.resolve({ ok: false, fundo: 0 });
+      return;
+    }
+    p?.resolve({ ok: true, fundo });
   }
 
   function addProcLinha() {
@@ -463,16 +489,20 @@ export function ModalCaixaAgendamento({
       }
       if (!j.tem_abertura) {
         setCaixaBusy(false);
-        const ok = await new Promise<boolean>((resolve) => {
+        setFundoCaixaAbrirTexto("0,00");
+        const result = await new Promise<{ ok: boolean; fundo: number }>((resolve) => {
           abrirCaixaPromptRef.current = { resolve };
           setModalAbrirCaixaAberto(true);
         });
-        if (!ok) return false;
+        if (!result.ok) return false;
         setCaixaBusy(true);
         const post = await fetch("/api/financeiro/caixa/abertura", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ data_referencia: dataRef, numero_caixa: "01" }),
+          body: JSON.stringify({
+            data_referencia: dataRef,
+            fundo_caixa: result.fundo,
+          }),
         });
         const pj = (await post.json()) as { error?: string };
         if (!post.ok) {
@@ -1926,10 +1956,23 @@ export function ModalCaixaAgendamento({
                   </h5>
                 </div>
                 <div className="modal-body">
-                  <p className="mb-0">
-                    O caixa do dia ainda não foi aberto. Deseja abrir o caixa agora para
-                    poder registrar os pagamentos?
+                  <p className="mb-3">
+                    O caixa do dia ainda não foi aberto. Informe o fundo em dinheiro
+                    para troco (se houver) e confirme a abertura para registrar os
+                    pagamentos.
                   </p>
+                  <div className="form-group mb-0">
+                    <label htmlFor="modal-caixa-fundo">Fundo de caixa (R$)</label>
+                    <input
+                      id="modal-caixa-fundo"
+                      type="text"
+                      inputMode="decimal"
+                      className="form-control"
+                      value={fundoCaixaAbrirTexto}
+                      onChange={(e) => setFundoCaixaAbrirTexto(e.target.value)}
+                      placeholder="0,00"
+                    />
+                  </div>
                 </div>
                 <div className="modal-footer">
                   <button
@@ -1937,14 +1980,14 @@ export function ModalCaixaAgendamento({
                     className="btn btn-secondary"
                     onClick={() => responderModalAbrirCaixa(false)}
                   >
-                    Não
+                    Cancelar
                   </button>
                   <button
                     type="button"
                     className="btn btn-primary"
                     onClick={() => responderModalAbrirCaixa(true)}
                   >
-                    Sim, abrir caixa
+                    Abrir caixa
                   </button>
                 </div>
               </div>

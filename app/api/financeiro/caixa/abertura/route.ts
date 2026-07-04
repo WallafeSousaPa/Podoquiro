@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { getSession } from "@/lib/auth/session";
+import { registrarCaixaMovimentoFundoAbertura } from "@/lib/financeiro/caixa-movimento";
 import { createAdminClient } from "@/lib/supabase/admin";
 
 function parseEmpresaId(idEmpresa: string) {
@@ -8,6 +9,28 @@ function parseEmpresaId(idEmpresa: string) {
 }
 
 const DATA_RE = /^\d{4}-\d{2}-\d{2}$/;
+
+function parseMoney(v: unknown): number {
+  if (v === null || typeof v === "undefined") return 0;
+  if (typeof v === "number") {
+    return Number.isFinite(v) && v >= 0 ? Math.round(v * 100) / 100 : NaN;
+  }
+  if (typeof v === "string") {
+    const t = v.trim().replace(/\s/g, "");
+    if (t === "") return 0;
+    const lastComma = t.lastIndexOf(",");
+    const lastDot = t.lastIndexOf(".");
+    let normalized: string;
+    if (lastComma !== -1 && lastComma > lastDot) {
+      normalized = t.replace(/\./g, "").replace(",", ".");
+    } else {
+      normalized = t.replace(/,/g, "");
+    }
+    const n = Number(normalized);
+    return Number.isFinite(n) && n >= 0 ? Math.round(n * 100) / 100 : NaN;
+  }
+  return NaN;
+}
 
 function proximoNumeroCaixa(numeros: string[]): string {
   let maxNum = 0;
@@ -36,7 +59,7 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Sessão inválida." }, { status: 400 });
   }
 
-  let body: { data_referencia?: string; numero_caixa?: string };
+  let body: { data_referencia?: string; numero_caixa?: string; fundo_caixa?: unknown };
   try {
     body = await request.json();
   } catch {
@@ -47,6 +70,14 @@ export async function POST(request: Request) {
   if (!DATA_RE.test(dataRef)) {
     return NextResponse.json(
       { error: "Informe data_referencia (YYYY-MM-DD)." },
+      { status: 400 },
+    );
+  }
+
+  const fundoCaixa = parseMoney(body.fundo_caixa);
+  if (Number.isNaN(fundoCaixa)) {
+    return NextResponse.json(
+      { error: "Informe um fundo de caixa válido (≥ 0)." },
       { status: 400 },
     );
   }
@@ -105,8 +136,9 @@ export async function POST(request: Request) {
       id_responsavel: sessionUserId,
       id_empresa: empresaId,
       data_referencia: dataRef,
+      valor_fundo: fundoCaixa > 0 ? fundoCaixa : null,
     })
-    .select("id, data_lancamento, numero_caixa, data_referencia")
+    .select("id, data_lancamento, numero_caixa, data_referencia, valor_fundo")
     .single();
 
   if (error) {
@@ -118,6 +150,30 @@ export async function POST(request: Request) {
       );
     }
     return NextResponse.json({ error: error.message }, { status: 500 });
+  }
+
+  if (fundoCaixa > 0) {
+    try {
+      await registrarCaixaMovimentoFundoAbertura(supabase, {
+        idEmpresa: empresaId,
+        idLancamento: data.id as number,
+        numeroCaixa,
+        valor: fundoCaixa,
+        dataMovimentacao: data.data_lancamento as string,
+      });
+    } catch (e) {
+      console.error(e);
+      await supabase.from("caixa_lancamentos").delete().eq("id", data.id);
+      return NextResponse.json(
+        {
+          error:
+            e instanceof Error
+              ? e.message
+              : "Erro ao registrar fundo de caixa.",
+        },
+        { status: 500 },
+      );
+    }
   }
 
   return NextResponse.json({ data });

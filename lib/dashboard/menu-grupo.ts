@@ -136,3 +136,33 @@ export function grupoUsuariosMenuRestritoBalcao(
   if (grupoUsuariosMenuNotaFiscal(nomeGrupo)) return false;
   return grupoNomePermiteProdutosModalCaixaRecepcao(nomeGrupo);
 }
+
+/**
+ * Personalizar mensagem WhatsApp da taxa de agendamento: Recepção, Administrativo ou Administrador.
+ */
+export function grupoUsuariosPodePersonalizarMensagemWhatsappTaxa(
+  nomeGrupo: string | null | undefined,
+): boolean {
+  if (grupoUsuariosRelatorioCaixa(nomeGrupo)) return true;
+  return grupoNomePermiteProdutosModalCaixaRecepcao(nomeGrupo);
+}
+
+/** Resolve se o usuário pode editar a mensagem WhatsApp da taxa de agendamento. */
+export async function getUsuarioPodePersonalizarMensagemWhatsappTaxa(
+  supabase: SupabaseClient,
+  idUsuario: number,
+): Promise<boolean> {
+  if (!Number.isFinite(idUsuario) || idUsuario <= 0) return false;
+  const { data: u, error: uErr } = await supabase
+    .from("usuarios")
+    .select(
+      "usuarios_grupos:usuarios_grupos!usuarios_id_grupo_usuarios_fkey ( grupo_usuarios )",
+    )
+    .eq("id", idUsuario)
+    .maybeSingle();
+  if (uErr || !u) return false;
+  type G = { grupo_usuarios: string | null };
+  const gRaw = u.usuarios_grupos as G | G[] | null | undefined;
+  const g = Array.isArray(gRaw) ? gRaw[0] : gRaw;
+  return grupoUsuariosPodePersonalizarMensagemWhatsappTaxa(g?.grupo_usuarios);
+}

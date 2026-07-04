@@ -23,6 +23,7 @@ export type AsaasPaymentLinkCriado = {
 export type AsaasPagamentoDetalhe = {
   paymentId: string | null;
   statusPagamento: string | null;
+  billingType: string | null;
   respostaBruta: unknown;
 };
 
@@ -185,11 +186,16 @@ export async function consultarPagamentoDoLinkAsaas(
 
   const pago = cobrancas.find((p) => STATUS_PAGO.has((pickString(p, "status") ?? "").toUpperCase()));
   const escolhida = pago ?? cobrancas[0] ?? null;
+  const billingType = escolhida ? pickString(escolhida, "billingType", "billing_type") : null;
 
   return {
     paymentId: escolhida ? pickString(escolhida, "id") : null,
     statusPagamento: escolhida ? pickString(escolhida, "status") : null,
-    respostaBruta: body,
+    billingType,
+    respostaBruta:
+      escolhida != null
+        ? { payment: escolhida, data: dataRaw }
+        : body,
   };
 }
 

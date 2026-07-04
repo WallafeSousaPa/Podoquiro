@@ -9,16 +9,18 @@ import {
   useState,
 } from "react";
 import {
-  montarMensagemWhatsappConfirmacaoHorario,
-  urlWhatsAppComTexto,
-  urlWhatsAppPaciente,
-} from "@/lib/whatsapp/paciente";
+  MAX_CARACTERES_MENSAGEM_WHATSAPP_TAXA_AGENDAMENTO,
+  MENSAGEM_PADRAO_WHATSAPP_TAXA_AGENDAMENTO,
+  mensagemWhatsappTaxaAgendamentoParaExibicao,
+  montarMensagemWhatsappTaxaAgendamento,
+} from "@/lib/financeiro/taxa-agendamento-whatsapp";
+import { urlWhatsAppComTexto, urlWhatsAppPaciente } from "@/lib/whatsapp/paciente";
+
 type LinksPagamento = {
-  linkAsaas: string | null;
   linkApp: string;
   valor: number;
   paciente: string;
-  paymentLinkId?: string | null;
+  telefone: string | null;
 };
 
 function ModalBackdrop({
@@ -64,31 +66,50 @@ function linksDeAgendamento(
   const token = ag.taxa_pagamento?.token;
   if (!token) return null;
   return {
-    linkAsaas: ag.taxa_pagamento?.link_asaas ?? null,
     linkApp: linkAppTaxa(token),
     valor: ag.taxa_pagamento?.valor ?? 0,
     paciente: ag.paciente_nome,
+    telefone: ag.paciente_telefone,
   };
 }
 
-function ModalLinksPagamento({
+function ModalLinkPagamento({
   dados,
+  mensagemTemplate,
   onFechar,
+  onErro,
 }: {
   dados: LinksPagamento;
+  mensagemTemplate: string;
   onFechar: () => void;
+  onErro: (msg: string) => void;
 }) {
   const tituloId = useId();
-  const [copiado, setCopiado] = useState<string | null>(null);
+  const [copiado, setCopiado] = useState(false);
 
-  async function copiar(texto: string, rotulo: string) {
+  const textoWhatsapp = montarMensagemWhatsappTaxaAgendamento(
+    dados.paciente,
+    dados.linkApp,
+    mensagemTemplate,
+  );
+
+  async function copiar() {
     try {
-      await navigator.clipboard.writeText(texto);
-      setCopiado(rotulo);
-      setTimeout(() => setCopiado(null), 2000);
+      await navigator.clipboard.writeText(dados.linkApp);
+      setCopiado(true);
+      setTimeout(() => setCopiado(false), 2000);
     } catch {
-      setCopiado(null);
+      setCopiado(false);
     }
+  }
+
+  function abrirWhatsApp() {
+    const wa = urlWhatsAppPaciente(dados.telefone);
+    if (!wa) {
+      onErro("Telefone do paciente inválido para WhatsApp.");
+      return;
+    }
+    window.open(urlWhatsAppComTexto(wa, textoWhatsapp), "_blank", "noopener,noreferrer");
   }
 
   return (
@@ -97,7 +118,7 @@ function ModalLinksPagamento({
         <div className="modal-content">
           <div className="modal-header">
             <h5 className="modal-title" id={tituloId}>
-              Links de pagamento — {dados.paciente}
+              Link de pagamento — {dados.paciente}
             </h5>
             <button type="button" className="close" onClick={onFechar} aria-label="Fechar">
               <span aria-hidden="true">&times;</span>
@@ -106,54 +127,11 @@ function ModalLinksPagamento({
           <div className="modal-body">
             <p className="text-muted small mb-3">
               Valor: <strong>{fmtMoeda(dados.valor)}</strong>
-              {dados.paymentLinkId ? (
-                <>
-                  {" "}
-                  · ID Asaas: <code>{dados.paymentLinkId}</code>
-                </>
-              ) : null}
             </p>
 
-            <div className="form-group">
+            <div className="form-group mb-3">
               <label className="d-flex justify-content-between align-items-center">
-                <span>1. Checkout Asaas (Pix / cartão / boleto)</span>
-                {dados.linkAsaas ? (
-                  <a
-                    href={dados.linkAsaas}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="btn btn-sm btn-primary"
-                  >
-                    Abrir
-                  </a>
-                ) : null}
-              </label>
-              {dados.linkAsaas ? (
-                <div className="input-group input-group-sm">
-                  <input
-                    type="text"
-                    className="form-control font-monospace small"
-                    readOnly
-                    value={dados.linkAsaas}
-                  />
-                  <div className="input-group-append">
-                    <button
-                      type="button"
-                      className="btn btn-outline-secondary"
-                      onClick={() => void copiar(dados.linkAsaas!, "asaas")}
-                    >
-                      {copiado === "asaas" ? "Copiado" : "Copiar"}
-                    </button>
-                  </div>
-                </div>
-              ) : (
-                <p className="text-warning small mb-0">Link Asaas indisponível.</p>
-              )}
-            </div>
-
-            <div className="form-group mb-0">
-              <label className="d-flex justify-content-between align-items-center">
-                <span>2. Página do app (envio no WhatsApp)</span>
+                <span>Página do app (envio no WhatsApp)</span>
                 <a
                   href={dados.linkApp}
                   target="_blank"
@@ -171,23 +149,131 @@ function ModalLinksPagamento({
                   value={dados.linkApp}
                 />
                 <div className="input-group-append">
-                  <button
-                    type="button"
-                    className="btn btn-outline-secondary"
-                    onClick={() => void copiar(dados.linkApp, "app")}
-                  >
-                    {copiado === "app" ? "Copiado" : "Copiar"}
+                  <button type="button" className="btn btn-outline-secondary" onClick={() => void copiar()}>
+                    {copiado ? "Copiado" : "Copiar"}
                   </button>
                 </div>
               </div>
-              <p className="text-muted small mt-2 mb-0">
-                Use o link 1 para pagar direto no Asaas; o link 2 redireciona o paciente pelo app.
-              </p>
             </div>
+
+            <div className="border rounded p-3 bg-light small mb-3">
+              <div className="text-muted mb-1">Mensagem que será enviada no WhatsApp:</div>
+              <pre className="mb-0" style={{ whiteSpace: "pre-wrap" }}>
+                {textoWhatsapp}
+              </pre>
+            </div>
+
+            <button
+              type="button"
+              className="btn btn-success btn-block btn-lg"
+              disabled={!dados.telefone}
+              onClick={abrirWhatsApp}
+            >
+              <i className="fab fa-whatsapp mr-2" aria-hidden />
+              Enviar no WhatsApp
+            </button>
+            {!dados.telefone ? (
+              <p className="text-warning small mt-2 mb-0">
+                Cadastre o telefone do paciente para enviar pelo WhatsApp.
+              </p>
+            ) : null}
           </div>
           <div className="modal-footer">
             <button type="button" className="btn btn-secondary" onClick={onFechar}>
               Fechar
+            </button>
+          </div>
+        </div>
+      </div>
+    </ModalBackdrop>
+  );
+}
+
+function ModalConfigMensagemWhatsapp({
+  mensagemRascunho,
+  mensagemErro,
+  mensagemFeedback,
+  mensagemSalvando,
+  onChange,
+  onFechar,
+  onRestaurar,
+  onSalvar,
+}: {
+  mensagemRascunho: string;
+  mensagemErro: string | null;
+  mensagemFeedback: string | null;
+  mensagemSalvando: boolean;
+  onChange: (v: string) => void;
+  onFechar: () => void;
+  onRestaurar: () => void;
+  onSalvar: () => void;
+}) {
+  const tituloId = useId();
+
+  return (
+    <ModalBackdrop onBackdropClick={onFechar}>
+      <div className="modal-dialog modal-lg modal-dialog-centered" role="document">
+        <div className="modal-content">
+          <div className="modal-header">
+            <h5 className="modal-title" id={tituloId}>
+              <i className="fab fa-whatsapp text-success mr-2" aria-hidden />
+              Mensagem WhatsApp — taxa de agendamento
+            </h5>
+            <button type="button" className="close" onClick={onFechar} aria-label="Fechar">
+              <span aria-hidden="true">&times;</span>
+            </button>
+          </div>
+          <div className="modal-body">
+            <p className="text-muted small">
+              Use <code>{"{nome}"}</code> para o nome do paciente e <code>{"{link}"}</code> para o
+              link de pagamento da página do app.
+            </p>
+            <div className="form-group mb-2">
+              <label htmlFor="msg-whatsapp-taxa">Texto da mensagem</label>
+              <textarea
+                id="msg-whatsapp-taxa"
+                className="form-control"
+                rows={7}
+                maxLength={MAX_CARACTERES_MENSAGEM_WHATSAPP_TAXA_AGENDAMENTO}
+                value={mensagemRascunho}
+                onChange={(e) => onChange(e.target.value)}
+              />
+              <small className="form-text text-muted">
+                {mensagemRascunho.length}/{MAX_CARACTERES_MENSAGEM_WHATSAPP_TAXA_AGENDAMENTO}{" "}
+                caracteres
+              </small>
+            </div>
+            <div className="border rounded p-3 bg-light small mb-0">
+              <div className="text-muted mb-1">Pré-visualização (exemplo):</div>
+              <pre className="mb-0" style={{ whiteSpace: "pre-wrap" }}>
+                {montarMensagemWhatsappTaxaAgendamento(
+                  "Maria Silva",
+                  "https://exemplo.com/pagamento/taxa-agendamento/abc",
+                  mensagemRascunho,
+                )}
+              </pre>
+            </div>
+            {mensagemErro ? (
+              <div className="alert alert-danger py-2 mt-3 mb-0">{mensagemErro}</div>
+            ) : null}
+            {mensagemFeedback ? (
+              <div className="alert alert-success py-2 mt-3 mb-0">{mensagemFeedback}</div>
+            ) : null}
+          </div>
+          <div className="modal-footer">
+            <button type="button" className="btn btn-outline-secondary" onClick={onRestaurar}>
+              Restaurar padrão
+            </button>
+            <button type="button" className="btn btn-secondary" onClick={onFechar}>
+              Fechar
+            </button>
+            <button
+              type="button"
+              className="btn btn-success"
+              disabled={mensagemSalvando}
+              onClick={onSalvar}
+            >
+              {mensagemSalvando ? "Salvando…" : "Salvar mensagem"}
             </button>
           </div>
         </div>
@@ -203,6 +289,7 @@ type TaxaPagamento = {
   status: string;
   expira_em: string | null;
   pago_em: string | null;
+  pago_em_dinheiro: boolean;
   link_asaas: string | null;
 };
 
@@ -253,17 +340,17 @@ const PAGAMENTO_BADGE: Record<string, { cls: string; label: string }> = {
 };
 
 export function ConfirmarAtendimentoClient({
-  nomeEmpresaCurto,
+  podePersonalizarMensagemWhatsapp = false,
 }: {
-  nomeEmpresaCurto: string;
+  nomeEmpresaCurto?: string;
+  podePersonalizarMensagemWhatsapp?: boolean;
 }) {
   const [carregando, setCarregando] = useState(true);
   const [erro, setErro] = useState<string | null>(null);
   const [lista, setLista] = useState<AgendamentoConfirmacao[]>([]);
   const [taxaPadrao, setTaxaPadrao] = useState(0);
-  const [filtroStatus, setFiltroStatus] = useState<"pendente" | "confirmado" | "todos">(
-    "todos",
-  );
+  const [agendamentosConfirmacao, setAgendamentosConfirmacao] = useState(false);
+  const [filtroStatus, setFiltroStatus] = useState<"pendente" | "confirmado" | "todos">("todos");
   const [dataDe, setDataDe] = useState<string>(hojeLocal);
   const [dataAte, setDataAte] = useState<string>(hojeLocal);
   const [busca, setBusca] = useState("");
@@ -271,10 +358,21 @@ export function ConfirmarAtendimentoClient({
     "todos" | "pago" | "pendente" | "expirado" | "cancelado" | "sem"
   >("todos");
   const [acaoId, setAcaoId] = useState<number | null>(null);
-  const [linksPorAgendamento, setLinksPorAgendamento] = useState<
-    Record<number, LinksPagamento>
-  >({});
+  const [linksPorAgendamento, setLinksPorAgendamento] = useState<Record<number, LinksPagamento>>(
+    {},
+  );
   const [modalLinks, setModalLinks] = useState<LinksPagamento | null>(null);
+  const [mensagemWhatsapp, setMensagemWhatsapp] = useState("");
+  const [modalMensagemWhatsapp, setModalMensagemWhatsapp] = useState(false);
+  const [mensagemRascunho, setMensagemRascunho] = useState("");
+  const [mensagemErro, setMensagemErro] = useState<string | null>(null);
+  const [mensagemFeedback, setMensagemFeedback] = useState<string | null>(null);
+  const [mensagemSalvando, setMensagemSalvando] = useState(false);
+
+  const mensagemTemplate = useMemo(
+    () => mensagemWhatsappTaxaAgendamentoParaExibicao(mensagemWhatsapp),
+    [mensagemWhatsapp],
+  );
 
   const carregar = useCallback(
     async (opts?: { silent?: boolean }) => {
@@ -293,6 +391,7 @@ export function ConfirmarAtendimentoClient({
         if (!res.ok) throw new Error(json.error ?? "Erro ao carregar.");
         setLista((json.data ?? []) as AgendamentoConfirmacao[]);
         setTaxaPadrao(Number(json.taxa_agendamento_padrao ?? 0));
+        setAgendamentosConfirmacao(json.agendamentos_confirmacao === true);
       } catch (e) {
         if (!opts?.silent) setErro(e instanceof Error ? e.message : "Erro ao carregar.");
       } finally {
@@ -304,12 +403,31 @@ export function ConfirmarAtendimentoClient({
 
   useEffect(() => {
     void carregar();
-    // Atualiza o status de pagamento automaticamente (polling no servidor consulta o Asaas).
     const interval = setInterval(() => {
       void carregar({ silent: true });
     }, 30_000);
     return () => clearInterval(interval);
   }, [carregar]);
+
+  useEffect(() => {
+    let cancelled = false;
+    async function loadMensagem() {
+      try {
+        const res = await fetch("/api/atendimentos/confirmacao/mensagem-whatsapp", {
+          credentials: "include",
+        });
+        const json = (await res.json()) as { mensagem?: string; error?: string };
+        if (cancelled || !res.ok) return;
+        setMensagemWhatsapp(json.mensagem ?? "");
+      } catch {
+        /* mantém padrão local */
+      }
+    }
+    void loadMensagem();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const listaFiltrada = useMemo(() => {
     const termo = busca.trim().toLowerCase();
@@ -329,13 +447,19 @@ export function ConfirmarAtendimentoClient({
     });
   }, [lista, busca, filtroPagamento]);
 
-  async function confirmar(id: number) {
+  async function confirmar(id: number, pagamentoDinheiro = false) {
     setAcaoId(id);
     setErro(null);
     try {
       const res = await fetch(`/api/atendimentos/confirmacao/${id}`, {
         method: "POST",
         credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(
+          pagamentoDinheiro
+            ? { pagamento_dinheiro: true, valor: taxaPadrao > 0 ? taxaPadrao : undefined }
+            : {},
+        ),
       });
       const json = await res.json();
       if (!res.ok) throw new Error(json.error ?? "Erro ao confirmar.");
@@ -359,17 +483,15 @@ export function ConfirmarAtendimentoClient({
       });
       const json = await res.json();
       if (!res.ok) throw new Error(json.error ?? "Erro ao gerar link.");
-      const linkAsaas = (json.data?.link_pagamento_asaas as string | undefined) ?? null;
       const linkApp = json.data?.link_pagamento as string | undefined;
       const token = json.data?.token as string | undefined;
       const valorResp = Number(json.data?.valor ?? valor ?? taxaPadrao);
       const ag = lista.find((a) => a.id === id);
       const links: LinksPagamento = {
-        linkAsaas,
         linkApp: linkApp ?? (token ? linkAppTaxa(token) : ""),
         valor: valorResp,
         paciente: ag?.paciente_nome ?? "Paciente",
-        paymentLinkId: (json.data?.payment_link_id as string | undefined) ?? null,
+        telefone: ag?.paciente_telefone ?? null,
       };
       if (links.linkApp) {
         setLinksPorAgendamento((prev) => ({ ...prev, [id]: links }));
@@ -391,21 +513,74 @@ export function ConfirmarAtendimentoClient({
     }
     const cache = linksPorAgendamento[ag.id];
     const links = linksDeAgendamento(ag, cache);
-    const link =
-      links?.linkAsaas ?? links?.linkApp ?? null;
-    const texto = montarMensagemWhatsappConfirmacaoHorario({
-      nomePaciente: ag.paciente_nome,
-      nomeEmpresa: nomeEmpresaCurto,
-      inicioLocal: ag.data_hora_inicio,
-      linkPagamento: link,
-    });
+    if (!links?.linkApp) {
+      setErro("Gere o link de pagamento antes de enviar pelo WhatsApp.");
+      return;
+    }
+    const texto = montarMensagemWhatsappTaxaAgendamento(
+      ag.paciente_nome,
+      links.linkApp,
+      mensagemTemplate,
+    );
     window.open(urlWhatsAppComTexto(wa, texto), "_blank", "noopener,noreferrer");
+  }
+
+  function abrirConfigMensagemWhatsapp() {
+    setMensagemRascunho(
+      mensagemWhatsapp.trim() || MENSAGEM_PADRAO_WHATSAPP_TAXA_AGENDAMENTO,
+    );
+    setMensagemErro(null);
+    setMensagemFeedback(null);
+    setModalMensagemWhatsapp(true);
+  }
+
+  function fecharConfigMensagemWhatsapp() {
+    setModalMensagemWhatsapp(false);
+    setMensagemErro(null);
+    setMensagemFeedback(null);
+  }
+
+  async function salvarMensagemWhatsapp() {
+    setMensagemSalvando(true);
+    setMensagemErro(null);
+    setMensagemFeedback(null);
+    const texto = mensagemRascunho.trim();
+    const payload = texto === MENSAGEM_PADRAO_WHATSAPP_TAXA_AGENDAMENTO ? "" : texto;
+    try {
+      const res = await fetch("/api/atendimentos/confirmacao/mensagem-whatsapp", {
+        method: "PATCH",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ mensagem: payload }),
+      });
+      const json = (await res.json()) as { mensagem?: string; error?: string };
+      if (!res.ok) throw new Error(json.error ?? "Erro ao salvar mensagem.");
+      setMensagemWhatsapp(json.mensagem ?? "");
+      setMensagemFeedback("Mensagem salva para todos os usuários da empresa.");
+    } catch (e) {
+      setMensagemErro(e instanceof Error ? e.message : "Erro ao salvar.");
+    } finally {
+      setMensagemSalvando(false);
+    }
   }
 
   return (
     <div className="card card-outline card-info">
-      <div className="card-header">
+      <div className="card-header d-flex align-items-center flex-wrap">
         <h3 className="card-title mb-0">Agendamentos</h3>
+        {podePersonalizarMensagemWhatsapp ? (
+          <div className="ml-auto">
+            <button
+              type="button"
+              className="btn btn-sm btn-outline-success"
+              onClick={abrirConfigMensagemWhatsapp}
+              title="Personalizar mensagem do WhatsApp"
+            >
+              <i className="fab fa-whatsapp mr-1" aria-hidden />
+              Mensagem WhatsApp
+            </button>
+          </div>
+        ) : null}
       </div>
       <div className="card-body p-0">
         <div className="border-bottom p-3">
@@ -514,6 +689,13 @@ export function ConfirmarAtendimentoClient({
           </p>
         )}
 
+        {agendamentosConfirmacao ? (
+          <p className="text-info small px-3 pt-2 mb-0">
+            <strong>Confirmação por taxa ativa:</strong> o horário só é confirmado após pagamento
+            pelo link ou mediante botão <strong>Confirmar (dinheiro)</strong>.
+          </p>
+        ) : null}
+
         {carregando ? (
           <p className="text-muted p-3">Carregando…</p>
         ) : listaFiltrada.length === 0 ? (
@@ -572,6 +754,10 @@ export function ConfirmarAtendimentoClient({
                               {ag.taxa_pagamento.status === "pago" && ag.taxa_pagamento.pago_em
                                 ? ` · pago em ${fmtDataHora(ag.taxa_pagamento.pago_em)}`
                                 : null}
+                              {ag.taxa_pagamento.status === "pago" &&
+                              ag.taxa_pagamento.pago_em_dinheiro
+                                ? " · dinheiro"
+                                : null}
                             </div>
                           </>
                         ) : (
@@ -584,27 +770,39 @@ export function ConfirmarAtendimentoClient({
                               className="btn btn-link btn-sm p-0 align-baseline"
                               onClick={() => setModalLinks(links)}
                             >
-                              Ver 2 links
+                              Ver link
                             </button>
                           </div>
                         ) : null}
                       </td>
                       <td className="text-right text-nowrap">
                         {ag.status === "pendente" ? (
-                          <button
-                            type="button"
-                            className="btn btn-sm btn-outline-success mr-1"
-                            disabled={busy}
-                            onClick={() => void confirmar(ag.id)}
-                          >
-                            Confirmar
-                          </button>
+                          agendamentosConfirmacao ? (
+                            <button
+                              type="button"
+                              className="btn btn-sm btn-outline-success mr-1"
+                              disabled={busy || taxaPadrao <= 0}
+                              title="Registra taxa em dinheiro e confirma o horário"
+                              onClick={() => void confirmar(ag.id, true)}
+                            >
+                              Confirmar (dinheiro)
+                            </button>
+                          ) : (
+                            <button
+                              type="button"
+                              className="btn btn-sm btn-outline-success mr-1"
+                              disabled={busy}
+                              onClick={() => void confirmar(ag.id)}
+                            >
+                              Confirmar
+                            </button>
+                          )
                         ) : null}
                         <button
                           type="button"
                           className="btn btn-sm btn-outline-primary mr-1"
                           disabled={busy}
-                          title="Gera link de pagamento via Asaas"
+                          title="Gera link de pagamento (página do app)"
                           onClick={() => void gerarLinkPagamento(ag.id, taxaPadrao || undefined)}
                         >
                           Link pagamento
@@ -613,10 +811,10 @@ export function ConfirmarAtendimentoClient({
                           type="button"
                           className="btn btn-sm btn-success"
                           disabled={busy || !ag.paciente_telefone}
-                          title="Abrir WhatsApp com mensagem de confirmação"
+                          title="Abrir WhatsApp com link de pagamento"
                           onClick={() => abrirWhatsApp(ag)}
                         >
-                          <i className="fab fa-whatsapp" aria-hidden /> Zap
+                          <i className="fab fa-whatsapp" aria-hidden /> WhatsApp
                         </button>
                       </td>
                     </tr>
@@ -628,19 +826,29 @@ export function ConfirmarAtendimentoClient({
         )}
       </div>
       <div className="card-footer text-muted small">
-        Pagamento via <strong>Link de Pagamento Asaas</strong> (
-        <a
-          href="https://docs.asaas.com/docs/creating-a-payment-link"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          documentação
-        </a>
-        ). A confirmação do pagamento é feita por consulta automática (polling) e também por webhook,
-        se configurado no painel do Asaas.
+        O paciente recebe o link da <strong>página do app</strong>, que redireciona ao checkout
+        seguro do Asaas (Pix, cartão ou boleto). A confirmação do pagamento é feita por consulta
+        automática e também por webhook, se configurado no painel do Asaas.
       </div>
       {modalLinks ? (
-        <ModalLinksPagamento dados={modalLinks} onFechar={() => setModalLinks(null)} />
+        <ModalLinkPagamento
+          dados={modalLinks}
+          mensagemTemplate={mensagemTemplate}
+          onFechar={() => setModalLinks(null)}
+          onErro={setErro}
+        />
+      ) : null}
+      {modalMensagemWhatsapp ? (
+        <ModalConfigMensagemWhatsapp
+          mensagemRascunho={mensagemRascunho}
+          mensagemErro={mensagemErro}
+          mensagemFeedback={mensagemFeedback}
+          mensagemSalvando={mensagemSalvando}
+          onChange={setMensagemRascunho}
+          onFechar={fecharConfigMensagemWhatsapp}
+          onRestaurar={() => setMensagemRascunho(MENSAGEM_PADRAO_WHATSAPP_TAXA_AGENDAMENTO)}
+          onSalvar={() => void salvarMensagemWhatsapp()}
+        />
       ) : null}
     </div>
   );

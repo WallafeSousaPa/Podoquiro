@@ -33,6 +33,11 @@ import {
   STATUS_RETORNO_AGENDAMENTO,
 } from "@/lib/agenda/retorno-agendamento";
 import { dataReferenciaBrasilia } from "@/lib/financeiro/data-referencia-brasilia";
+import {
+  montarDescricaoMovimentoAtendimento,
+  registrarCaixaMovimentoPagamentosAgendamento,
+  removerCaixaMovimentoAtendimento,
+} from "@/lib/financeiro/caixa-movimento";
 import { obterSituacaoCaixaDia } from "@/lib/financeiro/caixa-situacao-dia";
 import { parsePagamentosAgendamentoBody } from "@/lib/financeiro/parse-pagamentos-agendamento";
 import {
@@ -344,6 +349,22 @@ export async function PATCH(request: Request, context: RouteContext) {
     if (apenasStatus && typeof body.status === "string") {
       const atual = String(existente.status);
       const novo = body.status;
+      if (novo === "confirmado" && atual !== "confirmado") {
+        const { data: empConf } = await supabase
+          .from("empresas")
+          .select("agendamentos_confirmacao")
+          .eq("id", empresaId)
+          .maybeSingle();
+        if (empConf?.agendamentos_confirmacao === true) {
+          return NextResponse.json(
+            {
+              error:
+                "Confirmação manual bloqueada. Use o link de pagamento ou confirme com taxa em dinheiro em Atendimentos → Agendamentos.",
+            },
+            { status: 400 },
+          );
+        }
+      }
       const transicaoPermitidaPodologo =
         (atual === "pendente" && novo === "em_andamento") ||
         (atual === "pendente" && novo === "confirmado") ||
@@ -616,6 +637,25 @@ export async function PATCH(request: Request, context: RouteContext) {
   if (typeof body.status === "string") {
     if (!isAgStatus(body.status)) {
       return NextResponse.json({ error: "Status inválido." }, { status: 400 });
+    }
+    if (
+      body.status === "confirmado" &&
+      String(existente.status) !== "confirmado"
+    ) {
+      const { data: empConf } = await supabase
+        .from("empresas")
+        .select("agendamentos_confirmacao")
+        .eq("id", empresaId)
+        .maybeSingle();
+      if (empConf?.agendamentos_confirmacao === true) {
+        return NextResponse.json(
+          {
+            error:
+              "Confirmação manual bloqueada. Use o link de pagamento ou confirme com taxa em dinheiro em Atendimentos → Agendamentos.",
+          },
+          { status: 400 },
+        );
+      }
     }
     patch.status = body.status;
     if (body.status === "curativo_agendado") {
@@ -1131,6 +1171,16 @@ export async function PATCH(request: Request, context: RouteContext) {
       );
     }
 
+    try {
+      await removerCaixaMovimentoAtendimento(supabase, id);
+    } catch (e) {
+      console.error(e);
+      return NextResponse.json(
+        { error: e instanceof Error ? e.message : "Erro ao atualizar movimento de caixa." },
+        { status: 500 },
+      );
+    }
+
     const { error: delPg } = await supabase.from("pagamentos").delete().eq("id_agendamento", id);
     if (delPg) {
       console.error(delPg);
@@ -1138,19 +1188,48 @@ export async function PATCH(request: Request, context: RouteContext) {
     }
 
     if (pagamentos.length > 0) {
-      const { error: insPg } = await supabase.from("pagamentos").insert(
-        pagamentos.map((p) => ({
-          id_agendamento: id,
-          id_forma_pagamento: p.id_forma_pagamento,
-          id_maquineta: p.id_maquineta,
-          id_bandeira: p.id_bandeira,
-          valor_pago: p.valor_pago,
-          status_pagamento: p.status_pagamento,
-        })),
-      );
-      if (insPg) {
-        console.error(insPg);
-        return NextResponse.json({ error: insPg.message }, { status: 500 });
+      const { data: insertedPg, error: errInsertPg } = await supabase
+        .from("pagamentos")
+        .insert(
+          pagamentos.map((p) => ({
+            id_agendamento: id,
+            id_forma_pagamento: p.id_forma_pagamento,
+            id_maquineta: p.id_maquineta,
+            id_bandeira: p.id_bandeira,
+            valor_pago: p.valor_pago,
+            status_pagamento: p.status_pagamento,
+          })),
+        )
+        .select("id, id_forma_pagamento, valor_pago, status_pagamento");
+
+      if (errInsertPg) {
+        console.error(errInsertPg);
+        return NextResponse.json({ error: errInsertPg.message }, { status: 500 });
+      }
+
+      try {
+        const descricaoMov = await montarDescricaoMovimentoAtendimento(
+          supabase,
+          id,
+          existente.id_paciente as number,
+        );
+        await registrarCaixaMovimentoPagamentosAgendamento(supabase, {
+          idEmpresa: empresaId,
+          idAgendamento: id,
+          descricaoAtendimento: descricaoMov,
+          pagamentos: (insertedPg ?? []).map((p) => ({
+            id: p.id as number,
+            id_forma_pagamento: p.id_forma_pagamento as number,
+            valor_pago: Number(p.valor_pago),
+            status_pagamento: String(p.status_pagamento),
+          })),
+        });
+      } catch (e) {
+        console.error(e);
+        return NextResponse.json(
+          { error: e instanceof Error ? e.message : "Erro ao registrar movimento de caixa." },
+          { status: 500 },
+        );
       }
     }
   }
