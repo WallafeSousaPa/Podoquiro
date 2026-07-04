@@ -208,7 +208,7 @@ export function DashboardShell({
 
   return (
     <div className="wrapper">
-      <nav className="main-header navbar navbar-expand navbar-white navbar-light border-bottom-0">
+      <nav className="main-header navbar navbar-expand border-bottom-0">
         <ul className="navbar-nav">
           <li className="nav-item">
             <a

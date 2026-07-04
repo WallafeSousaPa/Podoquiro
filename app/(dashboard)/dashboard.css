@@ -3,24 +3,116 @@
 @import url("https://cdn.jsdelivr.net/npm/bootstrap@4.6.2/dist/css/bootstrap.min.css");
 @import url("https://cdn.jsdelivr.net/npm/admin-lte@3.2/dist/css/adminlte.min.css");
 
-/* Ajustes de marca Podoquiro */
-.sidebar-dark-primary .nav-sidebar > .nav-item > .nav-link.active,
-.sidebar-dark-primary .nav-sidebar > .nav-item.menu-open > .nav-link.active {
-  background-color: #82328c;
-  color: #fff;
+/* Cores da marca Podoquiro */
+:root {
+  --podoquiro-primary: #4f1964;
+  --podoquiro-accent: #de765b;
+  --podoquiro-primary-dark: #351043;
 }
 
-.sidebar-dark-primary .nav-sidebar > .nav-item > .nav-link:hover {
-  color: #f8f9fa;
+/* Header superior */
+.main-header.navbar {
+  background-color: var(--podoquiro-primary) !important;
+  border-bottom: 2px solid var(--podoquiro-accent) !important;
 }
 
-.sidebar-dark-primary .nav-treeview .nav-link.active {
-  background-color: rgba(130, 50, 140, 0.35);
-  color: #fff;
+.main-header.navbar .nav-link {
+  color: rgba(255, 255, 255, 0.92) !important;
+}
+
+.main-header.navbar .nav-link:hover,
+.main-header.navbar .nav-link:focus {
+  color: var(--podoquiro-accent) !important;
+}
+
+.main-header.navbar .dropdown-menu {
+  border-top: 2px solid var(--podoquiro-accent);
+}
+
+/* Sidebar lateral */
+.main-sidebar.sidebar-dark-primary,
+.main-sidebar.sidebar-dark-primary .sidebar {
+  background-color: var(--podoquiro-primary) !important;
+}
+
+.main-sidebar .brand-link {
+  background-color: var(--podoquiro-primary-dark) !important;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1) !important;
+  color: #fff !important;
+}
+
+.main-sidebar .brand-link:hover {
+  color: var(--podoquiro-accent) !important;
 }
 
 .main-sidebar .brand-link .brand-text {
   font-weight: 600 !important;
+  color: inherit !important;
+}
+
+.sidebar-dark-primary .nav-sidebar > .nav-item > .nav-link,
+.sidebar-dark-primary .nav-sidebar .nav-treeview > .nav-item > .nav-link {
+  color: rgba(255, 255, 255, 0.82);
+}
+
+.sidebar-dark-primary .nav-sidebar > .nav-item > .nav-link:hover,
+.sidebar-dark-primary .nav-sidebar .nav-treeview > .nav-item > .nav-link:hover {
+  background-color: rgba(255, 255, 255, 0.08);
+  color: #fff;
+}
+
+.sidebar-dark-primary .nav-sidebar > .nav-item.menu-open > .nav-link,
+.sidebar-dark-primary .nav-sidebar > .nav-item > .nav-link.active,
+.sidebar-dark-primary .nav-sidebar > .nav-item.menu-open > .nav-link.active {
+  background-color: var(--podoquiro-accent) !important;
+  color: #fff !important;
+}
+
+.sidebar-dark-primary .nav-treeview .nav-link.active {
+  background-color: rgba(222, 118, 91, 0.35) !important;
+  color: #fff !important;
+}
+
+.sidebar-dark-primary .nav-sidebar .nav-icon {
+  color: rgba(255, 255, 255, 0.72);
+}
+
+.sidebar-dark-primary .nav-sidebar > .nav-item > .nav-link.active .nav-icon,
+.sidebar-dark-primary .nav-sidebar > .nav-item.menu-open > .nav-link .nav-icon,
+.sidebar-dark-primary .nav-treeview .nav-link.active .nav-icon {
+  color: #fff;
+}
+
+/* Cabeçalho das páginas (content-header) */
+.content-wrapper > .content-header {
+  background: linear-gradient(
+    90deg,
+    var(--podoquiro-primary) 0%,
+    rgba(79, 25, 100, 0.92) 100%
+  );
+  border-bottom: 3px solid var(--podoquiro-accent);
+  padding-top: 0.85rem;
+  padding-bottom: 0.85rem;
+  margin-bottom: 0;
+}
+
+.content-wrapper > .content-header .content-header,
+.content-wrapper > .content-header h1,
+.content-wrapper > .content-header .breadcrumb-item,
+.content-wrapper > .content-header .breadcrumb-item a {
+  color: #fff !important;
+}
+
+.content-wrapper > .content-header .breadcrumb-item.active {
+  color: rgba(255, 255, 255, 0.75) !important;
+}
+
+.content-wrapper > .content-header .breadcrumb-item + .breadcrumb-item::before {
+  color: rgba(255, 255, 255, 0.55);
+}
+
+.content-wrapper > .content-header .breadcrumb-item a:hover {
+  color: var(--podoquiro-accent) !important;
 }
 
 /* Modal cadastro/edição de usuário: corpo rolável; header e footer fixos (Chrome). */

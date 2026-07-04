@@ -2,38 +2,29 @@ import { LoginForm } from "./login-form";
 
 export default function LoginPage() {
   return (
-    <div className="login-page">
-      <div className="container">
-        <div className="row login-card mx-auto">
-          <div className="col-md-5 brand-side">
-            <div className="logo-placeholder">
-              <img
-                src="/IconePodoquiro.png"
-                alt=""
-                width={72}
-                height={72}
-                decoding="async"
-              />
-            </div>
-            <h1 className="fw-bold">Podoquiro</h1>
-            <p className="lead">Cuidando de cada passo seu com excelência.</p>
-            <div className="mt-4 d-none d-md-block">
-              <small>
-                Bem-vindo de volta! Acesse sua conta para gerenciar seus
-                agendamentos.
-              </small>
-            </div>
-          </div>
-
-          <div className="col-md-7 form-side">
-            <div className="mb-4 text-center">
-              <h2 className="fw-bold text-purple">Login</h2>
-              <p className="text-muted mb-0">Entre com suas credenciais</p>
-            </div>
-            <LoginForm />
-          </div>
+    <main className="login-container">
+      <section className="brand-panel" aria-label="Podoquiro">
+        <div className="logo-wrapper">
+          <img
+            src="/IconePodoquiro.png"
+            alt="Podoquiro"
+            decoding="async"
+          />
         </div>
-      </div>
-    </div>
+        <h1 className="brand-title">Podoquiro</h1>
+        <p className="brand-tagline">Clínica de Podologia</p>
+        <p className="brand-welcome">
+          Bem-vindo de volta! Acesse sua conta para gerenciar seus agendamentos.
+        </p>
+      </section>
+
+      <section className="form-panel" aria-label="Formulário de login">
+        <div className="form-header">
+          <h2>Login</h2>
+          <p>Entre com suas credenciais para acessar o sistema.</p>
+        </div>
+        <LoginForm />
+      </section>
+    </main>
   );
 }
