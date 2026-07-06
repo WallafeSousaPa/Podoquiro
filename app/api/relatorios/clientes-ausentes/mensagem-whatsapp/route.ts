@@ -1,6 +1,5 @@
 import { NextResponse } from "next/server";
 import { getSession } from "@/lib/auth/session";
-import { getUsuarioPodeRelatorioCaixa } from "@/lib/dashboard/menu-grupo";
 import {
   MAX_CARACTERES_MENSAGEM_WHATSAPP_CLIENTES_AUSENTES,
   MENSAGEM_PADRAO_WHATSAPP_CLIENTES_AUSENTES,
@@ -85,13 +84,6 @@ export async function PATCH(request: Request) {
   }
 
   const supabase = createAdminClient();
-  const pode = await getUsuarioPodeRelatorioCaixa(supabase, sessionUserId);
-  if (!pode) {
-    return NextResponse.json(
-      { error: "Sem permissão para alterar a mensagem." },
-      { status: 403 },
-    );
-  }
 
   const { data, error } = await supabase
     .from("empresas")
