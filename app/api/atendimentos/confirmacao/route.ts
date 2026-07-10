@@ -86,7 +86,7 @@ export async function GET(request: Request) {
       pacientes ( nome_completo, nome_social, telefone ),
       usuarios ( nome_completo, usuario ),
       salas ( nome_sala ),
-      agendamento_taxa_rede ( id, token, valor, status, expira_em, pago_em, pago_em_dinheiro, created_at, asaas_payment_link_id, asaas_payment_link_url, id_agendamento )
+      agendamento_taxa_rede ( id, token, valor, status, expira_em, pago_em, pago_em_dinheiro, created_at, asaas_payment_id, asaas_payment_link_id, asaas_payment_link_url, id_agendamento )
     `,
     )
     .eq("id_empresa", empresaId)
@@ -123,6 +123,7 @@ export async function GET(request: Request) {
     pago_em: string | null;
     pago_em_dinheiro: boolean;
     created_at: string;
+    asaas_payment_id: string | null;
     asaas_payment_link_id: string | null;
     asaas_payment_link_url: string | null;
     id_agendamento: number;
@@ -134,7 +135,10 @@ export async function GET(request: Request) {
       .flatMap((row) => {
         const taxasRaw = row.agendamento_taxa_rede as TaxaRow | TaxaRow[] | null;
         const taxas = Array.isArray(taxasRaw) ? taxasRaw : taxasRaw ? [taxasRaw] : [];
-        return taxas.filter((t) => t.status === "pendente" && t.asaas_payment_link_id);
+        return taxas.filter(
+          (t) =>
+            t.status === "pendente" && (t.asaas_payment_id || t.asaas_payment_link_id),
+        );
       })
       .slice(0, 15);
 
@@ -144,6 +148,7 @@ export async function GET(request: Request) {
           id: t.id,
           id_agendamento: t.id_agendamento,
           status: t.status,
+          asaas_payment_id: t.asaas_payment_id,
           asaas_payment_link_id: t.asaas_payment_link_id,
         }),
       ),

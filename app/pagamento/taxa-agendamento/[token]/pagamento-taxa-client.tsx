@@ -355,7 +355,7 @@ export function PagamentoTaxaClient({ token }: { token: string }) {
           <div className="text-xs text-gray-600 space-y-1">
             <p>
               Você será direcionado ao checkout seguro do <strong>Asaas</strong> (Pix, cartão ou
-              boleto).
+              boleto), sem cadastro de dados pessoais.
             </p>
             {dados.expira_em ? (
               <p className="text-brand-secondary font-medium">

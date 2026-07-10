@@ -35,12 +35,15 @@ export async function POST(request: Request) {
     body.payment && typeof body.payment === "object"
       ? (body.payment as Record<string, unknown>)
       : null;
-  const paymentLinkId = typeof payment?.paymentLink === "string" ? payment.paymentLink : null;
 
-  // Sem link de pagamento associado: ignora (não é do nosso fluxo de taxa).
-  if (!payment || !paymentLinkId) {
+  if (!payment) {
     return NextResponse.json({ ok: true, ignorado: true });
   }
+
+  const paymentId = typeof payment.id === "string" ? payment.id : null;
+  const paymentLinkId = typeof payment.paymentLink === "string" ? payment.paymentLink : null;
+  const externalReference =
+    typeof payment.externalReference === "string" ? payment.externalReference : null;
 
   const statusPagamento = typeof payment.status === "string" ? payment.status : null;
   const map = statusInternoTaxaFromAsaas(statusPagamento);
@@ -49,37 +52,68 @@ export async function POST(request: Request) {
   }
 
   const supabase = createAdminClient();
-  const { data: taxa } = await supabase
-    .from("agendamento_taxa_rede")
-    .select("id, id_agendamento, status")
-    .eq("asaas_payment_link_id", paymentLinkId)
-    .order("created_at", { ascending: false })
-    .limit(1)
-    .maybeSingle();
+  let taxa: { id: number; id_agendamento: number; status: string } | null = null;
+
+  if (paymentId) {
+    const { data } = await supabase
+      .from("agendamento_taxa_rede")
+      .select("id, id_agendamento, status")
+      .eq("asaas_payment_id", paymentId)
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    taxa = data;
+  }
+
+  if (!taxa && paymentLinkId) {
+    const { data } = await supabase
+      .from("agendamento_taxa_rede")
+      .select("id, id_agendamento, status")
+      .eq("asaas_payment_link_id", paymentLinkId)
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    taxa = data;
+  }
+
+  if (!taxa && externalReference?.startsWith("agendamento:")) {
+    const idAgendamento = Number(externalReference.slice("agendamento:".length));
+    if (Number.isFinite(idAgendamento) && idAgendamento > 0) {
+      const { data } = await supabase
+        .from("agendamento_taxa_rede")
+        .select("id, id_agendamento, status")
+        .eq("id_agendamento", idAgendamento)
+        .eq("status", "pendente")
+        .order("created_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      taxa = data;
+    }
+  }
 
   if (!taxa) {
     return NextResponse.json({ ok: true, ignorado: true });
   }
 
   if (taxa.status === "pago" || taxa.status === "cancelado" || taxa.status === "expirado") {
-  if (taxa.status === "pago") {
-    try {
-      await registrarCaixaMovimentoTaxaSePago(supabase, taxa.id as number, {
-        formaPagamento:
-          labelFormaPagamentoFromAsaasBillingType(
-            typeof payment.billingType === "string" ? payment.billingType : null,
-          ) ?? undefined,
-      });
-    } catch (e) {
-      console.error("caixa_movimento taxa asaas:", e);
+    if (taxa.status === "pago") {
+      try {
+        await registrarCaixaMovimentoTaxaSePago(supabase, taxa.id as number, {
+          formaPagamento:
+            labelFormaPagamentoFromAsaasBillingType(
+              typeof payment.billingType === "string" ? payment.billingType : null,
+            ) ?? undefined,
+        });
+      } catch (e) {
+        console.error("caixa_movimento taxa asaas:", e);
+      }
     }
-  }
     return NextResponse.json({ ok: true, atualizado: false });
   }
 
   const patch: Record<string, unknown> = {
     status: map.status,
-    asaas_payment_id: typeof payment.id === "string" ? payment.id : null,
+    asaas_payment_id: paymentId,
     asaas_resposta: body as object,
   };
   if (map.status === "pago") patch.pago_em = new Date().toISOString();

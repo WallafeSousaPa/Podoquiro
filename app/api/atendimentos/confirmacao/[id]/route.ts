@@ -3,7 +3,9 @@ import {
   getPodeVerTodosAgendamentos,
   getUsuarioAgendaSomentePropriaColuna,
 } from "@/lib/agenda/permissoes-calendario";
-import { criarLinkPagamentoAsaas, expiraEmFromEndDate, obterConfigAsaas } from "@/lib/asaas";
+import { expiraEmFromEndDate, obterConfigAsaas } from "@/lib/asaas";
+import { criarCobrancaAsaas } from "@/lib/asaas/cobranca";
+import { obterOuCriarClienteAvulsoAsaas } from "@/lib/asaas/cliente-avulso";
 import { confirmarAgendamentoComTaxaDinheiro } from "@/lib/financeiro/confirmacao-taxa-dinheiro";
 import { getSession } from "@/lib/auth/session";
 import { urlPublicaPagamentoTaxa } from "@/lib/rede/url-pagamento";
@@ -217,11 +219,12 @@ export async function PUT(request: Request, context: RouteContext) {
 
   const descricao = `Taxa de agendamento #${idAgendamento}`;
 
-  let linkResult;
+  let cobrancaResult;
   try {
-    linkResult = await criarLinkPagamentoAsaas(asaasConfig, {
+    const customerId = await obterOuCriarClienteAvulsoAsaas(asaasConfig);
+    cobrancaResult = await criarCobrancaAsaas(asaasConfig, {
+      customerId,
       valorReais: valor,
-      nome: `Taxa de agendamento #${idAgendamento}`,
       descricao,
       diasExpiracao: 7,
       externalReference: `agendamento:${idAgendamento}`,
@@ -229,13 +232,13 @@ export async function PUT(request: Request, context: RouteContext) {
   } catch (e) {
     console.error(e);
     return NextResponse.json(
-      { error: e instanceof Error ? e.message : "Erro ao criar link de pagamento no Asaas." },
+      { error: e instanceof Error ? e.message : "Erro ao criar cobrança no Asaas." },
       { status: 502 },
     );
   }
 
   const expiraEm =
-    expiraEmFromEndDate(linkResult.endDate) ??
+    expiraEmFromEndDate(cobrancaResult.dueDate) ??
     new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
 
   await supabase
@@ -251,9 +254,10 @@ export async function PUT(request: Request, context: RouteContext) {
       id_empresa: empresaId,
       valor,
       status: "pendente",
-      asaas_payment_link_id: linkResult.paymentLinkId,
-      asaas_payment_link_url: linkResult.url,
-      asaas_resposta: linkResult.respostaBruta as object,
+      asaas_payment_id: cobrancaResult.paymentId,
+      asaas_payment_link_id: null,
+      asaas_payment_link_url: cobrancaResult.invoiceUrl,
+      asaas_resposta: cobrancaResult.respostaBruta as object,
       expira_em: expiraEm,
     })
     .select("id, token, valor, status, expira_em")
@@ -274,8 +278,9 @@ export async function PUT(request: Request, context: RouteContext) {
       status: ins.status,
       expira_em: ins.expira_em,
       link_pagamento: linkPagamento,
-      link_pagamento_asaas: linkResult.url,
-      payment_link_id: linkResult.paymentLinkId,
+      link_pagamento_asaas: cobrancaResult.invoiceUrl,
+      payment_link_id: cobrancaResult.paymentId,
+      asaas_payment_id: cobrancaResult.paymentId,
     },
   });
 }

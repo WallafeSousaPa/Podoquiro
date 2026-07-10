@@ -827,8 +827,9 @@ export function ConfirmarAtendimentoClient({
       </div>
       <div className="card-footer text-muted small">
         O paciente recebe o link da <strong>página do app</strong>, que redireciona ao checkout
-        seguro do Asaas (Pix, cartão ou boleto). A confirmação do pagamento é feita por consulta
-        automática e também por webhook, se configurado no painel do Asaas.
+        seguro do Asaas (Pix, cartão ou boleto), <strong>sem precisar cadastrar dados pessoais</strong>.
+        A confirmação do pagamento é feita por consulta automática e também por webhook, se
+        configurado no painel do Asaas.
       </div>
       {modalLinks ? (
         <ModalLinkPagamento

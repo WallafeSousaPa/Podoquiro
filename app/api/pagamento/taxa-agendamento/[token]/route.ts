@@ -27,6 +27,7 @@ export async function GET(_request: Request, context: RouteContext) {
       status,
       asaas_payment_link_id,
       asaas_payment_link_url,
+      asaas_payment_id,
       expira_em,
       pago_em,
       id_agendamento,
@@ -55,15 +56,17 @@ export async function GET(_request: Request, context: RouteContext) {
   if (
     asaasConfig &&
     row.status === "pendente" &&
-    row.asaas_payment_link_id &&
-    typeof row.asaas_payment_link_id === "string"
+    (row.asaas_payment_id || row.asaas_payment_link_id)
   ) {
     try {
       const sync = await sincronizarTaxaComPaymentLinkAsaas(supabase, asaasConfig, {
         id: row.id as number,
         id_agendamento: row.id_agendamento as number,
         status: row.status as string,
-        asaas_payment_link_id: row.asaas_payment_link_id,
+        asaas_payment_id:
+          typeof row.asaas_payment_id === "string" ? row.asaas_payment_id : null,
+        asaas_payment_link_id:
+          typeof row.asaas_payment_link_id === "string" ? row.asaas_payment_link_id : null,
       });
       if (sync.atualizado) {
         row.status = sync.status;

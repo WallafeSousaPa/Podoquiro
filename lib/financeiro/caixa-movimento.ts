@@ -26,6 +26,7 @@ type TaxaRedeRow = {
   pago_em_dinheiro: boolean | null;
   rede_tid: string | null;
   rede_payment_link_id: string | null;
+  asaas_payment_id: string | null;
   asaas_payment_link_id: string | null;
   asaas_resposta: unknown;
   agendamentos:
@@ -68,7 +69,7 @@ async function inferirFormaPagamentoTaxa(
   ) {
     return "PIX";
   }
-  if (taxa.asaas_payment_link_id?.trim()) {
+  if (taxa.asaas_payment_id?.trim() || taxa.asaas_payment_link_id?.trim()) {
     const labelAsaas = labelFormaPagamentoTaxaAsaas(taxa.asaas_resposta);
     if (labelAsaas) return labelAsaas;
     return "Link pagamento";
@@ -182,6 +183,7 @@ export async function registrarCaixaMovimentoTaxaSePago(
       pago_em_dinheiro,
       rede_tid,
       rede_payment_link_id,
+      asaas_payment_id,
       asaas_payment_link_id,
       asaas_resposta,
       agendamentos ( id_paciente )
