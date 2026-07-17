@@ -1,0 +1,94 @@
+.links-pagos-page .links-pagos-filtros .btn-group {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+}
+
+.links-pagos-page .links-pagos-filtros .btn-group > .btn {
+  margin-left: 0 !important;
+  border-radius: 0.2rem !important;
+}
+
+.links-pagos-page .links-pagos-kpi .small-box {
+  margin-bottom: 1rem;
+}
+
+.links-pagos-page .links-pagos-kpi .small-box h3 {
+  font-size: 1.5rem;
+  word-break: break-word;
+}
+
+.links-pagos-page .links-pagos-lista-desktop {
+  display: none;
+}
+
+.links-pagos-page .links-pagos-lista-mobile {
+  display: block;
+}
+
+.links-pagos-page .links-pagos-card-item {
+  border-bottom: 1px solid #dee2e6;
+  padding: 0.85rem 1rem;
+  cursor: pointer;
+  background: #fff;
+}
+
+.links-pagos-page .links-pagos-card-item:last-child {
+  border-bottom: 0;
+}
+
+.links-pagos-page .links-pagos-card-item:active,
+.links-pagos-page .links-pagos-card-item:focus {
+  background: #f8f9fa;
+  outline: none;
+}
+
+.links-pagos-page .links-pagos-card-item .links-pagos-card-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 0.75rem;
+  margin-bottom: 0.35rem;
+}
+
+.links-pagos-page .links-pagos-card-item .links-pagos-card-valor {
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+@media (min-width: 768px) {
+  .links-pagos-page .links-pagos-kpi .small-box h3 {
+    font-size: 2.2rem;
+  }
+
+  .links-pagos-page .links-pagos-lista-desktop {
+    display: block;
+  }
+
+  .links-pagos-page .links-pagos-lista-mobile {
+    display: none;
+  }
+
+  .links-pagos-page .links-pagos-filtros .btn-group {
+    display: inline-flex;
+  }
+}
+
+@media (max-width: 575.98px) {
+  .links-pagos-page .content-header h1 {
+    font-size: 1.35rem;
+  }
+
+  .links-pagos-page .card-header .card-title {
+    font-size: 1rem;
+  }
+
+  .links-pagos-page .links-pagos-filtros .form-group {
+    margin-bottom: 0.75rem;
+  }
+
+  .links-pagos-page .links-pagos-filtros .btn {
+    flex: 1 1 auto;
+    min-width: calc(50% - 0.2rem);
+  }
+}

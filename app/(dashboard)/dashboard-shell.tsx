@@ -941,6 +941,18 @@ export function DashboardShell({
                         <p>Comparativo</p>
                       </Link>
                     </li>
+                    <li className="nav-item">
+                      <Link
+                        href="/relatorios/links-pagos"
+                        className={cx(
+                          "nav-link",
+                          pathname === "/relatorios/links-pagos" && "active",
+                        )}
+                      >
+                        <i className="far fa-circle nav-icon" />
+                        <p>Links pagos</p>
+                      </Link>
+                    </li>
                   </ul>
                 </li>
               ) : null}
