@@ -95,6 +95,7 @@ export async function GET(request: Request) {
     valor_cartao_credito: number;
     valor_cartao_debito: number;
     valor_pix: number;
+    valor_link_pagamento: number;
     criado_em: string;
   } | null = null;
 
@@ -102,7 +103,7 @@ export async function GET(request: Request) {
     const { data: rel, error: rErr } = await supabase
       .from("caixa_relatorios")
       .select(
-        "id, valor_dinheiro, valor_cartao_credito, valor_cartao_debito, valor_pix, criado_em",
+        "id, valor_dinheiro, valor_cartao_credito, valor_cartao_debito, valor_pix, valor_link_pagamento, criado_em",
       )
       .eq("id_lancamento_fechamento", fechamentoMaisRecente.id as number)
       .maybeSingle();
@@ -113,6 +114,7 @@ export async function GET(request: Request) {
         valor_cartao_credito: Number(rel.valor_cartao_credito),
         valor_cartao_debito: Number(rel.valor_cartao_debito),
         valor_pix: Number(rel.valor_pix),
+        valor_link_pagamento: Number(rel.valor_link_pagamento ?? 0),
         criado_em: rel.criado_em as string,
       };
     }

@@ -19,6 +19,7 @@ type RpcPayload = {
     pix: number;
     cartao_credito: number;
     cartao_debito: number;
+    link_pagamento?: number;
     outros: number;
   };
   por_forma: { nome: string; total: number; bucket: string }[];
@@ -75,6 +76,7 @@ export async function GET(request: Request) {
     pix: 0,
     cartao_credito: 0,
     cartao_debito: 0,
+    link_pagamento: 0,
     outros: 0,
   };
 
@@ -85,6 +87,7 @@ export async function GET(request: Request) {
       pix: Number(esp.pix),
       cartao_credito: Number(esp.cartao_credito),
       cartao_debito: Number(esp.cartao_debito),
+      link_pagamento: Number(esp.link_pagamento ?? 0),
       outros: Number(esp.outros),
     },
     por_forma: Array.isArray(j?.por_forma) ? j?.por_forma : [],

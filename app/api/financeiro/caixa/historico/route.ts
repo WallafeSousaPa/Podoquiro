@@ -123,6 +123,7 @@ export async function GET(request: Request) {
       valor_cartao_credito: number;
       valor_cartao_debito: number;
       valor_pix: number;
+      valor_link_pagamento: number;
       criado_em: string;
     }
   > = {};
@@ -130,7 +131,7 @@ export async function GET(request: Request) {
     const { data: rels, error: rErr } = await supabase
       .from("caixa_relatorios")
       .select(
-        "id_lancamento_fechamento, valor_dinheiro, valor_cartao_credito, valor_cartao_debito, valor_pix, criado_em",
+        "id_lancamento_fechamento, valor_dinheiro, valor_cartao_credito, valor_cartao_debito, valor_pix, valor_link_pagamento, criado_em",
       )
       .in("id_lancamento_fechamento", idsFechamento);
     if (!rErr && rels) {
@@ -144,6 +145,7 @@ export async function GET(request: Request) {
               valor_cartao_credito: Number(rel.valor_cartao_credito),
               valor_cartao_debito: Number(rel.valor_cartao_debito),
               valor_pix: Number(rel.valor_pix),
+              valor_link_pagamento: Number(rel.valor_link_pagamento ?? 0),
               criado_em: rel.criado_em as string,
             },
           ];

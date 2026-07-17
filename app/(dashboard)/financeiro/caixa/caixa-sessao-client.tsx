@@ -68,6 +68,7 @@ type SessaoJson = {
     valor_cartao_credito: number;
     valor_cartao_debito: number;
     valor_pix: number;
+    valor_link_pagamento: number;
     criado_em: string;
   } | null;
 };
@@ -104,6 +105,7 @@ export function CaixaSessaoClient({
   const [vCc, setVCc] = useState("0");
   const [vCd, setVCd] = useState("0");
   const [vPix, setVPix] = useState("0");
+  const [vLink, setVLink] = useState("0");
   const [formErr, setFormErr] = useState<string | null>(null);
 
   const [resumoLoading, setResumoLoading] = useState(false);
@@ -162,6 +164,7 @@ export function CaixaSessaoClient({
         setVCc(fmtMoedaInput(esp.cartao_credito));
         setVCd(fmtMoedaInput(esp.cartao_debito));
         setVPix(fmtMoedaInput(esp.pix));
+        setVLink(fmtMoedaInput(esp.link_pagamento ?? 0));
       } catch (e) {
         if (cancelled) return;
         setResumoErr(
@@ -171,6 +174,7 @@ export function CaixaSessaoClient({
         setVCc(fmtMoedaInput(0));
         setVCd(fmtMoedaInput(0));
         setVPix(fmtMoedaInput(0));
+        setVLink(fmtMoedaInput(0));
       } finally {
         if (!cancelled) setResumoLoading(false);
       }
@@ -228,6 +232,7 @@ export function CaixaSessaoClient({
           valor_cartao_credito: vCc,
           valor_cartao_debito: vCd,
           valor_pix: vPix,
+          valor_link_pagamento: vLink,
         }),
       });
       const j = (await res.json()) as { error?: string };
@@ -238,6 +243,7 @@ export function CaixaSessaoClient({
       setVCc("0");
       setVCd("0");
       setVPix("0");
+      setVLink("0");
       await carregar();
     } catch (e) {
       setFormErr(e instanceof Error ? e.message : "Erro ao fechar.");
@@ -254,7 +260,8 @@ export function CaixaSessaoClient({
     const vcc = parseMoneyCliente(vCc);
     const vcd = parseMoneyCliente(vCd);
     const vp = parseMoneyCliente(vPix);
-    if ([vd, vcc, vcd, vp].some((x) => Number.isNaN(x))) {
+    const vl = parseMoneyCliente(vLink);
+    if ([vd, vcc, vcd, vp, vl].some((x) => Number.isNaN(x))) {
       setFormErr("Informe valores numéricos válidos (≥ 0).");
       return;
     }
@@ -264,6 +271,7 @@ export function CaixaSessaoClient({
       pix: vp,
       cartao_credito: vcc,
       cartao_debito: vcd,
+      link_pagamento: vl,
     };
 
     if (resumoEsperado) {
@@ -412,6 +420,12 @@ export function CaixaSessaoClient({
                             {fmtBrl(sessao.relatorio.valor_pix)}
                           </td>
                         </tr>
+                        <tr>
+                          <td>Link de pagamento</td>
+                          <td className="text-right">
+                            {fmtBrl(sessao.relatorio.valor_link_pagamento ?? 0)}
+                          </td>
+                        </tr>
                         <tr className="font-weight-bold">
                           <td>Total</td>
                           <td className="text-right">
@@ -419,7 +433,8 @@ export function CaixaSessaoClient({
                               sessao.relatorio.valor_dinheiro +
                                 sessao.relatorio.valor_cartao_credito +
                                 sessao.relatorio.valor_cartao_debito +
-                                sessao.relatorio.valor_pix,
+                                sessao.relatorio.valor_pix +
+                                (sessao.relatorio.valor_link_pagamento ?? 0),
                             )}
                           </td>
                         </tr>
@@ -494,7 +509,7 @@ export function CaixaSessaoClient({
                       <strong>{fmtBrl(resumoEsperado.outros)}</strong> em formas
                       agrupadas como &quot;outros&quot; no sistema. Ajuste o
                       agrupamento em Tipos de pagamento se precisar incluí-las nos
-                      quatro meios abaixo.
+                      meios abaixo.
                     </div>
                   ) : null}
                   <div className="table-responsive mb-3">
@@ -582,6 +597,31 @@ export function CaixaSessaoClient({
                               disabled={resumoLoading}
                               required
                               aria-label="Cartão de débito conferido"
+                            />
+                          </td>
+                        </tr>
+                        <tr>
+                          <td>
+                            Link de pagamento
+                            <div className="small text-muted font-weight-normal">
+                              Taxas online (Asaas/Rede) pagas no dia
+                            </div>
+                          </td>
+                          <td className="text-right text-muted">
+                            {resumoEsperado
+                              ? fmtBrl(resumoEsperado.link_pagamento ?? 0)
+                              : "—"}
+                          </td>
+                          <td>
+                            <input
+                              id="cx-link"
+                              className="form-control form-control-sm"
+                              inputMode="decimal"
+                              value={vLink}
+                              onChange={(e) => setVLink(e.target.value)}
+                              disabled={resumoLoading}
+                              required
+                              aria-label="Link de pagamento conferido"
                             />
                           </td>
                         </tr>

@@ -8,6 +8,7 @@ export type EsperadoCaixa = {
   pix: number;
   cartao_credito: number;
   cartao_debito: number;
+  link_pagamento: number;
   outros: number;
 };
 
@@ -16,6 +17,7 @@ export type InformadoCaixa = {
   pix: number;
   cartao_credito: number;
   cartao_debito: number;
+  link_pagamento: number;
 };
 
 export type LinhaDivergencia = {
@@ -26,7 +28,7 @@ export type LinhaDivergencia = {
   diferenca: number;
 };
 
-/** Lista divergências campo a campo (apenas os quatro meios do fechamento). */
+/** Lista divergências campo a campo (meios do fechamento). */
 export function compararComSistema(
   esperado: EsperadoCaixa,
   informado: InformadoCaixa,
@@ -36,11 +38,12 @@ export function compararComSistema(
     { chave: "pix", rotulo: "Pix" },
     { chave: "cartao_credito", rotulo: "Cartão de crédito" },
     { chave: "cartao_debito", rotulo: "Cartão de débito" },
+    { chave: "link_pagamento", rotulo: "Link de pagamento" },
   ];
   const out: LinhaDivergencia[] = [];
   for (const { chave, rotulo } of pares) {
-    const s = esperado[chave];
-    const i = informado[chave];
+    const s = esperado[chave] ?? 0;
+    const i = informado[chave] ?? 0;
     if (!valoresCaixaBatem(s, i)) {
       out.push({
         rotulo,

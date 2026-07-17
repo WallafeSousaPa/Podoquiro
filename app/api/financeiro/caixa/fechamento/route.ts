@@ -45,6 +45,7 @@ export async function POST(request: Request) {
     valor_cartao_credito?: unknown;
     valor_cartao_debito?: unknown;
     valor_pix?: unknown;
+    valor_link_pagamento?: unknown;
   };
   try {
     body = await request.json();
@@ -65,7 +66,8 @@ export async function POST(request: Request) {
   const vcc = parseMoney(body.valor_cartao_credito);
   const vcd = parseMoney(body.valor_cartao_debito);
   const vp = parseMoney(body.valor_pix);
-  if ([vd, vcc, vcd, vp].some((x) => Number.isNaN(x))) {
+  const vl = parseMoney(body.valor_link_pagamento);
+  if ([vd, vcc, vcd, vp, vl].some((x) => Number.isNaN(x))) {
     return NextResponse.json(
       { error: "Informe valores numéricos válidos (≥ 0)." },
       { status: 400 },
@@ -98,6 +100,7 @@ export async function POST(request: Request) {
       p_valor_cartao_credito: vcc,
       p_valor_cartao_debito: vcd,
       p_valor_pix: vp,
+      p_valor_link_pagamento: vl,
     },
   );
 

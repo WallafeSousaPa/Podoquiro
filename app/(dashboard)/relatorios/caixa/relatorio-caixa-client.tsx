@@ -62,6 +62,7 @@ type LancamentoRow = {
     valor_cartao_credito: number;
     valor_cartao_debito: number;
     valor_pix: number;
+    valor_link_pagamento: number;
     criado_em: string;
   } | null;
 };
@@ -267,19 +268,20 @@ export function RelatorioCaixaClient() {
                 <th className="text-right">Crédito</th>
                 <th className="text-right">Débito</th>
                 <th className="text-right">Pix</th>
+                <th className="text-right">Link</th>
               </tr>
             </thead>
             <tbody>
               {loading && rows.length === 0 ? (
                 <tr>
-                  <td colSpan={9} className="text-center text-muted py-4">
+                  <td colSpan={10} className="text-center text-muted py-4">
                     <i className="fas fa-spinner fa-spin mr-2" aria-hidden />
                     Carregando…
                   </td>
                 </tr>
               ) : rows.length === 0 ? (
                 <tr>
-                  <td colSpan={9} className="text-center text-muted py-4">
+                  <td colSpan={10} className="text-center text-muted py-4">
                     Nenhum lançamento no período.
                   </td>
                 </tr>
@@ -324,6 +326,9 @@ export function RelatorioCaixaClient() {
                       </td>
                       <td className="text-right">
                         {rel ? fmtBrl(rel.valor_pix) : "—"}
+                      </td>
+                      <td className="text-right">
+                        {rel ? fmtBrl(rel.valor_link_pagamento ?? 0) : "—"}
                       </td>
                     </tr>
                   );
