@@ -82,6 +82,7 @@ type PacienteAtendimentoItem = {
   desconto: number;
   valor_total: number;
   observacoes: string | null;
+  evolucao: string | null;
   profissional_nome: string;
   sala_nome: string;
   procedimentos: { nome: string; valor_aplicado: number }[];
@@ -1341,10 +1342,31 @@ export function PacientesCadastroClient({ pacientes, loadError }: Props) {
                                 </span>
                               ) : null}
                             </div>
-                            {ag.observacoes ? (
-                              <p className="text-muted mb-0 mt-1 font-italic small border-left border-secondary pl-2">
-                                {ag.observacoes}
-                              </p>
+                            {ag.evolucao ? (
+                              <div className="mb-0 mt-1">
+                                <span className="text-muted d-block">
+                                  Observações do atendimento:
+                                </span>
+                                <p
+                                  className="mb-0 mt-1 small border-left border-info pl-2"
+                                  style={{ whiteSpace: "pre-wrap" }}
+                                >
+                                  {ag.evolucao}
+                                </p>
+                              </div>
+                            ) : null}
+                            {ag.observacoes && ag.observacoes !== ag.evolucao ? (
+                              <div className="mb-0 mt-1">
+                                <span className="text-muted d-block">
+                                  Obs. do agendamento:
+                                </span>
+                                <p
+                                  className="text-muted mb-0 mt-1 font-italic small border-left border-secondary pl-2"
+                                  style={{ whiteSpace: "pre-wrap" }}
+                                >
+                                  {ag.observacoes}
+                                </p>
+                              </div>
                             ) : null}
                           </div>
                         </li>

@@ -78,7 +78,7 @@ export async function GET(_request: Request, context: RouteContext) {
         qtd,
         produtos ( produto )
       ),
-      prontuario_paciente ( fotos )
+      prontuario_paciente ( fotos, evolucao )
     `,
     )
     .eq("id_paciente", idPaciente)
@@ -133,7 +133,10 @@ export async function GET(_request: Request, context: RouteContext) {
       };
     });
 
-    const prRaw = r.prontuario_paciente as { fotos?: unknown } | { fotos?: unknown }[] | null;
+    const prRaw = r.prontuario_paciente as
+      | { fotos?: unknown; evolucao?: unknown }
+      | { fotos?: unknown; evolucao?: unknown }[]
+      | null;
     const pr0 = Array.isArray(prRaw) ? prRaw[0] : prRaw;
     const paths = parsePathsFotosProntuario(pr0?.fotos);
     const fotosAssinadas = await assinarFotosProntuario(supabase, paths);
@@ -141,6 +144,10 @@ export async function GET(_request: Request, context: RouteContext) {
       label: `Foto ${i + 1}`,
       url: f.url,
     }));
+    const evolucao =
+      typeof pr0?.evolucao === "string" ? pr0.evolucao.trim() || null : null;
+    const observacoes =
+      typeof r.observacoes === "string" ? r.observacoes.trim() || null : null;
 
     return {
       id: r.id as number,
@@ -150,7 +157,8 @@ export async function GET(_request: Request, context: RouteContext) {
       valor_bruto: Number(r.valor_bruto),
       desconto: Number(r.desconto),
       valor_total: Number(r.valor_total),
-      observacoes: typeof r.observacoes === "string" ? r.observacoes.trim() || null : null,
+      observacoes,
+      evolucao,
       profissional_nome: nomeProfissionalEmbed(u0),
       sala_nome: s0?.nome_sala?.trim() || "Sala",
       procedimentos,
