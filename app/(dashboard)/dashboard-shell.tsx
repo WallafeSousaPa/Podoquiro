@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import {
+  type MouseEvent as ReactMouseEvent,
   type ReactNode,
   useCallback,
   useEffect,
@@ -41,10 +42,17 @@ function loadScript(src: string): Promise<void> {
 const BODY_CLASSES = [
   "hold-transition",
   "sidebar-mini",
+  "sidebar-collapse",
   "layout-fixed",
   "layout-navbar-fixed",
   "layout-footer-fixed",
 ] as const;
+
+const SIDEBAR_DESKTOP_MIN_WIDTH = 992;
+
+function isDesktopSidebarLayout() {
+  return window.matchMedia(`(min-width: ${SIDEBAR_DESKTOP_MIN_WIDTH}px)`).matches;
+}
 
 function cx(...parts: (string | false | undefined | null)[]) {
   return parts.filter(Boolean).join(" ");
@@ -106,6 +114,8 @@ export function DashboardShell({
   const router = useRouter();
   const pathname = usePathname();
   const loadingScripts = useRef(false);
+  const sidebarRef = useRef<HTMLElement>(null);
+  const hamburgerRef = useRef<HTMLAnchorElement>(null);
 
   const [openUsuarios, setOpenUsuarios] = useState(() =>
     pathname.startsWith("/usuarios"),
@@ -153,10 +163,89 @@ export function DashboardShell({
 
   useEffect(() => {
     BODY_CLASSES.forEach((c) => document.body.classList.add(c));
+    const soltarTransicao = window.setTimeout(() => {
+      document.body.classList.remove("hold-transition");
+    }, 200);
     return () => {
+      window.clearTimeout(soltarTransicao);
       BODY_CLASSES.forEach((c) => document.body.classList.remove(c));
+      document.body.classList.remove(
+        "hold-transition",
+        "sidebar-open",
+        "sidebar-closed",
+        "sidebar-is-opening",
+      );
     };
   }, []);
+
+  const fecharExpandidoPorClique = useCallback(() => {
+    if (isDesktopSidebarLayout()) {
+      sidebarRef.current?.classList.remove("sidebar-focused");
+    }
+  }, []);
+
+  const fecharMenuMobile = useCallback(() => {
+    document.body.classList.remove("sidebar-open", "sidebar-is-opening");
+    document.body.classList.add("sidebar-collapse", "sidebar-closed");
+  }, []);
+
+  const alternarMenuLateral = useCallback(
+    (e: ReactMouseEvent<HTMLAnchorElement>) => {
+      e.preventDefault();
+      e.stopPropagation();
+      if (!isDesktopSidebarLayout()) {
+        const abrir = !document.body.classList.contains("sidebar-open");
+        if (abrir) {
+          document.body.classList.add("sidebar-open", "sidebar-is-opening");
+          document.body.classList.remove("sidebar-collapse", "sidebar-closed");
+        } else {
+          fecharMenuMobile();
+        }
+        return;
+      }
+      document.body.classList.add("sidebar-collapse");
+      sidebarRef.current?.classList.toggle("sidebar-focused");
+    },
+    [fecharMenuMobile],
+  );
+
+  useEffect(() => {
+    const sidebar = sidebarRef.current;
+    if (!sidebar) return;
+
+    const onDocumentClick = (ev: MouseEvent) => {
+      const target = ev.target as Node | null;
+      if (!target) return;
+      if (sidebar.contains(target) || hamburgerRef.current?.contains(target)) {
+        return;
+      }
+      if (isDesktopSidebarLayout()) {
+        sidebar.classList.remove("sidebar-focused");
+        return;
+      }
+      if (document.body.classList.contains("sidebar-open")) {
+        fecharMenuMobile();
+      }
+    };
+
+    const onResize = () => {
+      if (isDesktopSidebarLayout()) {
+        document.body.classList.remove(
+          "sidebar-open",
+          "sidebar-closed",
+          "sidebar-is-opening",
+        );
+        document.body.classList.add("sidebar-collapse");
+      }
+    };
+
+    document.addEventListener("click", onDocumentClick);
+    window.addEventListener("resize", onResize);
+    return () => {
+      document.removeEventListener("click", onDocumentClick);
+      window.removeEventListener("resize", onResize);
+    };
+  }, [fecharMenuMobile]);
 
   useEffect(() => {
     if (somenteMenuInicio) {
@@ -212,12 +301,13 @@ export function DashboardShell({
         <ul className="navbar-nav">
           <li className="nav-item">
             <a
+              ref={hamburgerRef}
               className="nav-link"
-              data-widget="pushmenu"
               href="#"
               role="button"
               title="Alternar menu"
               aria-label="Alternar menu lateral"
+              onClick={alternarMenuLateral}
             >
               <i className="fas fa-bars" />
             </a>
@@ -258,7 +348,11 @@ export function DashboardShell({
         </ul>
       </nav>
 
-      <aside className="main-sidebar sidebar-dark-primary elevation-4">
+      <aside
+        ref={sidebarRef}
+        className="main-sidebar sidebar-dark-primary elevation-4"
+        onMouseLeave={fecharExpandidoPorClique}
+      >
         <Link href="/inicio" className="brand-link">
           <span className="brand-text font-weight-light">Podoquiro</span>
         </Link>
@@ -1023,6 +1117,12 @@ export function DashboardShell({
           </nav>
         </div>
       </aside>
+
+      <div
+        id="sidebar-overlay"
+        role="presentation"
+        onClick={fecharMenuMobile}
+      />
 
       <div className="content-wrapper">{children}</div>
 
