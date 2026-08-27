@@ -95,6 +95,7 @@ export function DashboardShell({
   menuAtendimento = false,
   podeVerRelatorioCaixa = false,
   podeVerMenuNotaFiscal = false,
+  podeVerMenuPonto = false,
   children,
 }: {
   nomeUsuario: string;
@@ -109,6 +110,8 @@ export function DashboardShell({
   podeVerRelatorioCaixa?: boolean;
   /** Menu Nota Fiscal — somente Administrador / Administrativo. */
   podeVerMenuNotaFiscal?: boolean;
+  /** Menu Ponto — somente Administrador / Administrativo. */
+  podeVerMenuPonto?: boolean;
   children: ReactNode;
 }) {
   const router = useRouter();
@@ -248,6 +251,12 @@ export function DashboardShell({
   }, [fecharMenuMobile]);
 
   useEffect(() => {
+    if (pathname === "/ponto" || pathname.startsWith("/ponto/")) {
+      if (!podeVerMenuPonto) {
+        router.replace("/inicio");
+        return;
+      }
+    }
     if (somenteMenuInicio) {
       if (rotaLiberadaParaGrupoSomenteInicio(pathname)) return;
       router.replace("/inicio");
@@ -257,7 +266,7 @@ export function DashboardShell({
       if (rotaLiberadaRecepcao(pathname)) return;
       router.replace("/inicio");
     }
-  }, [somenteMenuInicio, menuRecepcao, pathname, router]);
+  }, [somenteMenuInicio, menuRecepcao, podeVerMenuPonto, pathname, router]);
 
   useEffect(() => {
     if (loadingScripts.current) return;
@@ -294,6 +303,7 @@ export function DashboardShell({
   const isParametrizacao = pathname.startsWith("/financeiro/parametrizacao");
   const isNotaFiscal = pathname.startsWith("/nota-fiscal");
   const isRelatorios = pathname.startsWith("/relatorios");
+  const isPonto = pathname === "/ponto" || pathname.startsWith("/ponto/");
 
   return (
     <div className="wrapper">
@@ -354,6 +364,12 @@ export function DashboardShell({
         onMouseLeave={fecharExpandidoPorClique}
       >
         <Link href="/inicio" className="brand-link">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src="/LogoSemFundo.png"
+            alt="Podoquiro"
+            className="brand-image"
+          />
           <span className="brand-text font-weight-light">Podoquiro</span>
         </Link>
         <div className="sidebar">
@@ -774,6 +790,18 @@ export function DashboardShell({
                   </li>
                 </ul>
               </li>
+
+              {podeVerMenuPonto ? (
+                <li className="nav-item">
+                  <Link
+                    href="/ponto"
+                    className={cx("nav-link", isPonto && "active")}
+                  >
+                    <i className="nav-icon fas fa-fingerprint" />
+                    <p>Ponto</p>
+                  </Link>
+                </li>
+              ) : null}
 
               {podeVerMenuNotaFiscal ? (
                 <li

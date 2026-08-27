@@ -42,3 +42,14 @@ yarn-error.log*
 next-env.d.ts
 
 .vercel
+
+# cadastros temporários de digital (menu Ponto)
+.data/
+
+# SDK proprietário do leitor Futronic (não versionar a DLL)
+tools/futronic-fs80h/*.dll
+tools/futronic-fs80h/x64/
+
+# build do reconhecedor SourceAFIS
+tools/futronic-fs80h/SourceAfisMatcher/bin/
+tools/futronic-fs80h/SourceAfisMatcher/obj/

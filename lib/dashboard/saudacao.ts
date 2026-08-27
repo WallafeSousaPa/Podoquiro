@@ -3,6 +3,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import {
   grupoUsuariosAdministrador,
   grupoUsuariosMenuNotaFiscal,
+  grupoUsuariosMenuPonto,
   grupoUsuariosMenuRestritoBalcao,
   grupoUsuariosNfseNoCaixa,
   grupoUsuariosPodePersonalizarMensagemWhatsappTaxa,
@@ -29,6 +30,8 @@ export type SaudacaoNomes = {
   podeVerRelatorioCaixa: boolean;
   /** Menu Nota Fiscal (somente Administrador / Administrativo). */
   podeVerMenuNotaFiscal: boolean;
+  /** Menu Ponto (somente Administrador / Administrativo). */
+  podeVerMenuPonto: boolean;
   /** Coluna NFS-e no Caixa (Administrador, Administrativo ou Recepção). */
   podeEmitirNfseNoCaixa: boolean;
   /** Editar mensagem WhatsApp da taxa de agendamento (Recepção, Administrativo, Administrador). */
@@ -50,6 +53,7 @@ export const getNomesSaudacao = cache(
     let podeAgendarRetroativo = false;
     let podeVerRelatorioCaixa = false;
     let podeVerMenuNotaFiscal = false;
+    let podeVerMenuPonto = false;
     let podeEmitirNfseNoCaixa = false;
     let podePersonalizarMensagemWhatsappTaxa = false;
 
@@ -75,6 +79,7 @@ export const getNomesSaudacao = cache(
       const g = Array.isArray(gRaw) ? gRaw[0] : gRaw;
       const nomeGrupo = g?.grupo_usuarios;
       podeVerMenuNotaFiscal = grupoUsuariosMenuNotaFiscal(nomeGrupo);
+      podeVerMenuPonto = grupoUsuariosMenuPonto(nomeGrupo);
       menuRecepcao = grupoUsuariosMenuRestritoBalcao(nomeGrupo);
       const isPodologo = grupoUsuariosSomenteMenuInicioCalendario(nomeGrupo);
       const isAdministrador = grupoUsuariosAdministrador(nomeGrupo);
@@ -104,6 +109,7 @@ export const getNomesSaudacao = cache(
       podeAgendarRetroativo,
       podeVerRelatorioCaixa,
       podeVerMenuNotaFiscal,
+      podeVerMenuPonto,
       podeEmitirNfseNoCaixa,
       podePersonalizarMensagemWhatsappTaxa,
     };

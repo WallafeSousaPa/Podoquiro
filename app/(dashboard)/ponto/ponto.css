@@ -1,0 +1,240 @@
+.ponto-page {
+  min-width: 0;
+  overflow-x: hidden;
+}
+
+.ponto-page .form-control {
+  max-width: 100%;
+}
+
+.ponto-page .ponto-filtros .form-group {
+  margin-bottom: 0.85rem;
+}
+
+.ponto-page .ponto-presets {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.ponto-page .ponto-presets .btn {
+  margin: 0;
+}
+
+.ponto-page .ponto-kpi > [class*="col-"] {
+  display: flex;
+}
+
+.ponto-page .ponto-kpi .info-box {
+  width: 100%;
+  min-width: 0;
+  margin-bottom: 0;
+  display: flex;
+  align-items: stretch;
+}
+
+.ponto-page .ponto-kpi .info-box-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 58px;
+  flex-shrink: 0;
+}
+
+.ponto-page .ponto-kpi .info-box-content {
+  min-width: 0;
+  padding: 0.45rem 0.7rem;
+}
+
+.ponto-page .ponto-kpi .info-box-text {
+  display: block;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.ponto-page .ponto-kpi .info-box-number {
+  display: block;
+  line-height: 1.25;
+  font-size: 1.25rem;
+  word-break: break-word;
+}
+
+.ponto-page .ponto-lista-header {
+  gap: 0.5rem;
+}
+
+.ponto-page .ponto-lista-desktop {
+  display: none;
+}
+
+.ponto-page .ponto-lista-mobile {
+  display: block;
+}
+
+.ponto-page .ponto-card-item {
+  border-bottom: 1px solid #dee2e6;
+  padding: 0.9rem 1rem;
+  background: #fff;
+}
+
+.ponto-page .ponto-card-item:last-child {
+  border-bottom: 0;
+}
+
+.ponto-page .ponto-card-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 0.75rem;
+  margin-bottom: 0.25rem;
+}
+
+.ponto-page .ponto-card-nome {
+  font-weight: 600;
+  min-width: 0;
+  word-break: break-word;
+}
+
+.ponto-page .ponto-card-horas {
+  flex-shrink: 0;
+  text-align: right;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.ponto-page .ponto-card-meta {
+  color: #6c757d;
+  font-size: 0.85rem;
+  margin-bottom: 0.45rem;
+  word-break: break-word;
+}
+
+.ponto-page .ponto-card-marcacoes {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  margin-bottom: 0.65rem;
+}
+
+.ponto-page .ponto-marcacao-btn {
+  min-height: 2rem;
+  padding: 0.35rem 0.55rem;
+  font-size: 0.85rem;
+}
+
+.ponto-page .ponto-card-acoes .btn {
+  width: 100%;
+}
+
+.ponto-page .ponto-legenda {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.35rem 0.5rem;
+}
+
+.ponto-page .ponto-legenda .badge {
+  margin: 0;
+}
+
+@media (min-width: 992px) {
+  .ponto-page .ponto-filtros .form-group {
+    margin-bottom: 0;
+  }
+
+  .ponto-page .ponto-kpi .info-box-icon {
+    width: 70px;
+  }
+
+  .ponto-page .ponto-kpi .info-box-number {
+    font-size: 1.4rem;
+  }
+
+  .ponto-page .ponto-lista-desktop {
+    display: block;
+  }
+
+  .ponto-page .ponto-lista-mobile {
+    display: none;
+  }
+}
+
+@media (max-width: 991.98px) {
+  .ponto-page .ponto-consultar-btn {
+    width: 100%;
+    margin-top: 0.15rem;
+  }
+}
+
+@media (max-width: 575.98px) {
+  .ponto-page-header h1 {
+    font-size: 1.3rem;
+  }
+
+  .ponto-page-header .breadcrumb {
+    float: none !important;
+    margin-top: 0.35rem;
+    padding-left: 0;
+    font-size: 0.85rem;
+  }
+
+  .ponto-page .ponto-presets .btn {
+    flex: 1 1 calc(33.33% - 0.3rem);
+    min-width: 4.5rem;
+  }
+
+  .ponto-page .ponto-kpi .info-box-icon {
+    width: 48px;
+    font-size: 1.15rem;
+  }
+
+  .ponto-page .ponto-kpi .info-box-number {
+    font-size: 1.1rem;
+  }
+
+  .ponto-page .ponto-lista-header .btn {
+    width: 100%;
+  }
+
+  .ponto-page .form-control,
+  .modal-ponto-ajuste .form-control {
+    font-size: 16px;
+    min-height: 44px;
+  }
+}
+
+.modal-ponto-ajuste {
+  max-width: 500px;
+}
+
+.modal-ponto-ajuste .form-control {
+  font-size: 16px;
+}
+
+.modal-ponto-ajuste .modal-footer {
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  padding-bottom: calc(0.75rem + env(safe-area-inset-bottom, 0px));
+}
+
+.modal-ponto-ajuste .modal-footer .btn {
+  margin: 0;
+}
+
+@media (max-width: 575.98px) {
+  .modal-ponto-ajuste {
+    margin: 0.5rem;
+    max-width: calc(100% - 1rem);
+  }
+
+  .modal-ponto-ajuste .modal-content {
+    max-height: calc(100vh - 1rem);
+    max-height: calc(100dvh - 1rem);
+  }
+
+  .modal-ponto-ajuste .modal-footer .btn {
+    flex: 1 1 100%;
+  }
+}

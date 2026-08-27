@@ -47,6 +47,13 @@ export function grupoUsuariosMenuNotaFiscal(
   return grupoUsuariosRelatorioCaixa(nomeGrupo);
 }
 
+/** Menu e APIs de ponto: somente Administrador ou Administrativo. */
+export function grupoUsuariosMenuPonto(
+  nomeGrupo: string | null | undefined,
+): boolean {
+  return grupoUsuariosRelatorioCaixa(nomeGrupo);
+}
+
 /**
  * Emissão/cancelamento de NFS-e pelo Caixa: Administrador, Administrativo ou Recepção.
  */
@@ -117,6 +124,14 @@ export async function getUsuarioPodeRelatorioCaixa(
   const gRaw = u.usuarios_grupos as G | G[] | null | undefined;
   const g = Array.isArray(gRaw) ? gRaw[0] : gRaw;
   return grupoUsuariosRelatorioCaixa(g?.grupo_usuarios);
+}
+
+/** Resolve se o usuário pode acessar a tela e as APIs de ponto. */
+export async function getUsuarioPodeMenuPonto(
+  supabase: SupabaseClient,
+  idUsuario: number,
+): Promise<boolean> {
+  return getUsuarioPodeRelatorioCaixa(supabase, idUsuario);
 }
 
 /** Menu restrito: Início, Pacientes › Cadastrar, Financeiro › Caixa (ex.: grupo Recepção). */

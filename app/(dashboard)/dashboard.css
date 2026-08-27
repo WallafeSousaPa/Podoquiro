@@ -35,19 +35,37 @@
   background-color: var(--podoquiro-primary) !important;
 }
 
-.main-sidebar .brand-link {
+.main-sidebar .brand-link,
+.layout-navbar-fixed .wrapper .brand-link,
+.layout-navbar-fixed .wrapper .sidebar-dark-primary .brand-link:not([class*="navbar"]) {
   background-color: var(--podoquiro-primary-dark) !important;
   border-bottom: 1px solid rgba(255, 255, 255, 0.1) !important;
   color: #fff !important;
+  display: flex;
+  align-items: center;
+  overflow: hidden;
 }
 
 .main-sidebar .brand-link:hover {
   color: var(--podoquiro-accent) !important;
 }
 
+.main-sidebar .brand-link .brand-image {
+  float: none;
+  width: 36px;
+  height: 36px;
+  max-height: 36px;
+  margin: 0 0.5rem 0 0.15rem;
+  padding: 0;
+  object-fit: contain;
+  background: transparent;
+  flex-shrink: 0;
+}
+
 .main-sidebar .brand-link .brand-text {
   font-weight: 600 !important;
   color: inherit !important;
+  margin-left: 0.15rem;
 }
 
 .sidebar-dark-primary .nav-sidebar > .nav-item > .nav-link,
@@ -92,8 +110,23 @@
 
 @media (min-width: 992px) {
   .sidebar-mini.sidebar-collapse .main-sidebar .brand-link,
-  .sidebar-mini.sidebar-collapse.layout-fixed .brand-link {
+  .sidebar-mini.sidebar-collapse.layout-fixed .brand-link,
+  .layout-navbar-fixed.sidebar-mini.sidebar-collapse .wrapper .brand-link {
     transition: width 0.5s cubic-bezier(0.22, 1, 0.36, 1);
+    justify-content: center;
+    padding-left: 0;
+    padding-right: 0;
+  }
+
+  .sidebar-mini.sidebar-collapse .main-sidebar .brand-link .brand-image {
+    display: block;
+    width: 36px;
+    height: 36px;
+    max-height: 36px;
+    margin: 0;
+    opacity: 1;
+    visibility: visible;
+    object-fit: contain;
   }
 
   .sidebar-mini.sidebar-collapse .sidebar .nav-sidebar .nav-link p,
@@ -105,6 +138,26 @@
       margin-left 0.5s cubic-bezier(0.22, 1, 0.36, 1);
   }
 
+  .sidebar-mini.sidebar-collapse .brand-text {
+    width: 0;
+    max-width: 0;
+    margin: 0 !important;
+    padding: 0;
+    overflow: hidden;
+  }
+
+  .sidebar-mini.sidebar-collapse .main-sidebar:not(.sidebar-no-expand):hover .brand-link,
+  .sidebar-mini.sidebar-collapse .main-sidebar:not(.sidebar-no-expand).sidebar-focused .brand-link {
+    justify-content: flex-start;
+    padding-left: 0.8rem;
+    padding-right: 0.5rem;
+  }
+
+  .sidebar-mini.sidebar-collapse .main-sidebar:not(.sidebar-no-expand):hover .brand-link .brand-image,
+  .sidebar-mini.sidebar-collapse .main-sidebar:not(.sidebar-no-expand).sidebar-focused .brand-link .brand-image {
+    margin-right: 0.5rem;
+  }
+
   .sidebar-mini.sidebar-collapse .main-sidebar:not(.sidebar-no-expand):hover .sidebar .nav-sidebar .nav-link p,
   .sidebar-mini.sidebar-collapse .main-sidebar:not(.sidebar-no-expand).sidebar-focused .sidebar .nav-sidebar .nav-link p,
   .sidebar-mini.sidebar-collapse .main-sidebar:not(.sidebar-no-expand):hover .brand-text,
@@ -112,6 +165,9 @@
     animation: none !important;
     opacity: 1;
     visibility: visible;
+    width: auto;
+    max-width: none;
+    overflow: visible;
     transition: opacity 0.35s ease 0.12s, visibility 0s linear 0s,
       margin-left 0.5s cubic-bezier(0.22, 1, 0.36, 1);
   }
@@ -149,7 +205,7 @@
   color: var(--podoquiro-accent) !important;
 }
 
-/* Modal cadastro/edição de usuário: corpo rolável; header e footer fixos (Chrome). */
+/* Modal cadastro/edição de usuário: corpo rolável; header e footer fixos. */
 .modal-usuario-form .modal-content {
   max-height: min(90vh, 640px);
   display: flex;
@@ -157,7 +213,15 @@
   overflow: hidden;
 }
 
-.modal-usuario-form .modal-content > form {
+.modal-ponto-ajuste .modal-content {
+  max-height: min(90vh, 90dvh);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.modal-usuario-form .modal-content > form,
+.modal-ponto-ajuste .modal-content > form {
   display: flex;
   flex-direction: column;
   flex: 1 1 auto;
@@ -165,11 +229,13 @@
   overflow: hidden;
 }
 
-.modal-usuario-form .modal-header {
+.modal-usuario-form .modal-header,
+.modal-ponto-ajuste .modal-header {
   flex-shrink: 0;
 }
 
-.modal-usuario-form .modal-body {
+.modal-usuario-form .modal-body,
+.modal-ponto-ajuste .modal-body {
   flex: 1 1 auto;
   min-height: 0;
   overflow-x: hidden;
@@ -177,6 +243,20 @@
   -webkit-overflow-scrolling: touch;
 }
 
-.modal-usuario-form .modal-footer {
+.modal-usuario-form .modal-footer,
+.modal-ponto-ajuste .modal-footer {
   flex-shrink: 0;
 }
+
+.ponto-marcacao-btn {
+  border: 0;
+  cursor: pointer;
+  font: inherit;
+  line-height: 1.2;
+}
+
+.ponto-marcacao-desconsiderada {
+  text-decoration: line-through;
+  opacity: 0.7;
+}
+
