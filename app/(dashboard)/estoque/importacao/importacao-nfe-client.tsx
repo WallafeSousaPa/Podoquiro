@@ -348,6 +348,17 @@ export function ImportacaoNfeClient({
     return { atualizar, cadastrar, ignorados };
   }, [preview, qtdDe]);
 
+  const valorTotalEntrada = useMemo(() => {
+    if (!preview) return 0;
+    return preview.itens.reduce((s, it) => {
+      const q =
+        preview.status === "pendente"
+          ? qtdDe(it.id, it.q_com)
+          : Math.max(0, Math.round(Number(it.qtd_entrada ?? 0)) || 0);
+      return s + q * Number(it.v_un_com);
+    }, 0);
+  }, [preview, qtdDe]);
+
   return (
     <>
       <div className="card card-outline card-primary mb-3">
@@ -612,6 +623,11 @@ export function ImportacaoNfeClient({
                         : item.estoque_apos;
                     const ignorado =
                       pendente ? qtdLinha <= 0 : item.acao == null || (item.qtd_entrada ?? 0) <= 0;
+                    const qtdParaTotal =
+                      pendente
+                        ? qtdLinha
+                        : Math.max(0, Math.round(Number(item.qtd_entrada ?? 0)) || 0);
+                    const totalLinha = qtdParaTotal * Number(item.v_un_com);
                     return (
                       <tr key={item.id} className={ignorado ? "text-muted" : undefined}>
                         <td>{item.n_item}</td>
@@ -654,7 +670,14 @@ export function ImportacaoNfeClient({
                           )}
                         </td>
                         <td className="text-right">{formatBRL(item.v_un_com)}</td>
-                        <td className="text-right">{formatBRL(item.v_prod)}</td>
+                        <td className="text-right">
+                          {formatBRL(totalLinha)}
+                          {pendente && qtdLinha !== qtdNota ? (
+                            <div className="small text-muted mt-1">
+                              Nota: {formatBRL(item.v_prod)}
+                            </div>
+                          ) : null}
+                        </td>
                         <td>
                           {preview.status === "entrada_realizada" ? (
                             ignorado ? (
@@ -695,6 +718,23 @@ export function ImportacaoNfeClient({
                     );
                   })}
                 </tbody>
+                <tfoot>
+                  <tr>
+                    <td colSpan={5} className="text-right">
+                      <strong>Total</strong>
+                    </td>
+                    <td className="text-right">
+                      <strong>{formatBRL(valorTotalEntrada)}</strong>
+                      {pendente &&
+                      Math.abs(valorTotalEntrada - preview.totais.valor_produtos) > 0.005 ? (
+                        <div className="small font-weight-normal text-muted mt-1">
+                          Nota: {formatBRL(preview.totais.valor_produtos)}
+                        </div>
+                      ) : null}
+                    </td>
+                    <td />
+                  </tr>
+                </tfoot>
               </table>
             </div>
           </div>
