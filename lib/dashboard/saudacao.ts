@@ -20,7 +20,7 @@ export type SaudacaoNomes = {
   nomeEmpresaCurto: string;
   /** Só Início (calendário) no menu — ex. grupo Podólogo. */
   somenteMenuInicio: boolean;
-  /** Início + Pacientes › Cadastrar + Financeiro › Caixa — ex. grupo Recepção. */
+  /** Início + Pacientes + Caixa + Estoque › Importação — ex. grupo Recepção. */
   menuRecepcao: boolean;
   /** Exibe menu Atendimentos › Atendimento (Podólogo e Administrador). */
   menuAtendimento: boolean;
@@ -36,6 +36,8 @@ export type SaudacaoNomes = {
   podeEmitirNfseNoCaixa: boolean;
   /** Editar mensagem WhatsApp da taxa de agendamento (Recepção, Administrativo, Administrador). */
   podePersonalizarMensagemWhatsappTaxa: boolean;
+  /** Excluir importação de NF-e e reverter estoque (Administrador / Administrativo). */
+  podeExcluirImportacaoEstoque: boolean;
 };
 
 /**
@@ -56,6 +58,7 @@ export const getNomesSaudacao = cache(
     let podeVerMenuPonto = false;
     let podeEmitirNfseNoCaixa = false;
     let podePersonalizarMensagemWhatsappTaxa = false;
+    let podeExcluirImportacaoEstoque = false;
 
     if (Number.isFinite(userId) && userId > 0 && Number.isFinite(empresaId) && empresaId > 0) {
       const supabase = createAdminClient();
@@ -90,6 +93,7 @@ export const getNomesSaudacao = cache(
       podeEmitirNfseNoCaixa = grupoUsuariosNfseNoCaixa(nomeGrupo);
       podePersonalizarMensagemWhatsappTaxa =
         grupoUsuariosPodePersonalizarMensagemWhatsappTaxa(nomeGrupo);
+      podeExcluirImportacaoEstoque = grupoUsuariosRelatorioCaixa(nomeGrupo);
     }
 
     const nomeEmpresaComId = nomeFantasia
@@ -112,6 +116,7 @@ export const getNomesSaudacao = cache(
       podeVerMenuPonto,
       podeEmitirNfseNoCaixa,
       podePersonalizarMensagemWhatsappTaxa,
+      podeExcluirImportacaoEstoque,
     };
   },
 );

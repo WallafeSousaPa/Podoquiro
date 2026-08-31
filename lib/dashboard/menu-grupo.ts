@@ -134,6 +134,21 @@ export async function getUsuarioPodeMenuPonto(
   return getUsuarioPodeRelatorioCaixa(supabase, idUsuario);
 }
 
+/** Excluir importação de NF-e e reverter estoque: Administrador ou Administrativo. */
+export function grupoUsuariosPodeExcluirImportacaoEstoque(
+  nomeGrupo: string | null | undefined,
+): boolean {
+  return grupoUsuariosRelatorioCaixa(nomeGrupo);
+}
+
+/** Resolve se o usuário pode excluir importação de NF-e (API). */
+export async function getUsuarioPodeExcluirImportacaoEstoque(
+  supabase: SupabaseClient,
+  idUsuario: number,
+): Promise<boolean> {
+  return getUsuarioPodeRelatorioCaixa(supabase, idUsuario);
+}
+
 /** Menu restrito: Início, Pacientes › Cadastrar, Financeiro › Caixa (ex.: grupo Recepção). */
 export function grupoUsuariosMenuRecepcao(
   nomeGrupo: string | null | undefined,

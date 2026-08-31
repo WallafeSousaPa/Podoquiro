@@ -4,7 +4,9 @@ export type OrigemMovimentacaoEstoque =
   | "cadastro"
   | "ajuste_manual"
   | "venda_atendimento"
-  | "estorno_atendimento";
+  | "estorno_atendimento"
+  | "importacao_nfe"
+  | "estorno_importacao_nfe";
 
 export type TipoMovimentacaoEstoque = "entrada" | "saida";
 
@@ -13,6 +15,8 @@ export const ROTULO_ORIGEM_MOVIMENTACAO_ESTOQUE: Record<OrigemMovimentacaoEstoqu
   ajuste_manual: "Ajuste manual",
   venda_atendimento: "Saída — atendimento",
   estorno_atendimento: "Estorno — atendimento",
+  importacao_nfe: "Entrada — importação NF-e",
+  estorno_importacao_nfe: "Estorno — importação NF-e",
 };
 
 export async function registrarMovimentacaoEstoque(

@@ -70,7 +70,7 @@ function rotaLiberadaParaGrupoSomenteInicio(pathname: string): boolean {
   );
 }
 
-/** Início, cadastro de pacientes, caixa e alterar senha. */
+/** Início, pacientes, agendamentos, caixa, importação de estoque e alterar senha. */
 function rotaLiberadaRecepcao(pathname: string): boolean {
   if (pathname === "/inicio") return true;
   if (pathname === "/conta/senha" || pathname.startsWith("/conta/senha/")) return true;
@@ -83,6 +83,8 @@ function rotaLiberadaRecepcao(pathname: string): boolean {
   if (pathname === "/atendimentos/confirmar" || pathname.startsWith("/atendimentos/confirmar/"))
     return true;
   if (pathname === "/financeiro/caixa" || pathname.startsWith("/financeiro/caixa/"))
+    return true;
+  if (pathname === "/estoque/importacao" || pathname.startsWith("/estoque/importacao/"))
     return true;
   return false;
 }
@@ -102,7 +104,7 @@ export function DashboardShell({
   nomeEmpresa: string;
   /** Só exibe Início (calendário) — usuários do grupo Podólogo. */
   somenteMenuInicio?: boolean;
-  /** Início, Pacientes › Cadastrar, Financeiro › Caixa — grupo Recepção. */
+  /** Início, Pacientes, Caixa e Estoque › Importação — grupo Recepção. */
   menuRecepcao?: boolean;
   /** Atendimentos › Atendimento — Podólogo e Administrador. */
   menuAtendimento?: boolean;
@@ -551,6 +553,43 @@ export function DashboardShell({
                       </li>
                     </ul>
                   </li>
+
+                  <li
+                    className={cx(
+                      "nav-item",
+                      "has-treeview",
+                      openEstoque && "menu-open",
+                    )}
+                  >
+                    <a
+                      href="#"
+                      className={cx("nav-link", isEstoque && "active")}
+                      onClick={(e) => {
+                        e.preventDefault();
+                        setOpenEstoque((v) => !v);
+                      }}
+                    >
+                      <i className="nav-icon fas fa-boxes" />
+                      <p>
+                        Estoque
+                        <i className="right fas fa-angle-left" />
+                      </p>
+                    </a>
+                    <ul className="nav nav-treeview">
+                      <li className="nav-item">
+                        <Link
+                          href="/estoque/importacao"
+                          className={cx(
+                            "nav-link",
+                            pathname === "/estoque/importacao" && "active",
+                          )}
+                        >
+                          <i className="far fa-circle nav-icon" />
+                          <p>Importação</p>
+                        </Link>
+                      </li>
+                    </ul>
+                  </li>
                 </>
               ) : (
                 <>
@@ -786,6 +825,18 @@ export function DashboardShell({
                     >
                       <i className="far fa-circle nav-icon" />
                       <p>Cadastro</p>
+                    </Link>
+                  </li>
+                  <li className="nav-item">
+                    <Link
+                      href="/estoque/importacao"
+                      className={cx(
+                        "nav-link",
+                        pathname === "/estoque/importacao" && "active",
+                      )}
+                    >
+                      <i className="far fa-circle nav-icon" />
+                      <p>Importação</p>
                     </Link>
                   </li>
                 </ul>
