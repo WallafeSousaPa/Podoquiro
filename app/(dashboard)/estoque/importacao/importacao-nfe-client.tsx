@@ -2,7 +2,8 @@
 
 import { formatarCnpjCpf } from "@/lib/estoque/parse-nfe-xml";
 import type { ImportacaoPreview } from "@/lib/estoque/preview-nfe-importacao";
-import { useCallback, useEffect, useId, useRef, useState } from "react";
+import { chaveAgrupamentoNfe } from "@/lib/estoque/vincular-produtos-nfe";
+import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 
 export type EmpresaListaItem = {
   id: number;
@@ -85,6 +86,7 @@ export function ImportacaoNfeClient({
     status: "pendente" | "entrada_realizada";
   } | null>(null);
   const [excluindo, setExcluindo] = useState(false);
+  const [qtdEditada, setQtdEditada] = useState<Record<string, number>>({});
 
   useEffect(() => {
     setEmpresaId(String(empresaIdPadrao));
@@ -175,6 +177,19 @@ export function ImportacaoNfeClient({
 
   async function confirmarEntrada() {
     if (!preview || preview.status !== "pendente") return;
+    const quantidades: Record<string, number> = {};
+    for (const it of preview.itens) {
+      const v = qtdEditada[it.id];
+      quantidades[it.id] =
+        typeof v === "number" && Number.isFinite(v) && v >= 0
+          ? Math.round(v)
+          : Math.max(0, Math.round(Number(it.q_com)) || 0);
+    }
+    if (Object.values(quantidades).every((q) => q <= 0)) {
+      setError("Informe a quantidade de ao menos um produto para dar entrada.");
+      setConfirmEntrada(false);
+      return;
+    }
     setDandoEntrada(true);
     setError(null);
     setSucesso(null);
@@ -182,6 +197,8 @@ export function ImportacaoNfeClient({
       const res = await fetch(`/api/estoque/importacao/${preview.id}/entrada`, {
         method: "POST",
         credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ quantidades }),
       });
       const j = (await res.json()) as {
         data?: ImportacaoPreview;
@@ -258,6 +275,79 @@ export function ImportacaoNfeClient({
 
   const pendente = preview?.status === "pendente";
 
+  useEffect(() => {
+    if (!preview) {
+      setQtdEditada({});
+      return;
+    }
+    const next: Record<string, number> = {};
+    for (const it of preview.itens) {
+      next[it.id] = Math.max(0, Math.round(Number(it.q_com)) || 0);
+    }
+    setQtdEditada(next);
+  }, [preview]);
+
+  const qtdDe = useCallback(
+    (itemId: string, qCom: number) => {
+      const v = qtdEditada[itemId];
+      if (typeof v === "number" && Number.isFinite(v) && v >= 0) return Math.round(v);
+      return Math.max(0, Math.round(Number(qCom)) || 0);
+    },
+    [qtdEditada],
+  );
+
+  const estoqueAposPorItem = useMemo(() => {
+    const out = new Map<string, number>();
+    if (!preview || preview.status !== "pendente") return out;
+    const somaGrupo = new Map<string, number>();
+    const chaveDe = (item: (typeof preview.itens)[number]) =>
+      item.produto_existente?.id
+        ? `id:${item.produto_existente.id}`
+        : `novo:${chaveAgrupamentoNfe({ cEan: item.c_ean, xProd: item.x_prod })}`;
+    for (const item of preview.itens) {
+      const k = chaveDe(item);
+      somaGrupo.set(k, (somaGrupo.get(k) ?? 0) + qtdDe(item.id, item.q_com));
+    }
+    for (const item of preview.itens) {
+      const k = chaveDe(item);
+      const totalGrupo = somaGrupo.get(k) ?? 0;
+      const atual = item.produto_existente?.qtd_estoque ?? 0;
+      out.set(item.id, item.produto_existente ? atual + totalGrupo : totalGrupo);
+    }
+    return out;
+  }, [preview, qtdDe]);
+
+  const unidadesEntrada = useMemo(() => {
+    if (!preview) return 0;
+    return preview.itens.reduce((s, it) => s + qtdDe(it.id, it.q_com), 0);
+  }, [preview, qtdDe]);
+
+  const resumoEntrada = useMemo(() => {
+    if (!preview) return { atualizar: 0, cadastrar: 0, ignorados: 0 };
+    const grupos = new Map<string, { existente: boolean; qtd: number }>();
+    const chaveDe = (item: (typeof preview.itens)[number]) =>
+      item.produto_existente?.id
+        ? `id:${item.produto_existente.id}`
+        : `novo:${chaveAgrupamentoNfe({ cEan: item.c_ean, xProd: item.x_prod })}`;
+    let ignorados = 0;
+    for (const item of preview.itens) {
+      const q = qtdDe(item.id, item.q_com);
+      if (q <= 0) ignorados += 1;
+      const k = chaveDe(item);
+      const g = grupos.get(k);
+      if (g) g.qtd += q;
+      else grupos.set(k, { existente: Boolean(item.produto_existente), qtd: q });
+    }
+    let atualizar = 0;
+    let cadastrar = 0;
+    for (const g of grupos.values()) {
+      if (g.qtd <= 0) continue;
+      if (g.existente) atualizar += 1;
+      else cadastrar += 1;
+    }
+    return { atualizar, cadastrar, ignorados };
+  }, [preview, qtdDe]);
+
   return (
     <>
       <div className="card card-outline card-primary mb-3">
@@ -268,10 +358,10 @@ export function ImportacaoNfeClient({
           <p className="text-muted small mb-3">
             Selecione a empresa que receberá a entrada no estoque. Envie o XML da nota
             de compra (modelo 55). Os produtos serão conferidos com o cadastro dessa
-            empresa (código de barras e nome). Na entrada, a quantidade da nota é{" "}
-            <strong>somada</strong> ao estoque atual: se houver 2 unidades e a nota
-            trouxer 4, o estoque passa a 6. Itens que ainda não existem são cadastrados
-            nessa empresa.
+            empresa (código de barras e nome). Ajuste a quantidade de cada item se
+            precisar; na entrada, esse valor é <strong>somado</strong> ao estoque atual.
+            Se houver 2 unidades e você confirmar 4, o estoque passa a 6. Itens que ainda
+            não existem são cadastrados nessa empresa.
           </p>
           {loadError ? (
             <div className="alert alert-warning py-2 small" role="alert">
@@ -451,7 +541,12 @@ export function ImportacaoNfeClient({
                   <button
                     type="button"
                     className="btn btn-success btn-sm"
-                    disabled={dandoEntrada || excluindo || preview.itens.length === 0}
+                    disabled={
+                      dandoEntrada ||
+                      excluindo ||
+                      preview.itens.length === 0 ||
+                      unidadesEntrada <= 0
+                    }
                     onClick={() => setConfirmEntrada(true)}
                   >
                     <i className="fas fa-boxes mr-1" aria-hidden />
@@ -462,13 +557,32 @@ export function ImportacaoNfeClient({
             </div>
             <div className="card-body pb-2 pt-3">
               <p className="small text-muted mb-2">
-                {preview.resumo.atualizar > 0
-                  ? `${preview.resumo.atualizar} produto(s) já cadastrado(s) terão o estoque somado. `
-                  : null}
-                {preview.resumo.cadastrar > 0
-                  ? `${preview.resumo.cadastrar} produto(s) serão cadastrado(s). `
-                  : null}
-                Total: {preview.resumo.unidades} unidade(s).
+                {pendente ? (
+                  <>
+                    {resumoEntrada.atualizar > 0
+                      ? `${resumoEntrada.atualizar} produto(s) já cadastrado(s) terão o estoque somado. `
+                      : null}
+                    {resumoEntrada.cadastrar > 0
+                      ? `${resumoEntrada.cadastrar} produto(s) serão cadastrado(s). `
+                      : null}
+                    {resumoEntrada.ignorados > 0
+                      ? `${resumoEntrada.ignorados} item(ns) com quantidade 0 serão ignorados. `
+                      : null}
+                    Total: {unidadesEntrada} unidade(s) para entrada. Você pode
+                    alterar a quantidade de cada linha antes de confirmar.
+                    Quantidade 0 não cadastra produto e não soma estoque.
+                  </>
+                ) : (
+                  <>
+                    {preview.resumo.atualizar > 0
+                      ? `${preview.resumo.atualizar} produto(s) já cadastrado(s) terão o estoque somado. `
+                      : null}
+                    {preview.resumo.cadastrar > 0
+                      ? `${preview.resumo.cadastrar} produto(s) serão cadastrado(s). `
+                      : null}
+                    Total: {preview.resumo.unidades} unidade(s).
+                  </>
+                )}
               </p>
             </div>
             <div className="card-body table-responsive p-0">
@@ -478,7 +592,9 @@ export function ImportacaoNfeClient({
                     <th style={{ width: "44px" }}>#</th>
                     <th>Produto</th>
                     <th>EAN</th>
-                    <th className="text-right">Qtd</th>
+                    <th className="text-right" style={{ width: "110px" }}>
+                      Qtd. entrada
+                    </th>
                     <th className="text-right">V. unit.</th>
                     <th className="text-right">Total</th>
                     <th>Situação no estoque</th>
@@ -488,8 +604,16 @@ export function ImportacaoNfeClient({
                   {preview.itens.map((item) => {
                     const estoqueAtual = item.produto_existente?.qtd_estoque ?? 0;
                     const cadastrar = item.acao_prevista === "cadastrar";
+                    const qtdNota = Math.round(Number(item.q_com)) || 0;
+                    const qtdLinha = qtdDe(item.id, item.q_com);
+                    const estoqueApos =
+                      preview.status === "pendente"
+                        ? (estoqueAposPorItem.get(item.id) ?? estoqueAtual + qtdLinha)
+                        : item.estoque_apos;
+                    const ignorado =
+                      pendente ? qtdLinha <= 0 : item.acao == null || (item.qtd_entrada ?? 0) <= 0;
                     return (
-                      <tr key={item.id}>
+                      <tr key={item.id} className={ignorado ? "text-muted" : undefined}>
                         <td>{item.n_item}</td>
                         <td>
                           <div>{item.x_prod}</div>
@@ -501,27 +625,65 @@ export function ImportacaoNfeClient({
                           </div>
                         </td>
                         <td className="small text-muted">{item.c_ean || "—"}</td>
-                        <td className="text-right">{qtdLabel(item.q_com)}</td>
+                        <td className="text-right">
+                          {pendente ? (
+                            <>
+                              <input
+                                type="number"
+                                min={0}
+                                step={1}
+                                className="form-control form-control-sm text-right ml-auto"
+                                style={{ maxWidth: "6.5rem" }}
+                                aria-label={`Quantidade de ${item.x_prod}`}
+                                disabled={dandoEntrada || excluindo}
+                                value={qtdLinha}
+                                onChange={(e) => {
+                                  const n = Number.parseInt(e.target.value, 10);
+                                  setQtdEditada((prev) => ({
+                                    ...prev,
+                                    [item.id]: Number.isFinite(n) && n >= 0 ? n : 0,
+                                  }));
+                                }}
+                              />
+                              {qtdLinha !== qtdNota ? (
+                                <div className="small text-muted mt-1">Nota: {qtdLabel(qtdNota)}</div>
+                              ) : null}
+                            </>
+                          ) : (
+                            qtdLabel(item.qtd_entrada ?? item.q_com)
+                          )}
+                        </td>
                         <td className="text-right">{formatBRL(item.v_un_com)}</td>
                         <td className="text-right">{formatBRL(item.v_prod)}</td>
                         <td>
                           {preview.status === "entrada_realizada" ? (
-                            <span className="badge badge-success">
-                              {item.acao === "cadastrado" ? "Cadastrado" : "Atualizado"}{" "}
-                              {item.saldo_anterior ?? 0} → {item.saldo_posterior ?? "—"}
-                            </span>
+                            ignorado ? (
+                              <span className="badge badge-secondary">Não importado</span>
+                            ) : (
+                              <span className="badge badge-success">
+                                {item.acao === "cadastrado" ? "Cadastrado" : "Atualizado"}{" "}
+                                {item.saldo_anterior ?? 0} → {item.saldo_posterior ?? "—"}
+                              </span>
+                            )
+                          ) : qtdLinha <= 0 ? (
+                            <>
+                              <span className="badge badge-secondary">Ignorado</span>
+                              <div className="small text-muted mt-1">
+                                Não entra no estoque
+                              </div>
+                            </>
                           ) : cadastrar ? (
                             <>
                               <span className="badge badge-info">Novo cadastro</span>
                               <div className="small text-muted mt-1">
-                                Estoque 0 → {item.estoque_apos}
+                                Estoque 0 → {estoqueApos}
                               </div>
                             </>
                           ) : (
                             <>
                               <span className="badge badge-primary">Já cadastrado</span>
                               <div className="small text-muted mt-1">
-                                Estoque {estoqueAtual} → {item.estoque_apos}
+                                Estoque {estoqueAtual} → {estoqueApos}
                                 {item.produto_existente?.sku
                                   ? ` · ${item.produto_existente.sku}`
                                   : ""}
@@ -654,19 +816,24 @@ export function ImportacaoNfeClient({
                 <div className="modal-body">
                   <p>
                     Confirmar entrada da NF-e <strong>{preview.numero_nf}</strong> no
-                    estoque de <strong>{nomeEmpresaSelecionada}</strong>? A quantidade da
-                    nota será somada
-                    {preview.resumo.cadastrar > 0
-                      ? " e os produtos novos serão cadastrados nessa empresa"
+                    estoque de <strong>{nomeEmpresaSelecionada}</strong>? Itens com
+                    quantidade 0 serão ignorados
+                    {resumoEntrada.cadastrar > 0
+                      ? " e os produtos novos (com quantidade maior que zero) serão cadastrados nessa empresa"
                       : ""}
                     .
                   </p>
                   <ul className="mb-0">
                     <li>
-                      {preview.resumo.atualizar} produto(s) atualizado(s)
+                      {resumoEntrada.atualizar} produto(s) atualizado(s)
                     </li>
-                    <li>{preview.resumo.cadastrar} produto(s) novo(s)</li>
-                    <li>{preview.resumo.unidades} unidade(s) no total</li>
+                    <li>{resumoEntrada.cadastrar} produto(s) novo(s)</li>
+                    <li>{unidadesEntrada} unidade(s) no total</li>
+                    {resumoEntrada.ignorados > 0 ? (
+                      <li>
+                        {resumoEntrada.ignorados} item(ns) ignorado(s) (quantidade 0)
+                      </li>
+                    ) : null}
                   </ul>
                 </div>
                 <div className="modal-footer">

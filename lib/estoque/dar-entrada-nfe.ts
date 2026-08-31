@@ -20,7 +20,19 @@ export type ItemImportacaoRow = {
   q_com: number;
   v_un_com: number;
   origem: number | null;
+  qtd_entrada?: number | null;
 };
+
+export function qtdDoItemImportacao(item: {
+  q_com: number;
+  qtd_entrada?: number | null;
+}): number {
+  if (item.qtd_entrada != null && item.qtd_entrada !== undefined) {
+    const n = Math.round(Number(item.qtd_entrada));
+    if (Number.isFinite(n) && n >= 0) return n;
+  }
+  return qtdInteiraEstoque(Number(item.q_com));
+}
 
 type GrupoEntrada = {
   chave: string;
@@ -60,7 +72,7 @@ export function agruparItensParaEntrada(
       ? `id:${existente.id}`
       : `novo:${chaveAgrupamentoNfe({ cEan: item.c_ean, xProd: item.x_prod })}`;
 
-    const qtd = qtdInteiraEstoque(Number(item.q_com));
+    const qtd = qtdDoItemImportacao(item);
     const atual = map.get(chave);
     if (atual) {
       atual.itens.push(item);
@@ -90,7 +102,7 @@ export function agruparItensParaEntrada(
     });
   }
 
-  return [...map.values()].filter((g) => g.qtd > 0);
+  return [...map.values()];
 }
 
 export type ResultadoEntradaNfe = {
@@ -116,10 +128,27 @@ export async function darEntradaNfeImportacao(
 
   let cadastrados = 0;
   let atualizados = 0;
-  let unidades = 0;
+  let unidades = grupos.reduce((s, g) => s + g.qtd, 0);
+  if (unidades <= 0) {
+    throw new Error("Informe a quantidade de ao menos um produto para dar entrada.");
+  }
 
   for (const grupo of grupos) {
-    unidades += grupo.qtd;
+    if (grupo.qtd <= 0) {
+      for (const item of grupo.itens) {
+        const { error: e0 } = await supabase
+          .from("estoque_nfe_importacao_itens")
+          .update({
+            acao: null,
+            qtd_entrada: 0,
+            saldo_anterior: null,
+            saldo_posterior: null,
+          })
+          .eq("id", item.id);
+        if (e0) throw new Error(e0.message);
+      }
+      continue;
+    }
 
     if (grupo.existente) {
       const { data: atual, error: e1 } = await supabase
@@ -158,16 +187,25 @@ export async function darEntradaNfeImportacao(
       });
 
       for (const item of grupo.itens) {
-        const qtdItem = qtdInteiraEstoque(Number(item.q_com));
+        const qtdItem = qtdDoItemImportacao(item);
         const { error: e3 } = await supabase
           .from("estoque_nfe_importacao_itens")
-          .update({
-            id_produto: grupo.existente.id,
-            acao: "atualizado",
-            qtd_entrada: qtdItem,
-            saldo_anterior: saldoAnterior,
-            saldo_posterior: saldoPosterior,
-          })
+          .update(
+            qtdItem <= 0
+              ? {
+                  acao: null,
+                  qtd_entrada: 0,
+                  saldo_anterior: null,
+                  saldo_posterior: null,
+                }
+              : {
+                  id_produto: grupo.existente.id,
+                  acao: "atualizado",
+                  qtd_entrada: qtdItem,
+                  saldo_anterior: saldoAnterior,
+                  saldo_posterior: saldoPosterior,
+                },
+          )
           .eq("id", item.id);
         if (e3) throw new Error(e3.message);
       }
@@ -228,16 +266,25 @@ export async function darEntradaNfeImportacao(
     });
 
     for (const item of grupo.itens) {
-      const qtdItem = qtdInteiraEstoque(Number(item.q_com));
+      const qtdItem = qtdDoItemImportacao(item);
       const { error: e3 } = await supabase
         .from("estoque_nfe_importacao_itens")
-        .update({
-          id_produto: idProduto,
-          acao: "cadastrado",
-          qtd_entrada: qtdItem,
-          saldo_anterior: 0,
-          saldo_posterior: grupo.qtd,
-        })
+        .update(
+          qtdItem <= 0
+            ? {
+                acao: null,
+                qtd_entrada: 0,
+                saldo_anterior: null,
+                saldo_posterior: null,
+              }
+            : {
+                id_produto: idProduto,
+                acao: "cadastrado",
+                qtd_entrada: qtdItem,
+                saldo_anterior: 0,
+                saldo_posterior: grupo.qtd,
+              },
+        )
         .eq("id", item.id);
       if (e3) throw new Error(e3.message);
     }

@@ -247,7 +247,12 @@ export function montarPreviewImportacao(
     resumo: {
       cadastrar,
       atualizar,
-      unidades: previewItens.reduce((s, i) => s + qtdInteiraEstoque(i.q_com), 0),
+      unidades: previewItens.reduce((s, i) => {
+        if (nota.status === "entrada_realizada") {
+          return s + Math.max(0, Math.round(Number(i.qtd_entrada ?? 0)) || 0);
+        }
+        return s + qtdInteiraEstoque(i.q_com);
+      }, 0),
     },
   };
 }

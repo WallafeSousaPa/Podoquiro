@@ -80,6 +80,61 @@ export async function POST(_request: Request, context: RouteContext) {
     return NextResponse.json({ error: "A nota não possui itens." }, { status: 400 });
   }
 
+  let body: { quantidades?: unknown } = {};
+  try {
+    const raw = await _request.text();
+    if (raw.trim()) {
+      body = JSON.parse(raw) as { quantidades?: unknown };
+    }
+  } catch {
+    return NextResponse.json({ error: "JSON inválido." }, { status: 400 });
+  }
+
+  const qtdPorId = new Map<string, number>();
+  if (body.quantidades != null) {
+    if (typeof body.quantidades !== "object" || Array.isArray(body.quantidades)) {
+      return NextResponse.json(
+        { error: "Informe as quantidades no formato { id_item: quantidade }." },
+        { status: 400 },
+      );
+    }
+    for (const [itemId, rawQtd] of Object.entries(body.quantidades as Record<string, unknown>)) {
+      if (!isUuid(itemId)) {
+        return NextResponse.json({ error: "ID de item inválido." }, { status: 400 });
+      }
+      const n =
+        typeof rawQtd === "number"
+          ? rawQtd
+          : typeof rawQtd === "string"
+            ? Number.parseInt(rawQtd, 10)
+            : NaN;
+      if (!Number.isFinite(n) || n < 0 || !Number.isInteger(n)) {
+        return NextResponse.json(
+          { error: "Quantidade deve ser um número inteiro maior ou igual a zero." },
+          { status: 400 },
+        );
+      }
+      qtdPorId.set(itemId, n);
+    }
+  }
+
+  const idsNota = new Set(itens.map((it) => String(it.id)));
+  for (const itemId of qtdPorId.keys()) {
+    if (!idsNota.has(itemId)) {
+      return NextResponse.json(
+        { error: "Há quantidade de item que não pertence a esta nota." },
+        { status: 400 },
+      );
+    }
+  }
+
+  const itensComQtd = itens.map((it) => ({
+    ...it,
+    qtd_entrada: qtdPorId.has(String(it.id))
+      ? qtdPorId.get(String(it.id))
+      : undefined,
+  }));
+
   try {
     const resultado = await darEntradaNfeImportacao(supabase, {
       id_empresa: empresaId,
@@ -87,7 +142,7 @@ export async function POST(_request: Request, context: RouteContext) {
       numero_nf: Number(nota.numero_nf),
       chave_acesso: String(nota.chave_acesso),
       id_usuario: idUsuario,
-      itens,
+      itens: itensComQtd,
       produtos: (produtos ?? []) as ProdutoEstoqueMatch[],
     });
 
