@@ -6,8 +6,10 @@ import type { FocusAmbiente } from "@/lib/focusnfe/types";
 import {
   CNAE_PADRAO_BELEM,
   CODIGO_SERVICO_PODOLOGIA,
+  CODIGO_TRIBUTARIO_MUNICIPIO_PADRAO,
   normalizarCnae,
   normalizarCodigoServicoLc116,
+  normalizarCodigoTributarioMunicipio,
 } from "@/lib/notaas/codigo-servico";
 import { obterTokenFocusNfe } from "@/lib/focusnfe/config";
 import { cifrarSenhaUtf8, deriveMasterKeyFromEnv } from "@/lib/sefaz/nfe/cert-crypto";
@@ -32,7 +34,7 @@ export async function GET() {
   const { data, error } = await supabase
     .from("empresa_focusnfe_config")
     .select(
-      "ambiente, prestador_cnpj, prestador_inscricao_municipal, prestador_codigo_municipio, item_lista_servico, codigo_cnae, natureza_operacao, regime_especial_tributacao, optante_simples_nacional, iss_retido_padrao, token_cifrado, updated_at",
+      "ambiente, prestador_cnpj, prestador_inscricao_municipal, prestador_codigo_municipio, item_lista_servico, codigo_cnae, codigo_tributario_municipio, natureza_operacao, regime_especial_tributacao, optante_simples_nacional, iss_retido_padrao, token_cifrado, updated_at",
     )
     .eq("id_empresa", empresaId)
     .maybeSingle();
@@ -69,6 +71,10 @@ export async function GET() {
       normalizarCodigoServicoLc116(itemDb || CODIGO_SERVICO_PODOLOGIA) ??
       CODIGO_SERVICO_PODOLOGIA,
     codigo_cnae: normalizarCnae(cnaeDb || CNAE_PADRAO_BELEM) ?? CNAE_PADRAO_BELEM,
+    codigo_tributario_municipio:
+      normalizarCodigoTributarioMunicipio(
+        (data?.codigo_tributario_municipio as string | null)?.trim(),
+      ) ?? CODIGO_TRIBUTARIO_MUNICIPIO_PADRAO,
     natureza_operacao: data?.natureza_operacao ?? "1",
     regime_especial_tributacao: data?.regime_especial_tributacao ?? "6",
     optante_simples_nacional: data?.optante_simples_nacional ?? true,
@@ -95,6 +101,7 @@ export async function POST(request: Request) {
     prestador_codigo_municipio?: string;
     item_lista_servico?: string;
     codigo_cnae?: string;
+    codigo_tributario_municipio?: string;
     natureza_operacao?: string;
     regime_especial_tributacao?: string | null;
     optante_simples_nacional?: boolean;
@@ -141,6 +148,16 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "CNAE inválido." }, { status: 400 });
     }
     patch.codigo_cnae = norm;
+  }
+  if (typeof body.codigo_tributario_municipio === "string") {
+    const norm = normalizarCodigoTributarioMunicipio(body.codigo_tributario_municipio);
+    if (!norm) {
+      return NextResponse.json(
+        { error: "Código de tributação municipal inválido. Use 3 dígitos (ex.: 001)." },
+        { status: 400 },
+      );
+    }
+    patch.codigo_tributario_municipio = norm;
   }
   if (typeof body.natureza_operacao === "string") {
     patch.natureza_operacao = body.natureza_operacao.trim() || "1";

@@ -2,8 +2,10 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import {
   CNAE_PADRAO_BELEM,
   CODIGO_SERVICO_PODOLOGIA,
+  CODIGO_TRIBUTARIO_MUNICIPIO_PADRAO,
   normalizarCnae,
   normalizarCodigoServicoLc116,
+  normalizarCodigoTributarioMunicipio,
 } from "@/lib/notaas/codigo-servico";
 import { decifrarSenhaUtf8, deriveMasterKeyFromEnv } from "@/lib/sefaz/nfe/cert-crypto";
 import { baseUrlFocusNfe } from "./urls";
@@ -17,6 +19,7 @@ export type ConfigFocusNfeEmpresa = {
   prestadorCodigoMunicipio: string;
   itemListaServico: string;
   codigoCnae: string;
+  codigoTributarioMunicipio: string;
   naturezaOperacao: string;
   regimeEspecialTributacao: string | null;
   optanteSimplesNacional: boolean;
@@ -59,7 +62,7 @@ export async function obterConfigFocusNfe(
   const { data, error } = await supabase
     .from("empresa_focusnfe_config")
     .select(
-      "ambiente, prestador_cnpj, prestador_inscricao_municipal, prestador_codigo_municipio, item_lista_servico, codigo_cnae, natureza_operacao, regime_especial_tributacao, optante_simples_nacional, iss_retido_padrao",
+      "ambiente, prestador_cnpj, prestador_inscricao_municipal, prestador_codigo_municipio, item_lista_servico, codigo_cnae, codigo_tributario_municipio, natureza_operacao, regime_especial_tributacao, optante_simples_nacional, iss_retido_padrao",
     )
     .eq("id_empresa", idEmpresa)
     .maybeSingle();
@@ -72,6 +75,7 @@ export async function obterConfigFocusNfe(
 
   const itemRaw = (data.item_lista_servico as string | null)?.trim() || CODIGO_SERVICO_PODOLOGIA;
   const cnaeRaw = (data.codigo_cnae as string | null)?.trim() || CNAE_PADRAO_BELEM;
+  const tribMunRaw = (data.codigo_tributario_municipio as string | null)?.trim();
 
   return {
     ambiente,
@@ -85,6 +89,9 @@ export async function obterConfigFocusNfe(
     itemListaServico:
       normalizarCodigoServicoLc116(itemRaw) ?? CODIGO_SERVICO_PODOLOGIA,
     codigoCnae: normalizarCnae(cnaeRaw) ?? CNAE_PADRAO_BELEM,
+    codigoTributarioMunicipio:
+      normalizarCodigoTributarioMunicipio(tribMunRaw) ??
+      CODIGO_TRIBUTARIO_MUNICIPIO_PADRAO,
     naturezaOperacao: (data.natureza_operacao as string | null)?.trim() || "1",
     regimeEspecialTributacao:
       (data.regime_especial_tributacao as string | null)?.trim() || null,
@@ -106,6 +113,9 @@ export function validarConfigFocusParaEmissao(
   }
   if (config.prestadorCodigoMunicipio.length !== 7) {
     return "Código IBGE do município do prestador deve ter 7 dígitos.";
+  }
+  if (!config.codigoTributarioMunicipio) {
+    return "Informe o código de tributação municipal (cTribMun) nos parâmetros Focus NFe.";
   }
   return null;
 }

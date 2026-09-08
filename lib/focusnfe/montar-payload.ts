@@ -100,10 +100,10 @@ export function montarPayloadFocusNfse(params: {
       codigo_cnae: config.codigoCnae,
       discriminacao: discriminacao.trim(),
       codigo_municipio: config.prestadorCodigoMunicipio,
-      // NFS-e nacional: preenche tribFed/totTrib. Sem isso a SEFAZ rejeita o XML
-      // (NFe::XMLValidationError em `{nfse}trib` esperando tribFed ou totTrib).
       tipo_retencao_pis_cofins: "0",
+      codigo_tributario_municipio: config.codigoTributarioMunicipio,
     },
+    codigo_tributacao_municipal_iss: config.codigoTributarioMunicipio,
   };
 
   if (config.optanteSimplesNacional) {

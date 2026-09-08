@@ -16,6 +16,7 @@ type ConfigFocus = {
   prestador_codigo_municipio: string;
   item_lista_servico: string;
   codigo_cnae: string;
+  codigo_tributario_municipio: string;
   natureza_operacao: string;
   regime_especial_tributacao: string;
   optante_simples_nacional: boolean;
@@ -51,6 +52,7 @@ export function ModalParametrosFocusNfe({ aberto, onFechar }: Props) {
   const [prestadorCmun, setPrestadorCmun] = useState("1501402");
   const [itemLista, setItemLista] = useState("060101");
   const [cnae, setCnae] = useState("869090400");
+  const [codigoTribMun, setCodigoTribMun] = useState("001");
   const [natureza, setNatureza] = useState("1");
   const [regime, setRegime] = useState("6");
   const [simples, setSimples] = useState(true);
@@ -77,6 +79,7 @@ export function ModalParametrosFocusNfe({ aberto, onFechar }: Props) {
       setPrestadorCmun(j.prestador_codigo_municipio ?? "1501402");
       setItemLista(j.item_lista_servico);
       setCnae(j.codigo_cnae);
+      setCodigoTribMun(j.codigo_tributario_municipio ?? "001");
       setNatureza(j.natureza_operacao);
       setRegime(j.regime_especial_tributacao ?? "6");
       setSimples(j.optante_simples_nacional);
@@ -174,7 +177,8 @@ export function ModalParametrosFocusNfe({ aberto, onFechar }: Props) {
         prestador_codigo_municipio: prestadorCmun,
         item_lista_servico: itemLista,
         codigo_cnae: cnae,
-        natureza_operacao: natureza,
+        codigo_tributario_municipio: codigoTribMun,
+        natureza_operacao: natureza;
         regime_especial_tributacao: regime || null,
         optante_simples_nacional: simples,
         iss_retido_padrao: issRetido,
@@ -328,6 +332,24 @@ export function ModalParametrosFocusNfe({ aberto, onFechar }: Props) {
                       />
                     </div>
                     <div className="col-md-4 form-group">
+                      <label htmlFor="focus-trib-mun">Cód. tributação municipal</label>
+                      <input
+                        id="focus-trib-mun"
+                        className="form-control"
+                        value={codigoTribMun}
+                        onChange={(e) => setCodigoTribMun(e.target.value)}
+                        maxLength={20}
+                        inputMode="numeric"
+                      />
+                      <small className="form-text text-muted">
+                        cTribMun — em Belém, 3 dígitos (ex.: 001). Sem este campo a
+                        prefeitura rejeita com L0017.
+                      </small>
+                    </div>
+                  </div>
+
+                  <div className="row">
+                    <div className="col-md-4 form-group">
                       <label htmlFor="focus-natureza">Natureza operação</label>
                       <input
                         id="focus-natureza"
@@ -340,7 +362,8 @@ export function ModalParametrosFocusNfe({ aberto, onFechar }: Props) {
 
                   <p className="small text-muted">
                     A discriminação da NFS-e é montada automaticamente com os procedimentos
-                    realizados em cada atendimento.
+                    realizados em cada atendimento. Confira o código municipal no
+                    cadastro ISS da prefeitura se a nota for rejeitada (E0314).
                   </p>
 
                   <div className="row">

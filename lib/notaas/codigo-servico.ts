@@ -47,3 +47,18 @@ export function normalizarCnae(raw: string | null | undefined): string | null {
   if (d.length === 9) return d;
   return null;
 }
+
+/** Desdobro municipal da NFS-e nacional (cTribMun). Belém costuma usar 3 dígitos. */
+export function normalizarCodigoTributarioMunicipio(
+  raw: string | null | undefined,
+): string | null {
+  const t = (raw ?? "").trim();
+  if (!t) return null;
+  const d = t.replace(/\D/g, "");
+  if (d.length === 0) return null;
+  if (d.length <= 3) return d.padStart(3, "0");
+  return d.slice(0, 20);
+}
+
+/** Primeiro desdobro municipal — fallback quando a prefeitura não cadastrou outro. */
+export const CODIGO_TRIBUTARIO_MUNICIPIO_PADRAO = "001";

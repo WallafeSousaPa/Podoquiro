@@ -41,6 +41,11 @@ export type FocusNfseEmitirBody = {
      * Sem este campo a Focus pode gerar `<trib>` vazio.
      */
     tipo_retencao_pis_cofins?: string;
+    /**
+     * Código de tributação municipal (`cTribMun`). Belém (NFS-e nacional) rejeita
+     * com L0017 se este campo não for enviado.
+     */
+    codigo_tributario_municipio?: string;
   };
   regime_especial_tributacao?: string;
   /**
@@ -52,6 +57,8 @@ export type FocusNfseEmitirBody = {
   percentual_total_tributos_federais?: number;
   percentual_total_tributos_estaduais?: number;
   percentual_total_tributos_municipais?: number;
+  /** Desdobro municipal (cTribMun), em geral 3 dígitos. */
+  codigo_tributacao_municipal_iss?: string;
 };
 
 export type FocusNfseRespostaEmitir = {
