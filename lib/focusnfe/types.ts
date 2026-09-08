@@ -36,8 +36,22 @@ export type FocusNfseEmitirBody = {
     codigo_cnae: string;
     discriminacao: string;
     codigo_municipio: string;
+    /**
+     * NFS-e nacional (`tpRetPisCofins`). `0` = PIS/COFINS/CSLL não retidos.
+     * Sem este campo a Focus pode gerar `<trib>` vazio.
+     */
+    tipo_retencao_pis_cofins?: string;
   };
   regime_especial_tributacao?: string;
+  /**
+   * Total aproximado dos tributos no Simples Nacional (`pTotTribSN`).
+   * Obrigatório no layout nacional quando o prestador é optante do SN.
+   */
+  percentual_total_tributos_simples_nacional?: number;
+  /** Percentuais IBPT / Lei da Transparência — não optante do SN (`pTotTribFed/Est/Mun`). */
+  percentual_total_tributos_federais?: number;
+  percentual_total_tributos_estaduais?: number;
+  percentual_total_tributos_municipais?: number;
 };
 
 export type FocusNfseRespostaEmitir = {

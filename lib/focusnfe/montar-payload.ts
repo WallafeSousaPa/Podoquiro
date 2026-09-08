@@ -100,8 +100,19 @@ export function montarPayloadFocusNfse(params: {
       codigo_cnae: config.codigoCnae,
       discriminacao: discriminacao.trim(),
       codigo_municipio: config.prestadorCodigoMunicipio,
+      // NFS-e nacional: preenche tribFed/totTrib. Sem isso a SEFAZ rejeita o XML
+      // (NFe::XMLValidationError em `{nfse}trib` esperando tribFed ou totTrib).
+      tipo_retencao_pis_cofins: "0",
     },
   };
+
+  if (config.optanteSimplesNacional) {
+    body.percentual_total_tributos_simples_nacional = 0;
+  } else {
+    body.percentual_total_tributos_federais = 0;
+    body.percentual_total_tributos_estaduais = 0;
+    body.percentual_total_tributos_municipais = 0;
+  }
 
   if (incluirTomador) {
     const logradouro = (paciente.logradouro ?? "").trim() || "Não informado";

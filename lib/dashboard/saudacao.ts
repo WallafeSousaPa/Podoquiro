@@ -20,7 +20,7 @@ export type SaudacaoNomes = {
   nomeEmpresaCurto: string;
   /** Só Início (calendário) no menu — ex. grupo Podólogo. */
   somenteMenuInicio: boolean;
-  /** Início + Pacientes + Caixa + Estoque › Importação — ex. grupo Recepção. */
+  /** Início + Pacientes + Caixa + Estoque › Importação / Saídas — ex. grupo Recepção. */
   menuRecepcao: boolean;
   /** Exibe menu Atendimentos › Atendimento (Podólogo e Administrador). */
   menuAtendimento: boolean;

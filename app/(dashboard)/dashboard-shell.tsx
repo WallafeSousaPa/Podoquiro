@@ -70,7 +70,7 @@ function rotaLiberadaParaGrupoSomenteInicio(pathname: string): boolean {
   );
 }
 
-/** Início, pacientes, agendamentos, caixa, importação de estoque e alterar senha. */
+/** Início, pacientes, agendamentos, caixa, importação/saídas de estoque e alterar senha. */
 function rotaLiberadaRecepcao(pathname: string): boolean {
   if (pathname === "/inicio") return true;
   if (pathname === "/conta/senha" || pathname.startsWith("/conta/senha/")) return true;
@@ -85,6 +85,8 @@ function rotaLiberadaRecepcao(pathname: string): boolean {
   if (pathname === "/financeiro/caixa" || pathname.startsWith("/financeiro/caixa/"))
     return true;
   if (pathname === "/estoque/importacao" || pathname.startsWith("/estoque/importacao/"))
+    return true;
+  if (pathname === "/estoque/saidas" || pathname.startsWith("/estoque/saidas/"))
     return true;
   return false;
 }
@@ -104,7 +106,7 @@ export function DashboardShell({
   nomeEmpresa: string;
   /** Só exibe Início (calendário) — usuários do grupo Podólogo. */
   somenteMenuInicio?: boolean;
-  /** Início, Pacientes, Caixa e Estoque › Importação — grupo Recepção. */
+  /** Início, Pacientes, Caixa e Estoque › Importação / Saídas — grupo Recepção. */
   menuRecepcao?: boolean;
   /** Atendimentos › Atendimento — Podólogo e Administrador. */
   menuAtendimento?: boolean;
@@ -588,6 +590,18 @@ export function DashboardShell({
                           <p>Importação</p>
                         </Link>
                       </li>
+                      <li className="nav-item">
+                        <Link
+                          href="/estoque/saidas"
+                          className={cx(
+                            "nav-link",
+                            pathname.startsWith("/estoque/saidas") && "active",
+                          )}
+                        >
+                          <i className="far fa-circle nav-icon" />
+                          <p>Saídas</p>
+                        </Link>
+                      </li>
                     </ul>
                   </li>
                 </>
@@ -837,6 +851,18 @@ export function DashboardShell({
                     >
                       <i className="far fa-circle nav-icon" />
                       <p>Importação</p>
+                    </Link>
+                  </li>
+                  <li className="nav-item">
+                    <Link
+                      href="/estoque/saidas"
+                      className={cx(
+                        "nav-link",
+                        pathname.startsWith("/estoque/saidas") && "active",
+                      )}
+                    >
+                      <i className="far fa-circle nav-icon" />
+                      <p>Saídas</p>
                     </Link>
                   </li>
                 </ul>
