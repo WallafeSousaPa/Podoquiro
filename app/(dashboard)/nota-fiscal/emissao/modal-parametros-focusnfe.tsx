@@ -178,7 +178,7 @@ export function ModalParametrosFocusNfe({ aberto, onFechar }: Props) {
         item_lista_servico: itemLista,
         codigo_cnae: cnae,
         codigo_tributario_municipio: codigoTribMun,
-        natureza_operacao: natureza;
+        natureza_operacao: natureza,
         regime_especial_tributacao: regime || null,
         optante_simples_nacional: simples,
         iss_retido_padrao: issRetido,
