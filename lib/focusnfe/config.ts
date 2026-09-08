@@ -9,6 +9,7 @@ import {
 } from "@/lib/notaas/codigo-servico";
 import { decifrarSenhaUtf8, deriveMasterKeyFromEnv } from "@/lib/sefaz/nfe/cert-crypto";
 import { baseUrlFocusNfe } from "./urls";
+import { SERIE_DPS_NACIONAL_PADRAO } from "./serie-dps";
 import type { FocusAmbiente } from "./types";
 
 export type ConfigFocusNfeEmpresa = {
@@ -20,6 +21,8 @@ export type ConfigFocusNfeEmpresa = {
   itemListaServico: string;
   codigoCnae: string;
   codigoTributarioMunicipio: string;
+  /** Série da DPS (10001–49999 em Belém). */
+  serieRps: string;
   naturezaOperacao: string;
   regimeEspecialTributacao: string | null;
   optanteSimplesNacional: boolean;
@@ -92,6 +95,7 @@ export async function obterConfigFocusNfe(
     codigoTributarioMunicipio:
       normalizarCodigoTributarioMunicipio(tribMunRaw) ??
       CODIGO_TRIBUTARIO_MUNICIPIO_PADRAO,
+    serieRps: SERIE_DPS_NACIONAL_PADRAO,
     naturezaOperacao: (data.natureza_operacao as string | null)?.trim() || "1",
     regimeEspecialTributacao:
       (data.regime_especial_tributacao as string | null)?.trim() || null,

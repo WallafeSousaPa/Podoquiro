@@ -2,8 +2,22 @@ const MSG_L0017 =
   "L0017: informe o código de tributação municipal (cTribMun) em " +
   "Nota Fiscal › Parâmetros Focus NFe. Em Belém costuma ter 3 dígitos (ex.: 001).";
 
+const MSG_L0022 =
+  "L0022: a série da DPS deve ser de 10001 a 49999 (a faixa 1–10000 é da prefeitura). " +
+  "O envio agora usa a série 10001. Emita novamente.";
+
 function ehL0017(texto: string): boolean {
   return /L0017/i.test(texto) || /c[oó]digo de tributa[cç][aã]o municipal/i.test(texto);
+}
+
+function ehL0022(texto: string): boolean {
+  return /L0022/i.test(texto) || /s[eé]rie informada na DPS/i.test(texto);
+}
+
+function mensagemLayoutNacional(texto: string): string | null {
+  if (ehL0017(texto)) return MSG_L0017;
+  if (ehL0022(texto)) return MSG_L0022;
+  return null;
 }
 
 function listaErros(body: Record<string, unknown>): unknown[] | null {
@@ -19,15 +33,17 @@ function listaErros(body: Record<string, unknown>): unknown[] | null {
 /** Extrai mensagem legível de respostas Focus NFe (emitir/consultar/cancelar NFS-e). */
 export function mensagemErroFocusNfse(body: unknown): string | null {
   if (typeof body === "string" && body.trim()) {
-    if (ehL0017(body)) return MSG_L0017;
-    return mensagemErroXmlTribNfse(body) ?? body.trim();
+    return mensagemLayoutNacional(body) ?? mensagemErroXmlTribNfse(body) ?? body.trim();
   }
   if (!body || typeof body !== "object") return null;
   const o = body as Record<string, unknown>;
 
   if (typeof o.mensagem === "string" && o.mensagem.trim()) {
-    if (ehL0017(o.mensagem)) return MSG_L0017;
-    return mensagemErroXmlTribNfse(o.mensagem) ?? o.mensagem.trim();
+    return (
+      mensagemLayoutNacional(o.mensagem) ??
+      mensagemErroXmlTribNfse(o.mensagem) ??
+      o.mensagem.trim()
+    );
   }
 
   const erros = listaErros(o);
@@ -40,9 +56,9 @@ export function mensagemErroFocusNfse(body: unknown): string | null {
       const bruto = [item.codigo, item.mensagem, item.correcao].filter(Boolean).join(" ");
       const xmlTrib = mensagemErroXmlTribNfse(bruto);
       if (xmlTrib) return xmlTrib;
-      if ((item.codigo ?? "").toUpperCase() === "L0017" || ehL0017(bruto)) {
-        return MSG_L0017;
-      }
+      const codigo = (item.codigo ?? "").toUpperCase();
+      if (codigo === "L0017" || ehL0017(bruto)) return MSG_L0017;
+      if (codigo === "L0022" || ehL0022(bruto)) return MSG_L0022;
       const main = [item.codigo, item.mensagem].filter(Boolean).join(": ");
       const correcao = item.correcao?.trim();
       if (correcao) {

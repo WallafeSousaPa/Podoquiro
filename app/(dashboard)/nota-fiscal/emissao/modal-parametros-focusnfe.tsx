@@ -358,6 +358,19 @@ export function ModalParametrosFocusNfe({ aberto, onFechar }: Props) {
                         onChange={(e) => setNatureza(e.target.value)}
                       />
                     </div>
+                    <div className="col-md-4 form-group">
+                      <label htmlFor="focus-serie">Série DPS</label>
+                      <input
+                        id="focus-serie"
+                        className="form-control"
+                        value="10001"
+                        readOnly
+                      />
+                      <small className="form-text text-muted">
+                        Belém exige 10001–49999 (L0022). A faixa 1–10000 é da
+                        prefeitura.
+                      </small>
+                    </div>
                   </div>
 
                   <p className="small text-muted">

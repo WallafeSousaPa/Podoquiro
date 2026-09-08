@@ -59,6 +59,13 @@ export type FocusNfseEmitirBody = {
   percentual_total_tributos_municipais?: number;
   /** Desdobro municipal (cTribMun), em geral 3 dígitos. */
   codigo_tributacao_municipal_iss?: string;
+  /**
+   * Série do RPS/DPS. Belém (NFS-e nacional) rejeita L0022 se a série
+   * estiver entre 00001 e 10000 (faixa do sistema municipal).
+   */
+  serie_rps?: string;
+  /** Alias do layout nacional (`serie` da DPS). */
+  serie_dps?: number;
 };
 
 export type FocusNfseRespostaEmitir = {

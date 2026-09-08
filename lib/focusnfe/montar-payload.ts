@@ -104,6 +104,8 @@ export function montarPayloadFocusNfse(params: {
       codigo_tributario_municipio: config.codigoTributarioMunicipio,
     },
     codigo_tributacao_municipal_iss: config.codigoTributarioMunicipio,
+    serie_rps: config.serieRps,
+    serie_dps: Number(config.serieRps),
   };
 
   if (config.optanteSimplesNacional) {
