@@ -53,17 +53,17 @@ export function grupoNomeIgnoraValidacaoHorarioAoMudarStatus(
   return grupoNomeVisualizaDescontoProdutoModalCaixa(nome);
 }
 
-/** Grupos administrativos (ex.: Administrador, Administrativo) podem retroagir agenda. */
+/** Grupos administrativos (Administrador, Administrativo, Diretoria) podem retroagir agenda. */
 export function grupoNomePermiteAgendarRetroativo(
   nome: string | null | undefined,
 ): boolean {
   if (nome == null || String(nome).trim() === "") return false;
   const c = normalizarNomeGrupoAgenda(String(nome));
-  return c.includes("admin");
+  return c.includes("admin") || c.includes("diretoria") || c === "diretor";
 }
 
 /**
- * Grupos Administrador e Administrativo:
+ * Grupos Administrador, Administrativo e Diretoria:
  * - coluna de desconto (R$) em produtos e resumo de desconto % na área de pagamentos
  *   no modal do caixa;
  * - botão de incluir novo procedimento no modal do caixa e na agenda;
@@ -78,7 +78,9 @@ export function grupoNomeVisualizaDescontoProdutoModalCaixa(
     c.includes("administrador") ||
     c.includes("administrativo") ||
     c.includes("administracao") ||
-    c === "admin"
+    c === "admin" ||
+    c.includes("diretoria") ||
+    c === "diretor"
   );
 }
 
@@ -185,7 +187,7 @@ export async function getNomeGrupoUsuariosDoUsuario(
 /**
  * Prontuário do atendimento (API GET/POST — chamar só com agendamento Em andamento):
  * - perfil podólogo: agenda “apenas coluna própria” e o usuário é o profissional do agendamento;
- * - Administrador / Administrativo: vê agenda ampla (`calendario`) ou é o profissional do agendamento.
+ * - Administrador / Administrativo / Diretoria: vê agenda ampla (`calendario`) ou é o profissional do agendamento.
  */
 export async function getUsuarioPodeAcessarProntuarioAtendimento(
   supabase: SupabaseClient,
