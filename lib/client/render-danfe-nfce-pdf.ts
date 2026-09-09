@@ -192,7 +192,7 @@ function separador(ctx: Ctx): void {
   ctx.y += 1;
   if (!ctx.measure) {
     ctx.doc.setLineWidth(0.1);
-    ctx.doc.setDrawColor(120);
+    ctx.doc.setDrawColor(120, 120, 120);
     ctx.doc.line(MARGEM, ctx.y, LARGURA_MM - MARGEM, ctx.y);
   }
   ctx.y += 2;

@@ -119,7 +119,7 @@ function desenharCode128(doc: jsPDF, texto: string, x: number, y: number, w: num
   const totalMod = padroes.reduce((s, p) => s + [...p].reduce((a, c) => a + Number(c), 0), 0);
   const modulo = w / totalMod;
   let cx = x;
-  doc.setFillColor(0);
+  doc.setFillColor(0, 0, 0);
   for (const p of padroes) {
     let bar = true;
     for (const ch of p) {
@@ -191,7 +191,7 @@ export async function gerarDanfeNfePdfUrl(d: DanfeNfeCompleto): Promise<string> 
   const logo = await carregarLogo();
 
   const stroke = () => {
-    doc.setDrawColor(0);
+    doc.setDrawColor(0, 0, 0);
     doc.setLineWidth(0.25);
   };
 
@@ -203,9 +203,9 @@ export async function gerarDanfeNfePdfUrl(d: DanfeNfeCompleto): Promise<string> 
   const titulo = (s: string, x: number, yy: number) => {
     doc.setFont("helvetica", "normal");
     doc.setFontSize(4.8);
-    doc.setTextColor(60);
+    doc.setTextColor(60, 60, 60);
     doc.text(s, x, yy);
-    doc.setTextColor(0);
+    doc.setTextColor(0, 0, 0);
   };
 
   const val = (
@@ -218,7 +218,7 @@ export async function gerarDanfeNfePdfUrl(d: DanfeNfeCompleto): Promise<string> 
   ) => {
     doc.setFont("helvetica", bold ? "bold" : "normal");
     doc.setFontSize(size);
-    doc.setTextColor(0);
+    doc.setTextColor(0, 0, 0);
     if (align) doc.text(s || "", x, yy, { align });
     else doc.text(s || "", x, yy);
   };
@@ -245,7 +245,7 @@ export async function gerarDanfeNfePdfUrl(d: DanfeNfeCompleto): Promise<string> 
       align: "center",
     });
     y += 6;
-    doc.setTextColor(0);
+    doc.setTextColor(0, 0, 0);
   }
 
   // —— Canhoto de recebimento (igual ao DANFE impresso) ——
@@ -274,9 +274,9 @@ export async function gerarDanfeNfePdfUrl(d: DanfeNfeCompleto): Promise<string> 
   y += hCanhoto + 3.2;
   doc.setFont("helvetica", "normal");
   doc.setFontSize(5.2);
-  doc.setTextColor(80);
+  doc.setTextColor(80, 80, 80);
   doc.text("Corte na linha pontilhada", pageW / 2, y - 0.4, { align: "center" });
-  doc.setTextColor(0);
+  doc.setTextColor(0, 0, 0);
   doc.setLineDashPattern([0.9, 0.7], 0);
   stroke();
   doc.line(x0, y, x1, y);
