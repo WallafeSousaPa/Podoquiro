@@ -287,6 +287,22 @@ function ModalConfirmarCancelamentoNfse({
   );
 }
 
+async function lerJsonResposta<T>(res: Response): Promise<T> {
+  const texto = await res.text();
+  if (!texto.trim()) {
+    throw new Error(
+      res.ok
+        ? "A Focus NFe não retornou dados."
+        : `Falha ao emitir NFS-e (HTTP ${res.status}). Tente novamente.`,
+    );
+  }
+  try {
+    return JSON.parse(texto) as T;
+  } catch {
+    throw new Error(texto.slice(0, 500));
+  }
+}
+
 export function ModalEmissaoNfse({ row, onFechar, onEmitido }: Props) {
   const [loading, setLoading] = useState(true);
   const [erro, setErro] = useState<string | null>(null);
@@ -309,7 +325,7 @@ export function ModalEmissaoNfse({ row, onFechar, onEmitido }: Props) {
         `/api/nota-fiscal/emissao/detalhe?id_agendamento=${row.id}`,
         { credentials: "include" },
       );
-      const j = (await res.json()) as DetalheResponse & { error?: string };
+      const j = await lerJsonResposta<DetalheResponse & { error?: string }>(res);
       if (!res.ok) throw new Error(j.error ?? "Erro ao carregar detalhes.");
       setDetalhe(j);
       const procs = j.agendamento.procedimentos
@@ -352,7 +368,7 @@ export function ModalEmissaoNfse({ row, onFechar, onEmitido }: Props) {
       credentials: "include",
       body: JSON.stringify({ id: emissaoId }),
     });
-    const j = (await res.json()) as ConsultarRes;
+    const j = await lerJsonResposta<ConsultarRes>(res);
     if (!res.ok) throw new Error(j.error ?? "Erro ao consultar NFS-e.");
     return j;
   };
@@ -392,7 +408,7 @@ export function ModalEmissaoNfse({ row, onFechar, onEmitido }: Props) {
         credentials: "include",
         body: JSON.stringify({ id: emissaoId }),
       });
-      const j = (await res.json()) as { error?: string; emissao?: NfseEmissao };
+      const j = await lerJsonResposta<{ error?: string; emissao?: NfseEmissao }>(res);
       if (!res.ok) throw new Error(j.error ?? "Erro ao cancelar NFS-e.");
       setConfirmCancelId(null);
       setNotaEmitida(null);
@@ -421,12 +437,19 @@ export function ModalEmissaoNfse({ row, onFechar, onEmitido }: Props) {
         credentials: "include",
         body: JSON.stringify({ id_agendamento: row.id }),
       });
-      const j = (await res.json()) as {
+      const j = await lerJsonResposta<{
         error?: string;
+        detalhe?: unknown;
         emissao?: { id: string; status?: string };
         focus?: { status?: string };
-      };
-      if (!res.ok) throw new Error(j.error ?? "Erro ao emitir NFS-e.");
+      }>(res);
+      if (!res.ok) {
+        throw new Error(
+          j.error ??
+            mensagemErroFocusNfse(j.detalhe) ??
+            "Erro ao emitir NFS-e.",
+        );
+      }
 
       const emissaoId = j.emissao?.id;
       if (!emissaoId) throw new Error("Resposta de emissão inválida.");

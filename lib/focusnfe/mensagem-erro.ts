@@ -3,8 +3,17 @@ const MSG_L0017 =
   "Nota Fiscal › Parâmetros Focus NFe. Em Belém costuma ter 3 dígitos (ex.: 001).";
 
 const MSG_L0022 =
-  "L0022: a série da DPS deve ser de 10001 a 49999 (a faixa 1–10000 é da prefeitura). " +
-  "O envio agora usa a série 10001. Emita novamente.";
+  "L0022: Belém só aceita série 10001–49999 (a faixa 1–10000 é da prefeitura). " +
+  "Ajuste a série da NFS-e para 10001 no painel da Focus NFe (Empresa › Numeração) " +
+  "e emita novamente.";
+
+const MSG_E0316 =
+  "E0316: o código NBS da nota não existe na tabela de Belém. " +
+  "O envio usa 1.2602.20.00 (manicure/pedicure, LC 116 item 6.01). Emita novamente.";
+
+const MSG_CEP_TOMADOR =
+  "O CEP do tomador não pertence ao município informado na NFS-e. " +
+  "O sistema agora usa o IBGE do CEP (ViaCEP). Corrija o CEP no cadastro do paciente e emita novamente.";
 
 function ehL0017(texto: string): boolean {
   return /L0017/i.test(texto) || /c[oó]digo de tributa[cç][aã]o municipal/i.test(texto);
@@ -14,9 +23,19 @@ function ehL0022(texto: string): boolean {
   return /L0022/i.test(texto) || /s[eé]rie informada na DPS/i.test(texto);
 }
 
+function ehE0316(texto: string): boolean {
+  return /E0316/i.test(texto) || /\bNBS\b/i.test(texto);
+}
+
+function ehCepTomador(texto: string): boolean {
+  return /cep informado para o endere[cç]o nacional do tomador/i.test(texto);
+}
+
 function mensagemLayoutNacional(texto: string): string | null {
   if (ehL0017(texto)) return MSG_L0017;
   if (ehL0022(texto)) return MSG_L0022;
+  if (ehE0316(texto)) return MSG_E0316;
+  if (ehCepTomador(texto)) return MSG_CEP_TOMADOR;
   return null;
 }
 
@@ -38,6 +57,10 @@ export function mensagemErroFocusNfse(body: unknown): string | null {
   if (!body || typeof body !== "object") return null;
   const o = body as Record<string, unknown>;
 
+  if (typeof o.raw === "string" && o.raw.trim()) {
+    return mensagemErroFocusNfse(o.raw);
+  }
+
   if (typeof o.mensagem === "string" && o.mensagem.trim()) {
     return (
       mensagemLayoutNacional(o.mensagem) ??
@@ -45,6 +68,9 @@ export function mensagemErroFocusNfse(body: unknown): string | null {
       o.mensagem.trim()
     );
   }
+
+  const xmlNoJson = mensagemErroXmlTribNfse(JSON.stringify(o));
+  if (xmlNoJson) return xmlNoJson;
 
   const erros = listaErros(o);
   if (!erros) return null;
@@ -59,6 +85,8 @@ export function mensagemErroFocusNfse(body: unknown): string | null {
       const codigo = (item.codigo ?? "").toUpperCase();
       if (codigo === "L0017" || ehL0017(bruto)) return MSG_L0017;
       if (codigo === "L0022" || ehL0022(bruto)) return MSG_L0022;
+      if (codigo === "E0316" || ehE0316(bruto)) return MSG_E0316;
+      if (ehCepTomador(bruto)) return MSG_CEP_TOMADOR;
       const main = [item.codigo, item.mensagem].filter(Boolean).join(": ");
       const correcao = item.correcao?.trim();
       if (correcao) {
@@ -74,12 +102,23 @@ export function mensagemErroFocusNfse(body: unknown): string | null {
 function mensagemErroXmlTribNfse(texto: string): string | null {
   const t = texto.toLowerCase();
   if (
+    t.includes("tpretpiscofins") ||
+    t.includes("ptottribsn") ||
+    (t.includes("expected is") && t.includes("cst"))
+  ) {
+    return (
+      "A prefeitura rejeitou o XML da NFS-e: o layout atual espera o CST " +
+      "(PIS/COFINS e IBS/CBS), não os campos antigos de retenção e total de tributos. " +
+      "Emita novamente."
+    );
+  }
+  if (
     t.includes("xmlvalidationerror") &&
     (t.includes("tribfed") || t.includes("tottrib") || t.includes("}trib'"))
   ) {
     return (
-      "A prefeitura rejeitou a NFS-e: faltam tributos federais ou o total de tributos no XML. " +
-      "Emita novamente; o envio agora inclui esses campos."
+      "A prefeitura rejeitou a NFS-e: o XML de tributos não está no layout nacional atual. " +
+      "Emita novamente."
     );
   }
   return null;

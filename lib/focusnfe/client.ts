@@ -36,29 +36,87 @@ function mensagemErro(body: unknown, fallback: string): string {
   return mensagemErroFocusNfseOuFallback(body, fallback);
 }
 
+function urlFocus(baseUrl: string, path: string): string {
+  return `${baseUrl.replace(/\/$/, "")}${path.startsWith("/") ? path : `/${path}`}`;
+}
+
+async function focusRequestJson(
+  url: string,
+  token: string,
+  init: RequestInit,
+): Promise<{ ok: boolean; status: number; json: unknown }> {
+  let res: Response;
+  try {
+    res = await fetch(url, {
+      ...init,
+      signal: init.signal ?? AbortSignal.timeout(60_000),
+      headers: {
+        accept: "application/json",
+        authorization: authHeader(token),
+        ...(init.body ? { "content-type": "application/json" } : {}),
+        ...(init.headers ?? {}),
+      },
+    });
+  } catch (e) {
+    const causa =
+      e instanceof Error ? e.message : "Falha de rede ao contactar a Focus NFe.";
+    throw new FocusNfeApiError(
+      "Não foi possível conectar à Focus NFe. Tente emitir novamente em instantes.",
+      503,
+      { causa },
+    );
+  }
+  const json = await parseJson(res);
+  return { ok: res.ok, status: res.status, json };
+}
+
+function erroFocus(json: unknown, status: number, fallback: string): FocusNfeApiError {
+  return new FocusNfeApiError(mensagemErro(json, fallback), status, json);
+}
+
+/**
+ * Belém usa layout nacional (`/v2/nfsen`). Consulta/cancelamento de refs antigas
+ * ainda podem estar em `/v2/nfse`.
+ */
+async function focusNfseComFallback(
+  baseUrl: string,
+  token: string,
+  ref: string,
+  method: "GET" | "DELETE",
+): Promise<unknown> {
+  const encoded = encodeURIComponent(ref);
+  const paths = [`/nfsen/${encoded}`, `/nfse/${encoded}`];
+  let ultimo: { status: number; json: unknown } | null = null;
+  for (const path of paths) {
+    const { ok, status, json } = await focusRequestJson(urlFocus(baseUrl, path), token, {
+      method,
+    });
+    if (ok) return json;
+    ultimo = { status, json };
+    if (status !== 404) {
+      throw erroFocus(json, status, `Focus NFe retornou HTTP ${status}.`);
+    }
+  }
+  throw erroFocus(
+    ultimo?.json,
+    ultimo?.status ?? 404,
+    `Focus NFe retornou HTTP ${ultimo?.status ?? 404}.`,
+  );
+}
+
 export async function focusEmitirNfse(
   baseUrl: string,
   token: string,
   ref: string,
   body: FocusNfseEmitirBody,
 ): Promise<FocusNfseRespostaEmitir> {
-  const url = `${baseUrl.replace(/\/$/, "")}/nfse?ref=${encodeURIComponent(ref)}`;
-  const res = await fetch(url, {
+  const url = `${urlFocus(baseUrl, "/nfsen")}?ref=${encodeURIComponent(ref)}`;
+  const { ok, status, json } = await focusRequestJson(url, token, {
     method: "POST",
-    headers: {
-      accept: "application/json",
-      authorization: authHeader(token),
-      "content-type": "application/json",
-    },
     body: JSON.stringify(body),
   });
-  const json = await parseJson(res);
-  if (!res.ok) {
-    throw new FocusNfeApiError(
-      mensagemErro(json, `Focus NFe retornou HTTP ${res.status}.`),
-      res.status,
-      json,
-    );
+  if (!ok) {
+    throw erroFocus(json, status, `Focus NFe retornou HTTP ${status}.`);
   }
   return json as FocusNfseRespostaEmitir;
 }
@@ -68,23 +126,7 @@ export async function focusConsultarNfse(
   token: string,
   ref: string,
 ): Promise<FocusNfseRespostaConsulta> {
-  const url = `${baseUrl.replace(/\/$/, "")}/nfse/${encodeURIComponent(ref)}`;
-  const res = await fetch(url, {
-    method: "GET",
-    headers: {
-      accept: "application/json",
-      authorization: authHeader(token),
-    },
-  });
-  const json = await parseJson(res);
-  if (!res.ok) {
-    throw new FocusNfeApiError(
-      mensagemErro(json, `Focus NFe retornou HTTP ${res.status}.`),
-      res.status,
-      json,
-    );
-  }
-  return json as FocusNfseRespostaConsulta;
+  return (await focusNfseComFallback(baseUrl, token, ref, "GET")) as FocusNfseRespostaConsulta;
 }
 
 export async function focusCancelarNfse(
@@ -92,24 +134,7 @@ export async function focusCancelarNfse(
   token: string,
   ref: string,
 ): Promise<FocusNfseRespostaCancelar> {
-  const url = `${baseUrl.replace(/\/$/, "")}/nfse/${encodeURIComponent(ref)}`;
-  const res = await fetch(url, {
-    method: "DELETE",
-    headers: {
-      accept: "application/json",
-      authorization: authHeader(token),
-      "content-type": "application/json",
-    },
-  });
-  const json = await parseJson(res);
-  if (!res.ok) {
-    throw new FocusNfeApiError(
-      mensagemErro(json, `Focus NFe retornou HTTP ${res.status}.`),
-      res.status,
-      json,
-    );
-  }
-  return json as FocusNfseRespostaCancelar;
+  return (await focusNfseComFallback(baseUrl, token, ref, "DELETE")) as FocusNfseRespostaCancelar;
 }
 
 export type FocusWebhook = {

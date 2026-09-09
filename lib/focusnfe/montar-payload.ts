@@ -1,4 +1,5 @@
 import type { ConfigFocusNfeEmpresa } from "./config";
+import { NBS_PODOLOGIA_PEDICURE } from "@/lib/notaas/codigo-servico";
 import type { FocusNfseEmitirBody } from "./types";
 
 export type PacienteFocusTomador = {
@@ -48,13 +49,17 @@ export function dataEmissaoIsoFocusBr(): string {
   return `${get("year")}-${get("month")}-${get("day")}T${get("hour")}:${get("minute")}:${get("second")}-03:00`;
 }
 
-function tipoLogradouro(logradouro: string): string {
-  const l = logradouro.trim().toLowerCase();
-  if (l.startsWith("av") || l.startsWith("avenida")) return "Av";
-  if (l.startsWith("al") || l.startsWith("alameda")) return "Al";
-  if (l.startsWith("trav") || l.startsWith("travessa")) return "Tv";
-  if (l.startsWith("rod")) return "Rod";
-  return "Rua";
+/**
+ * Regime especial no layout nacional (regEspTrib).
+ * O código 6 da API aninhada é ME/EPP do Simples — no nacional isso é `opSimpNac=3` + regime 0.
+ */
+function regimeEspecialNacional(raw: string | null): number {
+  const v = (raw ?? "").trim();
+  if (v === "1") return 3; // microempresa municipal
+  if (v === "2") return 2; // estimativa
+  if (v === "3") return 6; // sociedade de profissionais
+  if (v === "4") return 1; // cooperativa
+  return 0;
 }
 
 /** Discriminação da NFS-e = nomes dos procedimentos realizados no atendimento. */
@@ -79,81 +84,75 @@ export function montarPayloadFocusNfse(params: {
   valorServicos: number;
   discriminacao: string;
   issRetido?: boolean;
+  /** IBGE do município do tomador (CEP). Não usar o município do prestador. */
+  codigoMunicipioTomador?: string;
 }): FocusNfseEmitirBody {
   const { config, paciente, valorServicos, discriminacao } = params;
   const cpf = apenasDigitos(paciente.cpf ?? "");
   const incluirTomador = cpf.length === 11;
+  const dataEmissao = dataEmissaoIsoFocusBr();
+  const municipio = Number(config.prestadorCodigoMunicipio);
+  const issRetido = params.issRetido ?? config.issRetidoPadrao;
+  const serieDps = Number(config.serieRps);
+  const numeroDps = Date.now();
 
   const body: FocusNfseEmitirBody = {
-    data_emissao: dataEmissaoIsoFocusBr(),
-    natureza_operacao: config.naturezaOperacao,
-    optante_simples_nacional: config.optanteSimplesNacional,
-    prestador: {
-      cnpj: config.prestadorCnpj,
-      inscricao_municipal: config.prestadorInscricaoMunicipal,
-      codigo_municipio: config.prestadorCodigoMunicipio,
-    },
-    servico: {
-      iss_retido: params.issRetido ?? config.issRetidoPadrao,
-      valor_servicos: Math.round(valorServicos * 100) / 100,
-      item_lista_servico: config.itemListaServico,
-      codigo_cnae: config.codigoCnae,
-      discriminacao: discriminacao.trim(),
-      codigo_municipio: config.prestadorCodigoMunicipio,
-      tipo_retencao_pis_cofins: "0",
-      codigo_tributario_municipio: config.codigoTributarioMunicipio,
-    },
+    data_emissao: dataEmissao,
+    data_competencia: dataEmissao.slice(0, 10),
+    serie_dps: serieDps,
+    numero_dps: numeroDps,
+    serie_rps: String(serieDps),
+    numero_rps: String(numeroDps),
+    emitente_dps: 1,
+    codigo_municipio_emissora: municipio,
+    cnpj_prestador: config.prestadorCnpj,
+    inscricao_municipal_prestador: config.prestadorInscricaoMunicipal,
+    codigo_opcao_simples_nacional: config.optanteSimplesNacional ? 3 : 1,
+    regime_especial_tributacao: regimeEspecialNacional(config.regimeEspecialTributacao),
+    codigo_municipio_prestacao: municipio,
+    codigo_tributacao_nacional_iss: config.itemListaServico,
     codigo_tributacao_municipal_iss: config.codigoTributarioMunicipio,
-    serie_rps: config.serieRps,
-    serie_dps: Number(config.serieRps),
+    codigo_nbs: NBS_PODOLOGIA_PEDICURE,
+    descricao_servico: discriminacao.trim(),
+    valor_servico: Math.round(valorServicos * 100) / 100,
+    tributacao_iss: 1,
+    tipo_retencao_iss: issRetido ? 2 : 1,
+    situacao_tributaria_pis_cofins: "00",
+    indicador_total_tributacao: "0",
+    finalidade_emissao: 0,
+    consumidor_final: 0,
+    indicador_destinatario: 0,
+    codigo_indicador_operacao: "030101",
+    ibs_cbs_situacao_tributaria: "200",
+    ibs_cbs_classificacao_tributaria: "200029",
   };
 
-  if (config.optanteSimplesNacional) {
-    body.percentual_total_tributos_simples_nacional = 0;
-  } else {
-    body.percentual_total_tributos_federais = 0;
-    body.percentual_total_tributos_estaduais = 0;
-    body.percentual_total_tributos_municipais = 0;
-  }
-
   if (incluirTomador) {
-    const logradouro = (paciente.logradouro ?? "").trim() || "Não informado";
-    const numero = (paciente.numero ?? "").trim() || "S/N";
-    const bairro = (paciente.bairro ?? "").trim() || "Centro";
-    const uf = (paciente.uf ?? "PA").trim().toUpperCase().slice(0, 2) || "PA";
     const cep = apenasDigitos(paciente.cep ?? "");
     if (cep.length !== 8) {
       throw new Error(
         "CEP do paciente inválido para NFS-e com tomador (8 dígitos). Corrija o cadastro ou remova o CPF.",
       );
     }
-
-    body.tomador = {
-      cpf,
-      razao_social: nomeTomador(paciente),
-      endereco: {
-        logradouro,
-        numero,
-        tipo_logradouro: tipoLogradouro(logradouro),
-        bairro,
-        codigo_municipio: config.prestadorCodigoMunicipio,
-        uf,
-        cep,
-        ...(paciente.complemento?.trim()
-          ? { complemento: paciente.complemento.trim() }
-          : {}),
-      },
-    };
-
+    const ibgeTomador = Number(params.codigoMunicipioTomador);
+    if (!Number.isFinite(ibgeTomador) || ibgeTomador <= 0) {
+      throw new Error(
+        "Não foi possível obter o município IBGE do CEP do paciente. Corrija o CEP no cadastro.",
+      );
+    }
+    body.cpf_tomador = cpf;
+    body.razao_social_tomador = nomeTomador(paciente);
+    body.codigo_municipio_tomador = ibgeTomador;
+    body.cep_tomador = cep;
+    body.logradouro_tomador = (paciente.logradouro ?? "").trim() || "Não informado";
+    body.numero_tomador = (paciente.numero ?? "").trim() || "S/N";
+    body.bairro_tomador = (paciente.bairro ?? "").trim() || "Centro";
+    const complemento = paciente.complemento?.trim();
+    if (complemento) body.complemento_tomador = complemento;
     const email = paciente.email?.trim();
-    if (email) body.tomador.email = email;
-
+    if (email) body.email_tomador = email;
     const tel = apenasDigitos(paciente.telefone ?? "");
-    if (tel.length >= 10) body.tomador.telefone = tel;
-  }
-
-  if (config.regimeEspecialTributacao) {
-    body.regime_especial_tributacao = config.regimeEspecialTributacao;
+    if (tel.length >= 10) body.telefone_tomador = tel;
   }
 
   return body;

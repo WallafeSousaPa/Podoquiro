@@ -8,6 +8,7 @@ type ViaCepJson = {
   bairro?: string;
   localidade?: string;
   uf?: string;
+  ibge?: string;
   erro?: boolean;
 };
 
@@ -64,5 +65,6 @@ export async function GET(_request: Request, context: RouteContext) {
     bairro: data.bairro ?? "",
     cidade: data.localidade,
     uf: data.uf,
+    ibge: (data.ibge ?? "").replace(/\D/g, ""),
   });
 }

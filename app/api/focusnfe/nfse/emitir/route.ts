@@ -15,6 +15,7 @@ import {
   statusInternoDeFocus,
   validarConfigFocusParaEmissao,
 } from "@/lib/focusnfe";
+import { ibgeMunicipioTomador } from "@/lib/cep/viacep";
 import { createAdminClient } from "@/lib/supabase/admin";
 
 function parseEmpresaId(idEmpresa: string) {
@@ -184,6 +185,26 @@ export async function POST(request: Request) {
     );
   }
 
+  let codigoMunicipioTomador: string | undefined;
+  const cepPaciente = String(paciente.cep ?? "").replace(/\D/g, "");
+  if (cepPaciente.length === 8) {
+    codigoMunicipioTomador =
+      (await ibgeMunicipioTomador({
+        cep: cepPaciente,
+        cidade: paciente.cidade,
+      })) ?? undefined;
+    if (!codigoMunicipioTomador) {
+      return NextResponse.json(
+        {
+          error:
+            "CEP do paciente não foi encontrado ou não bate com o município. " +
+            "Corrija o CEP/cidade no cadastro (ex.: Altamira = 1500602) e emita novamente.",
+        },
+        { status: 400 },
+      );
+    }
+  }
+
   let payload;
   try {
     payload = montarPayloadFocusNfse({
@@ -192,6 +213,7 @@ export async function POST(request: Request) {
       valorServicos: valorTotal,
       discriminacao,
       issRetido: body.iss_retido,
+      codigoMunicipioTomador,
     });
   } catch (e) {
     return NextResponse.json(
@@ -212,7 +234,15 @@ export async function POST(request: Request) {
         { status: e.status >= 400 && e.status < 600 ? e.status : 502 },
       );
     }
-    throw e;
+    return NextResponse.json(
+      {
+        error:
+          e instanceof Error
+            ? e.message
+            : "Falha ao emitir NFS-e na Focus NFe.",
+      },
+      { status: 502 },
+    );
   }
 
   const status = statusInternoDeFocus(resposta.status);

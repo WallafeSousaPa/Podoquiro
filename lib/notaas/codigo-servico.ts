@@ -41,6 +41,9 @@ export const CNAE_PODOLOGIA_BELEM = CNAE_PADRAO_BELEM;
 export const DESCRICAO_LC116_PODOLOGIA =
   "Barbearia, cabeleireiros, manicuros, pedicuros e congêneres (LC 116 — 6.01)";
 
+/** NBS do item 6.01 — manicure, pedicure e tratamento cosmético (Anexo VIII NFS-e). */
+export const NBS_PODOLOGIA_PEDICURE = "1.2602.20.00";
+
 export function normalizarCnae(raw: string | null | undefined): string | null {
   const d = (raw ?? "").replace(/\D/g, "");
   if (d.length === 7) return `${d}00`;
