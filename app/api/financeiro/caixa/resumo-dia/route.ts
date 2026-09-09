@@ -1,8 +1,4 @@
 import { NextResponse } from "next/server";
-import {
-  getPodeVerTodosAgendamentos,
-  getUsuarioAgendaSomentePropriaColuna,
-} from "@/lib/agenda/permissoes-calendario";
 import { getSession } from "@/lib/auth/session";
 import { createAdminClient } from "@/lib/supabase/admin";
 
@@ -51,18 +47,10 @@ export async function GET(request: Request) {
   }
 
   const supabase = createAdminClient();
-  const [podeVerTodos, somentePropriaColuna] = await Promise.all([
-    getPodeVerTodosAgendamentos(supabase, sessionUserId),
-    getUsuarioAgendaSomentePropriaColuna(supabase, sessionUserId),
-  ]);
-
-  const verTodosEmpresa =
-    podeVerTodos && !somentePropriaColuna;
-
   const { data: raw, error } = await supabase.rpc("caixa_resumo_pagamentos_dia", {
     p_id_empresa: empresaId,
     p_data: data,
-    p_id_usuario: verTodosEmpresa ? null : sessionUserId,
+    p_id_usuario: null,
   });
 
   if (error) {

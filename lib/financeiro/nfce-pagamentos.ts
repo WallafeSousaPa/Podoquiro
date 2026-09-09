@@ -117,7 +117,14 @@ function linhaPagamentoNfce(
   maquinetaCnpj?: string | null,
   bandeiraCodigo?: string | null,
 ): PagamentoDetNfce {
-  const tPagNorm = normalizarTpag(tPag);
+  let tPagNorm = normalizarTpag(tPag);
+  /**
+   * NT 2025.001: tPag 17 (PIX dinâmico) exige grupo `card` + CNPJ da instituição.
+   * PIX no caixa sem maquineta/CNPJ é estático (QR/chave) — tPag 20, sem grupo `card`.
+   */
+  if (isTpagPixDinamico(tPagNorm) && !cnpjCredenciadoraCartao(maquineta, maquinetaCnpj)) {
+    tPagNorm = "20";
+  }
   const linha: PagamentoDetNfce = { tPag: tPagNorm, vPag: roundMoney(vPag) };
   if (isTpagExigeGrupoCardNfce(tPagNorm)) {
     linha.card = grupoCardNfce(tPagNorm, maquineta, maquinetaCnpj, bandeiraCodigo);

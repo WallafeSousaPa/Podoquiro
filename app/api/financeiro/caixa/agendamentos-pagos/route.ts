@@ -1,5 +1,4 @@
 import { NextResponse } from "next/server";
-import { getPodeVerTodosAgendamentos } from "@/lib/agenda/permissoes-calendario";
 import { getSession } from "@/lib/auth/session";
 import { carregarCaixaAgendamentosRows } from "@/lib/financeiro/caixa-agendamentos-rows";
 import { createAdminClient } from "@/lib/supabase/admin";
@@ -25,14 +24,10 @@ export async function GET(req: Request) {
 
   try {
     const supabase = createAdminClient();
-    const podeVerTodos = await getPodeVerTodosAgendamentos(
-      supabase,
-      sessionUserId,
-    );
     const rows = await carregarCaixaAgendamentosRows(supabase, {
       empresaId,
       sessionUserId,
-      podeVerTodosAgendamentos: podeVerTodos,
+      podeVerTodosAgendamentos: true,
       dataYmd: data,
     });
     return NextResponse.json({ rows });

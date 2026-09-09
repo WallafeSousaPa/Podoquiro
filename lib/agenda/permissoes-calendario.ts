@@ -115,7 +115,7 @@ export async function getUsuarioAgendaSomentePropriaColuna(
   return grupoNomeLegadoSomentePropriaColunaAgenda(g.grupo_usuarios);
 }
 
-/** Membros do grupo com `calendario` veem todos os agendamentos; caso contrário, só os próprios. */
+/** Membros do grupo com `calendario`, Recepção ou perfil admin veem todos os agendamentos; caso contrário, só os próprios. */
 export async function getPodeVerTodosAgendamentos(
   supabase: SupabaseClient,
   idUsuario: number,
@@ -134,6 +134,7 @@ export async function getPodeVerTodosAgendamentos(
     .maybeSingle();
   if (gErr) return false;
   if (grupoNomeContemRecepcao(g?.grupo_usuarios)) return true;
+  if (grupoNomePermiteAgendarRetroativo(g?.grupo_usuarios)) return true;
   return Boolean(g?.calendario);
 }
 

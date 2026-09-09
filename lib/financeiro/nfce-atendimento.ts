@@ -58,6 +58,7 @@ export function tPagDeFormaPagamento(
   agrupamentoCaixa?: string | null,
 ): string {
   const ag = agrupamentoCaixa?.trim().toLowerCase();
+  // PIX dinâmico (17). Sem CNPJ da instituição, a NFC-e rebaixa para 20 (estático).
   if (ag === "pix") return "17";
   if (ag === "cartao_credito") return "03";
   if (ag === "cartao_debito") return "04";
