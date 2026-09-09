@@ -1,0 +1,275 @@
+.modal-comprador-estoque {
+  --comprador-purple: #552169;
+  --comprador-orange: #f96d19;
+  --comprador-card: #120e16;
+  --comprador-input: #1c1524;
+  --comprador-muted: #a49ab0;
+  overflow-y: auto;
+}
+
+.modal-comprador-estoque .modal-dialog {
+  max-height: calc(100vh - 1.75rem);
+  max-height: calc(100dvh - 1.75rem);
+  margin: 0.75rem auto;
+  display: flex;
+}
+
+.modal-comprador-estoque .modal-content {
+  background-color: var(--comprador-card);
+  border: 1px solid rgba(85, 33, 105, 0.6);
+  border-radius: 16px;
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.9), 0 0 25px rgba(85, 33, 105, 0.3);
+  color: #fff;
+  max-height: calc(100vh - 1.75rem);
+  max-height: calc(100dvh - 1.75rem);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.modal-comprador-estoque .modal-content > form {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.modal-comprador-estoque .modal-header {
+  border-bottom: 1px solid rgba(85, 33, 105, 0.4);
+  padding: 1.5rem;
+  background-color: rgba(85, 33, 105, 0.15);
+  border-top-left-radius: 15px;
+  border-top-right-radius: 15px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-shrink: 0;
+}
+
+.modal-comprador-estoque .modal-title-wrap {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.modal-comprador-estoque .modal-title {
+  color: #fff;
+  font-weight: 700;
+  letter-spacing: -0.5px;
+  margin: 0;
+}
+
+.modal-comprador-estoque .modal-title-icon {
+  color: var(--comprador-orange);
+  font-size: 1.35rem;
+}
+
+.modal-comprador-estoque .close {
+  color: #fff;
+  opacity: 0.85;
+  text-shadow: none;
+  float: none;
+  margin: 0;
+  padding: 0;
+  font-size: 1.75rem;
+}
+
+.modal-comprador-estoque .close:hover {
+  color: #fff;
+  opacity: 1;
+}
+
+.modal-comprador-estoque .modal-body {
+  padding: 1.5rem;
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-x: hidden;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+.modal-comprador-estoque .comprador-label {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  color: #e2dcee;
+  font-weight: 600;
+  font-size: 0.85rem;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-bottom: 0.4rem;
+}
+
+.modal-comprador-estoque .form-control,
+.modal-comprador-estoque select.form-control {
+  background-color: var(--comprador-input);
+  border: 1px solid #322540;
+  color: #fff;
+  border-radius: 8px;
+  padding: 0.65rem 0.9rem;
+  height: auto;
+  transition: border-color 0.25s ease, box-shadow 0.25s ease, background-color 0.25s ease;
+}
+
+.modal-comprador-estoque .form-control:focus,
+.modal-comprador-estoque select.form-control:focus {
+  background-color: #231a2e;
+  border-color: var(--comprador-orange);
+  color: #fff;
+  box-shadow: 0 0 0 0.2rem rgba(249, 109, 25, 0.25);
+}
+
+.modal-comprador-estoque .form-control::placeholder {
+  color: #726484;
+}
+
+.modal-comprador-estoque select.form-control {
+  background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3e%3cpath fill='none' stroke='%23F96D19' stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='m2 5 6 6 6-6'/%3e%3c/svg%3e");
+  background-repeat: no-repeat;
+  background-position: right 0.75rem center;
+  background-size: 16px 12px;
+  padding-right: 2rem;
+  appearance: none;
+}
+
+.modal-comprador-estoque .input-group-text {
+  background-color: var(--comprador-purple) !important;
+  border-color: #322540 !important;
+  color: #fff !important;
+  border-radius: 0 8px 8px 0;
+  min-width: 2.75rem;
+  justify-content: center;
+}
+
+.modal-comprador-estoque .input-group .form-control {
+  border-top-right-radius: 0;
+  border-bottom-right-radius: 0;
+}
+
+.modal-comprador-estoque .doc-type-badge {
+  display: inline-block;
+  font-size: 0.75rem;
+  padding: 0.2rem 0.6rem;
+  border-radius: 4px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+}
+
+.modal-comprador-estoque .badge-cpf {
+  background-color: rgba(85, 33, 105, 0.4);
+  color: #d8b0f0;
+  border: 1px solid var(--comprador-purple);
+}
+
+.modal-comprador-estoque .badge-cnpj {
+  background-color: rgba(249, 109, 25, 0.2);
+  color: var(--comprador-orange);
+  border: 1px solid var(--comprador-orange);
+}
+
+.modal-comprador-estoque .hint-muted {
+  display: block;
+  margin-top: 0.25rem;
+  font-size: 0.75rem;
+  color: var(--comprador-muted);
+}
+
+.modal-comprador-estoque .cep-msg {
+  display: block;
+  margin-top: 0.25rem;
+  font-size: 0.75rem;
+}
+
+.modal-comprador-estoque .cep-msg.erro {
+  color: #ff8a80;
+}
+
+.modal-comprador-estoque .cep-msg.ok {
+  color: #9be7c4;
+}
+
+.modal-comprador-estoque .divisor-endereco {
+  border: 0;
+  border-top: 1px solid rgba(85, 33, 105, 0.4);
+  margin: 0.5rem 0;
+}
+
+.modal-comprador-estoque .custom-control-input {
+  width: 2.5em;
+  height: 1.25em;
+}
+
+.modal-comprador-estoque .custom-switch .custom-control-label {
+  color: #fff;
+  font-weight: 700;
+  padding-left: 0.35rem;
+}
+
+.modal-comprador-estoque .custom-switch .custom-control-label::before {
+  background-color: #2d2038;
+  border-color: #48345a;
+  width: 2.5rem;
+  height: 1.25rem;
+  border-radius: 1rem;
+}
+
+.modal-comprador-estoque .custom-switch .custom-control-label::after {
+  width: calc(1.25rem - 4px);
+  height: calc(1.25rem - 4px);
+}
+
+.modal-comprador-estoque .custom-control-input:checked ~ .custom-control-label::before {
+  background-color: var(--comprador-orange);
+  border-color: var(--comprador-orange);
+}
+
+.modal-comprador-estoque .modal-footer {
+  border-top: 1px solid rgba(85, 33, 105, 0.4);
+  padding: 1rem 1.5rem 1.5rem;
+  flex-shrink: 0;
+}
+
+.modal-comprador-estoque .btn-cancelar {
+  background-color: transparent;
+  border: 1px solid rgba(85, 33, 105, 0.8);
+  color: #cbb8dc;
+  font-weight: 600;
+  padding: 0.65rem 1.5rem;
+  border-radius: 8px;
+}
+
+.modal-comprador-estoque .btn-cancelar:hover,
+.modal-comprador-estoque .btn-cancelar:focus {
+  background-color: var(--comprador-purple);
+  color: #fff;
+}
+
+.modal-comprador-estoque .btn-salvar {
+  background: linear-gradient(135deg, var(--comprador-orange), #ff8438);
+  border: none;
+  color: #000;
+  font-weight: 700;
+  padding: 0.65rem 2rem;
+  border-radius: 8px;
+  transition: transform 0.3s ease, box-shadow 0.3s ease;
+}
+
+.modal-comprador-estoque .btn-salvar:hover,
+.modal-comprador-estoque .btn-salvar:focus {
+  color: #000;
+  box-shadow: 0 5px 15px rgba(249, 109, 25, 0.4);
+  transform: translateY(-1px);
+}
+
+.modal-comprador-estoque .btn-salvar:disabled,
+.modal-comprador-estoque .btn-cancelar:disabled {
+  opacity: 0.65;
+  transform: none;
+  box-shadow: none;
+}
+
+.modal-comprador-estoque .alert {
+  border-radius: 8px;
+}

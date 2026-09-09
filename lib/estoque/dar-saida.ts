@@ -4,6 +4,7 @@ import {
   type EmpresaSnapshotNfe,
   type ItemPayloadNotaVenda,
 } from "@/lib/estoque/montar-payload-nota-venda";
+import { idsEmpresasParceirosVisiveis } from "@/lib/estoque/empresas-parceiros-compartilhados";
 import type { ParceiroEstoqueRow } from "@/lib/estoque/parceiro-campos";
 import {
   registrarMovimentacaoEstoque,
@@ -105,10 +106,13 @@ export async function darSaidaEstoque(
       .from("estoque_compradores")
       .select("*")
       .eq("id", params.id_comprador)
-      .eq("id_empresa", params.id_empresa)
       .maybeSingle();
     if (error) throw new Error(error.message);
-    if (!data) throw new Error("Comprador não encontrado nesta empresa.");
+    if (!data) throw new Error("Comprador não encontrado.");
+    const idsEscopo = await idsEmpresasParceirosVisiveis(supabase, params.id_empresa);
+    if (!idsEscopo.includes(Number((data as ParceiroEstoqueRow).id_empresa))) {
+      throw new Error("Comprador não encontrado nesta empresa.");
+    }
     comprador = data as ParceiroEstoqueRow;
   }
 

@@ -4,6 +4,8 @@ import {
   grupoNomePermiteProdutosModalCaixaRecepcao,
   normalizarNomeGrupoAgenda,
 } from "@/lib/agenda/permissoes-calendario";
+import { usuarioTemMenu, usuarioTemMenuPrefixo } from "@/lib/dashboard/menus-catalogo";
+import { menusEfetivosDoUsuario } from "@/lib/dashboard/menus-permissoes";
 
 /**
  * Grupo restrito ao menu Início (calendário): Podólogo e variações (nome normalizado
@@ -39,7 +41,8 @@ export function grupoUsuariosRelatorioCaixa(
 }
 
 /**
- * Menu Nota Fiscal (Emissão / Consultar): apenas **Administrador** ou **Administrativo**.
+ * @deprecated Menu Nota Fiscal agora vem do banco (`menu_permissoes_*`).
+ * Ainda usado só para ações de NFS-e no Caixa (tipo Administrativo).
  */
 export function grupoUsuariosMenuNotaFiscal(
   nomeGrupo: string | null | undefined,
@@ -47,7 +50,7 @@ export function grupoUsuariosMenuNotaFiscal(
   return grupoUsuariosRelatorioCaixa(nomeGrupo);
 }
 
-/** Menu e APIs de ponto: somente Administrador ou Administrativo. */
+/** @deprecated Menu Ponto agora vem do banco (`menu_permissoes_*`). */
 export function grupoUsuariosMenuPonto(
   nomeGrupo: string | null | undefined,
 ): boolean {
@@ -86,28 +89,103 @@ export async function getUsuarioPodeNfseNoCaixa(
   return grupoUsuariosNfseNoCaixa(g?.grupo_usuarios);
 }
 
+/** Item de menu efetivo (banco: tipo ou personalização do usuário). */
+export async function getUsuarioPodeMenuChave(
+  supabase: SupabaseClient,
+  idUsuario: number,
+  chave: string,
+): Promise<boolean> {
+  if (!Number.isFinite(idUsuario) || idUsuario <= 0) return false;
+  try {
+    const efetivo = await menusEfetivosDoUsuario(supabase, idUsuario);
+    return usuarioTemMenu(efetivo.menus, chave);
+  } catch {
+    return false;
+  }
+}
+
 /** Resolve se o usuário pode acessar o menu e telas de Nota Fiscal (API e página). */
 export async function getUsuarioPodeMenuNotaFiscal(
   supabase: SupabaseClient,
   idUsuario: number,
 ): Promise<boolean> {
   if (!Number.isFinite(idUsuario) || idUsuario <= 0) return false;
-  const { data: u, error: uErr } = await supabase
-    .from("usuarios")
-    .select(
-      "usuarios_grupos:usuarios_grupos!usuarios_id_grupo_usuarios_fkey ( grupo_usuarios )",
-    )
-    .eq("id", idUsuario)
-    .maybeSingle();
-  if (uErr || !u) return false;
-  type G = { grupo_usuarios: string | null };
-  const gRaw = u.usuarios_grupos as G | G[] | null | undefined;
-  const g = Array.isArray(gRaw) ? gRaw[0] : gRaw;
-  return grupoUsuariosMenuNotaFiscal(g?.grupo_usuarios);
+  try {
+    const efetivo = await menusEfetivosDoUsuario(supabase, idUsuario);
+    return usuarioTemMenuPrefixo(efetivo.menus, "nota-fiscal");
+  } catch {
+    return false;
+  }
 }
 
-/** Resolve se o usuário pode acessar o relatório de caixa (API e página). */
+/** Relatórios ou Caixa Movimento (derivado dos menus do banco, não do tipo). */
 export async function getUsuarioPodeRelatorioCaixa(
+  supabase: SupabaseClient,
+  idUsuario: number,
+): Promise<boolean> {
+  if (!Number.isFinite(idUsuario) || idUsuario <= 0) return false;
+  try {
+    const efetivo = await menusEfetivosDoUsuario(supabase, idUsuario);
+    return (
+      usuarioTemMenuPrefixo(efetivo.menus, "relatorios") ||
+      usuarioTemMenu(efetivo.menus, "financeiro.caixa-movimento")
+    );
+  } catch {
+    return false;
+  }
+}
+
+/** Resolve se o usuário pode acessar a tela e as APIs de ponto. */
+export async function getUsuarioPodeMenuPonto(
+  supabase: SupabaseClient,
+  idUsuario: number,
+): Promise<boolean> {
+  return getUsuarioPodeMenuChave(supabase, idUsuario, "ponto");
+}
+
+export const MSG_SO_OUTRO_ADMINISTRADOR_TIPO =
+  "Somente outro administrador pode definir ou alterar o tipo Administrador / Administrativo.";
+
+/**
+ * Impede que quem não é administrador atribua ou altere o tipo admin,
+ * e impede que o próprio administrador altere o próprio tipo.
+ */
+export async function recusarAlteracaoTipoAdministrador(opts: {
+  supabase: SupabaseClient;
+  idUsuarioSessao: number;
+  nomeGrupoNovo?: string | null;
+  nomeGrupoAtual?: string | null;
+  idUsuarioAlvo?: number | null;
+}): Promise<{ error: string } | null> {
+  const novoAdmin = grupoUsuariosAdministrador(opts.nomeGrupoNovo);
+  const atualAdmin = grupoUsuariosAdministrador(opts.nomeGrupoAtual);
+  if (!novoAdmin && !atualAdmin) return null;
+
+  const sessaoAdmin = await getUsuarioGrupoAdministrativo(
+    opts.supabase,
+    opts.idUsuarioSessao,
+  );
+  if (!sessaoAdmin) {
+    return { error: MSG_SO_OUTRO_ADMINISTRADOR_TIPO };
+  }
+
+  const nomeNovo = (opts.nomeGrupoNovo ?? "").trim();
+  const nomeAtual = (opts.nomeGrupoAtual ?? "").trim();
+  const mudouTipo = nomeNovo !== nomeAtual;
+
+  if (
+    mudouTipo &&
+    opts.idUsuarioAlvo != null &&
+    opts.idUsuarioAlvo === opts.idUsuarioSessao
+  ) {
+    return { error: MSG_SO_OUTRO_ADMINISTRADOR_TIPO };
+  }
+
+  return null;
+}
+
+/** Ação administrativa (excluir avaliação, parametrizar anamnese): por tipo, não por menu. */
+export async function getUsuarioGrupoAdministrativo(
   supabase: SupabaseClient,
   idUsuario: number,
 ): Promise<boolean> {
@@ -126,14 +204,6 @@ export async function getUsuarioPodeRelatorioCaixa(
   return grupoUsuariosRelatorioCaixa(g?.grupo_usuarios);
 }
 
-/** Resolve se o usuário pode acessar a tela e as APIs de ponto. */
-export async function getUsuarioPodeMenuPonto(
-  supabase: SupabaseClient,
-  idUsuario: number,
-): Promise<boolean> {
-  return getUsuarioPodeRelatorioCaixa(supabase, idUsuario);
-}
-
 /** Excluir importação de NF-e e reverter estoque: Administrador ou Administrativo. */
 export function grupoUsuariosPodeExcluirImportacaoEstoque(
   nomeGrupo: string | null | undefined,
@@ -146,10 +216,10 @@ export async function getUsuarioPodeExcluirImportacaoEstoque(
   supabase: SupabaseClient,
   idUsuario: number,
 ): Promise<boolean> {
-  return getUsuarioPodeRelatorioCaixa(supabase, idUsuario);
+  return getUsuarioGrupoAdministrativo(supabase, idUsuario);
 }
 
-/** Menu restrito: Início, Pacientes › Cadastrar, Financeiro › Caixa (ex.: grupo Recepção). */
+/** @deprecated Menu Recepção agora vem do banco (`menu_permissoes_*`). */
 export function grupoUsuariosMenuRecepcao(
   nomeGrupo: string | null | undefined,
 ): boolean {
@@ -157,8 +227,7 @@ export function grupoUsuariosMenuRecepcao(
 }
 
 /**
- * Menu recepção/balcão (sem Nota Fiscal no menu): Recepção, Receção, Secretaria etc.,
- * exceto perfis com menu Nota Fiscal (Administrador / Administrativo).
+ * @deprecated Menu Recepção/balcão agora vem do banco (`menu_permissoes_*`).
  */
 export function grupoUsuariosMenuRestritoBalcao(
   nomeGrupo: string | null | undefined,

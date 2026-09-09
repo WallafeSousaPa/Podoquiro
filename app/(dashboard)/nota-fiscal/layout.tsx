@@ -1,5 +1,6 @@
 import { redirect } from "next/navigation";
 import { getSession } from "@/lib/auth/session";
+import { usuarioTemMenuPrefixo } from "@/lib/dashboard/menus-catalogo";
 import { getNomesSaudacao } from "@/lib/dashboard/saudacao";
 
 export default async function NotaFiscalLayout({
@@ -12,13 +13,13 @@ export default async function NotaFiscalLayout({
     redirect("/login");
   }
 
-  const { podeVerMenuNotaFiscal } = await getNomesSaudacao(
+  const { menusLiberados } = await getNomesSaudacao(
     session.sub,
     session.usuario,
     session.idEmpresa,
   );
 
-  if (!podeVerMenuNotaFiscal) {
+  if (!usuarioTemMenuPrefixo(menusLiberados, "nota-fiscal")) {
     redirect("/inicio");
   }
 

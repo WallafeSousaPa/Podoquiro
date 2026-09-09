@@ -1,5 +1,6 @@
 import { redirect } from "next/navigation";
 import { getSession } from "@/lib/auth/session";
+import { usuarioTemMenu } from "@/lib/dashboard/menus-catalogo";
 import { getNomesSaudacao } from "@/lib/dashboard/saudacao";
 import { ComparativoClient } from "./comparativo-client";
 
@@ -7,12 +8,12 @@ export default async function RelatorioComparativoPage() {
   const session = await getSession();
   if (!session) redirect("/login");
 
-  const { podeVerRelatorioCaixa } = await getNomesSaudacao(
+  const { menusLiberados } = await getNomesSaudacao(
     session.sub,
     session.usuario,
     session.idEmpresa,
   );
-  if (!podeVerRelatorioCaixa) redirect("/inicio");
+  if (!usuarioTemMenu(menusLiberados, "relatorios.comparativo")) redirect("/inicio");
 
   return (
     <>

@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { diasEntreAnamnesesDoValorDb } from "@/lib/avaliacoes/anamnese-intervalo";
 import { getSession } from "@/lib/auth/session";
-import { getUsuarioPodeRelatorioCaixa } from "@/lib/dashboard/menu-grupo";
+import { getUsuarioGrupoAdministrativo } from "@/lib/dashboard/menu-grupo";
 import { createAdminClient } from "@/lib/supabase/admin";
 
 function parseEmpresaId(idEmpresa: string) {
@@ -24,7 +24,7 @@ export async function GET() {
   }
 
   const supabase = createAdminClient();
-  const podeEditar = await getUsuarioPodeRelatorioCaixa(supabase, idUsuario);
+  const podeEditar = await getUsuarioGrupoAdministrativo(supabase, idUsuario);
   const { data, error } = await supabase
     .from("empresas")
     .select("dias_entre_anamneses")
@@ -65,7 +65,7 @@ export async function PATCH(request: Request) {
   }
 
   const supabase = createAdminClient();
-  const podeEditar = await getUsuarioPodeRelatorioCaixa(supabase, idUsuario);
+  const podeEditar = await getUsuarioGrupoAdministrativo(supabase, idUsuario);
   if (!podeEditar) {
     return NextResponse.json(
       { error: "Somente usuários dos grupos Administrador ou Administrativo podem alterar este parâmetro." },

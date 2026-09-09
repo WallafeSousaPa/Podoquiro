@@ -1,6 +1,7 @@
 import bcrypt from "bcryptjs";
 import { NextResponse } from "next/server";
 import { getSession } from "@/lib/auth/session";
+import { recusarAlteracaoTipoAdministrador } from "@/lib/dashboard/menu-grupo";
 import { isCpfLengthOk, normalizeCpfDigits } from "@/lib/pacientes";
 import { createAdminClient } from "@/lib/supabase/admin";
 
@@ -139,11 +140,12 @@ export async function PATCH(request: Request, context: RouteContext) {
   }
 
   const supabase = createAdminClient();
+  const idUsuarioSessao = Number(session.sub);
 
   if (typeof patch.id_grupo_usuarios === "number") {
     const { data: grupoAtivo, error: grupoError } = await supabase
       .from("usuarios_grupos")
-      .select("id")
+      .select("id, grupo_usuarios")
       .eq("id", patch.id_grupo_usuarios)
       .eq("ativo", true)
       .maybeSingle();
@@ -156,6 +158,34 @@ export async function PATCH(request: Request, context: RouteContext) {
         { error: "Grupo de usuários inválido ou inativo." },
         { status: 400 },
       );
+    }
+
+    const { data: atual, error: atualErr } = await supabase
+      .from("usuarios")
+      .select(
+        "id_grupo_usuarios, usuarios_grupos:usuarios_grupos!usuarios_id_grupo_usuarios_fkey ( grupo_usuarios )",
+      )
+      .eq("id", id)
+      .maybeSingle();
+    if (atualErr) {
+      console.error(atualErr);
+      return NextResponse.json({ error: atualErr.message }, { status: 500 });
+    }
+    const idGrupoAtual = Number(atual?.id_grupo_usuarios);
+    if (idGrupoAtual !== patch.id_grupo_usuarios) {
+      type G = { grupo_usuarios: string | null };
+      const gRaw = atual?.usuarios_grupos as G | G[] | null | undefined;
+      const g = Array.isArray(gRaw) ? gRaw[0] : gRaw;
+      const recusaAdmin = await recusarAlteracaoTipoAdministrador({
+        supabase,
+        idUsuarioSessao,
+        nomeGrupoNovo: grupoAtivo.grupo_usuarios,
+        nomeGrupoAtual: g?.grupo_usuarios ?? null,
+        idUsuarioAlvo: id,
+      });
+      if (recusaAdmin) {
+        return NextResponse.json({ error: recusaAdmin.error }, { status: 403 });
+      }
     }
   }
 

@@ -10,7 +10,7 @@ function isUuid(s: unknown): s is string {
 }
 
 const LISTA_SELECT =
-  "id, id_empresa, tipo, status, data_saida, dest_nome, dest_doc, dest_tipo, valor_total, nota_venda_status, observacao, created_at, id_comprador, id_empresa_destino";
+  "id, id_empresa, tipo, status, data_saida, dest_nome, dest_doc, dest_tipo, valor_total, nota_venda_status, observacao, created_at, id_comprador, id_empresa_destino, id_nfe_emissao";
 
 export async function GET(request: Request) {
   const session = await getSession();

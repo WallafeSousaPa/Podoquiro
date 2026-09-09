@@ -43,7 +43,7 @@ export async function POST(_request: Request, context: RouteContext) {
 
   const { data: saida, error: saidaErr } = await supabase
     .from("estoque_saidas")
-    .select("id, id_empresa, status, tipo")
+    .select("id, id_empresa, status, tipo, id_nfe_emissao")
     .eq("id", id)
     .maybeSingle();
 
@@ -55,6 +55,23 @@ export async function POST(_request: Request, context: RouteContext) {
   }
   if (saida.status === "cancelada") {
     return NextResponse.json({ error: "Esta saída já está cancelada." }, { status: 400 });
+  }
+
+  if (saida.id_nfe_emissao) {
+    const { data: nfe } = await supabase
+      .from("nfe_emissoes")
+      .select("status")
+      .eq("id", saida.id_nfe_emissao)
+      .maybeSingle();
+    if (nfe?.status === "autorizada") {
+      return NextResponse.json(
+        {
+          error:
+            "Esta saída tem nota fiscal autorizada. Cancele a NF-e na SEFAZ antes de cancelar a saída.",
+        },
+        { status: 400 },
+      );
+    }
   }
 
   const { data: itens, error: itensErr } = await supabase

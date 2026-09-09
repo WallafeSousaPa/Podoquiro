@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { getSession } from "@/lib/auth/session";
-import { getUsuarioPodeRelatorioCaixa } from "@/lib/dashboard/menu-grupo";
+import { getUsuarioPodeMenuChave } from "@/lib/dashboard/menu-grupo";
 import { createAdminClient } from "@/lib/supabase/admin";
 
 function parseEmpresaId(idEmpresa: string) {
@@ -44,7 +44,7 @@ export async function GET(request: Request) {
   }
 
   const supabase = createAdminClient();
-  const pode = await getUsuarioPodeRelatorioCaixa(supabase, sessionUserId);
+  const pode = await getUsuarioPodeMenuChave(supabase, sessionUserId, "relatorios.caixa");
   if (!pode) {
     return NextResponse.json(
       { error: "Sem permissão para consultar o relatório de caixa." },

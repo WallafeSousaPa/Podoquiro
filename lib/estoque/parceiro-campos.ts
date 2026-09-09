@@ -115,7 +115,7 @@ export function parseParceiroBody(
 export function erroUnicoDocParceiro(message: string | undefined): string | null {
   if (!message) return null;
   if (message.includes("estoque_fornecedores_empresa_doc_uq") || message.includes("estoque_compradores_empresa_doc_uq")) {
-    return "Já existe um cadastro com este CPF/CNPJ nesta empresa.";
+    return "Já existe um cadastro com este CPF/CNPJ.";
   }
   return null;
 }

@@ -1,5 +1,6 @@
 import { redirect } from "next/navigation";
 import { getSession } from "@/lib/auth/session";
+import { usuarioTemMenu } from "@/lib/dashboard/menus-catalogo";
 import { getNomesSaudacao } from "@/lib/dashboard/saudacao";
 import { ClientesAusentesClient } from "./clientes-ausentes-client";
 
@@ -9,12 +10,12 @@ export default async function RelatorioClientesAusentesPage() {
     redirect("/login");
   }
 
-  const { podeVerRelatorioCaixa } = await getNomesSaudacao(
+  const { menusLiberados } = await getNomesSaudacao(
     session.sub,
     session.usuario,
     session.idEmpresa,
   );
-  if (!podeVerRelatorioCaixa) {
+  if (!usuarioTemMenu(menusLiberados, "relatorios.clientes-ausentes")) {
     redirect("/inicio");
   }
 

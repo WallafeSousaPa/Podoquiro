@@ -1,5 +1,6 @@
 import { redirect } from "next/navigation";
 import { getSession } from "@/lib/auth/session";
+import { usuarioTemMenu } from "@/lib/dashboard/menus-catalogo";
 import { getNomesSaudacao } from "@/lib/dashboard/saudacao";
 import { ConfirmarAtendimentoClient } from "./confirmar-atendimento-client";
 
@@ -7,10 +8,10 @@ export default async function ConfirmarAtendimentoPage() {
   const session = await getSession();
   if (!session) redirect("/login");
 
-  const { nomeCompleto, nomeEmpresaComId, nomeEmpresaCurto, somenteMenuInicio, podePersonalizarMensagemWhatsappTaxa } =
+  const { nomeCompleto, nomeEmpresaComId, nomeEmpresaCurto, menusLiberados, podePersonalizarMensagemWhatsappTaxa } =
     await getNomesSaudacao(session.sub, session.usuario, session.idEmpresa);
 
-  if (somenteMenuInicio) redirect("/inicio");
+  if (!usuarioTemMenu(menusLiberados, "atendimentos.agendamentos")) redirect("/inicio");
 
   return (
     <>

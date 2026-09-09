@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { getSession } from "@/lib/auth/session";
-import { getUsuarioPodeRelatorioCaixa } from "@/lib/dashboard/menu-grupo";
+import { getUsuarioPodeMenuChave } from "@/lib/dashboard/menu-grupo";
 import {
   gerarRelatorioAtendimentos,
   parseStatusFiltroRelatorioAtendimentos,
@@ -30,7 +30,7 @@ export async function GET(request: Request) {
   }
 
   const supabase = createAdminClient();
-  const pode = await getUsuarioPodeRelatorioCaixa(supabase, sessionUserId);
+  const pode = await getUsuarioPodeMenuChave(supabase, sessionUserId, "relatorios.atendimentos");
   if (!pode) {
     return NextResponse.json(
       { error: "Sem permissão para consultar relatórios de atendimentos." },

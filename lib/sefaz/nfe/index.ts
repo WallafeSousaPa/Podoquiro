@@ -2,7 +2,7 @@
  * Integração direta NF-e (modelo 55) — caminho sem provedor.
  *
  * Implementado: status do serviço, montagem mínima homologação, assinatura XMLDSig,
- * envio síncrono `nfeAutorizacaoLote` (SVRS). Próximos passos: cancelamento, CC-e, produção completa.
+ * envio síncrono `nfeAutorizacaoLote` (SVRS) e cancelamento (`nfeRecepcaoEvento`).
  */
 
 export type { AmbienteNfe, SiglaUf, StatusEmissaoNfe } from "./types";
@@ -71,5 +71,16 @@ export {
   type DanfeNfceDados,
   type DanfeItem,
 } from "./parse-nfce-danfe";
-export { assinarNfeXml } from "./assinar-nfe-xml";
+export {
+  extrairDanfeNfeDoXml,
+  type DanfeNfeDados,
+  type DanfeNfeItem,
+} from "./parse-nfe-danfe";
+export { assinarNfeXml, assinarEventoNfeXml } from "./assinar-nfe-xml";
 export { enviarLoteNfeSincrono, extrairRetornoAutorizacaoLote } from "./autorizacao-lote";
+export {
+  enviarCancelamentoNfe,
+  extrairRetornoCancelamento,
+  cancelamentoFoiRegistrado,
+  normalizarJustificativaCancelamento,
+} from "./cancelamento";

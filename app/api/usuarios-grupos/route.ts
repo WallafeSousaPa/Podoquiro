@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { getSession } from "@/lib/auth/session";
+import { recusarAlteracaoTipoAdministrador } from "@/lib/dashboard/menu-grupo";
 import { createAdminClient } from "@/lib/supabase/admin";
 
 export async function GET() {
@@ -56,6 +57,15 @@ export async function POST(request: Request) {
       : false;
 
   const supabase = createAdminClient();
+  const recusaAdmin = await recusarAlteracaoTipoAdministrador({
+    supabase,
+    idUsuarioSessao: Number(session.sub),
+    nomeGrupoNovo: nome,
+  });
+  if (recusaAdmin) {
+    return NextResponse.json({ error: recusaAdmin.error }, { status: 403 });
+  }
+
   const { data, error } = await supabase
     .from("usuarios_grupos")
     .insert({

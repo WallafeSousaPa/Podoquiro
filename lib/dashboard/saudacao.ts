@@ -2,14 +2,13 @@ import { cache } from "react";
 import { createAdminClient } from "@/lib/supabase/admin";
 import {
   grupoUsuariosAdministrador,
-  grupoUsuariosMenuNotaFiscal,
-  grupoUsuariosMenuPonto,
-  grupoUsuariosMenuRestritoBalcao,
   grupoUsuariosNfseNoCaixa,
   grupoUsuariosPodePersonalizarMensagemWhatsappTaxa,
   grupoUsuariosRelatorioCaixa,
   grupoUsuariosSomenteMenuInicioCalendario,
 } from "@/lib/dashboard/menu-grupo";
+import { usuarioTemMenu, usuarioTemMenuPrefixo } from "@/lib/dashboard/menus-catalogo";
+import { menusEfetivosDoUsuario } from "@/lib/dashboard/menus-permissoes";
 
 export type SaudacaoNomes = {
   /** Preferencialmente `usuarios.nome_completo`; senão o login. */
@@ -18,23 +17,27 @@ export type SaudacaoNomes = {
   nomeEmpresaComId: string;
   /** Nome fantasia ou "Empresa #id" (sem sufixo duplicado) — textos curtos / WhatsApp. */
   nomeEmpresaCurto: string;
-  /** Só Início (calendário) no menu — ex. grupo Podólogo. */
+  /** Chaves do menu lateral liberadas (banco: grupo ou personalização do usuário). */
+  menusLiberados: string[];
+  /**
+   * Comportamento da agenda (não controla mais o menu): grupo Podólogo.
+   */
   somenteMenuInicio: boolean;
-  /** Início + Pacientes + Caixa + Estoque › Importação / Saídas — ex. grupo Recepção. */
+  /** @deprecated Menu vem de `menusLiberados`. Mantido false. */
   menuRecepcao: boolean;
-  /** Exibe menu Atendimentos › Atendimento (Podólogo e Administrador). */
+  /** Exibe tela Atendimentos › Atendimento. */
   menuAtendimento: boolean;
   /** Exceção para agendar em data/hora retroativas (Administrador/Administrativo). */
   podeAgendarRetroativo: boolean;
-  /** Financeiro › Relatório caixa (somente Administrador / Administrativo). */
+  /** Relatórios / caixa movimento (derivado dos menus liberados). */
   podeVerRelatorioCaixa: boolean;
-  /** Menu Nota Fiscal (somente Administrador / Administrativo). */
+  /** Qualquer item de Nota Fiscal. */
   podeVerMenuNotaFiscal: boolean;
-  /** Menu Ponto (somente Administrador / Administrativo). */
+  /** Menu Ponto. */
   podeVerMenuPonto: boolean;
-  /** Coluna NFS-e no Caixa (Administrador, Administrativo ou Recepção). */
+  /** Coluna NFS-e no Caixa (ação; ainda por tipo de usuário). */
   podeEmitirNfseNoCaixa: boolean;
-  /** Editar mensagem WhatsApp da taxa de agendamento (Recepção, Administrativo, Administrador). */
+  /** Editar mensagem WhatsApp da taxa de agendamento. */
   podePersonalizarMensagemWhatsappTaxa: boolean;
   /** Excluir importação de NF-e e reverter estoque (Administrador / Administrativo). */
   podeExcluirImportacaoEstoque: boolean;
@@ -49,8 +52,8 @@ export const getNomesSaudacao = cache(
     const empresaId = Number(idEmpresa);
     let nomeCompleto = usuario;
     let nomeFantasia = "";
+    let menusLiberados: string[] = [];
     let somenteMenuInicio = false;
-    let menuRecepcao = false;
     let menuAtendimento = false;
     let podeAgendarRetroativo = false;
     let podeVerRelatorioCaixa = false;
@@ -81,19 +84,29 @@ export const getNomesSaudacao = cache(
       const gRaw = uRow?.usuarios_grupos as GrupoNome | GrupoNome[] | null | undefined;
       const g = Array.isArray(gRaw) ? gRaw[0] : gRaw;
       const nomeGrupo = g?.grupo_usuarios;
-      podeVerMenuNotaFiscal = grupoUsuariosMenuNotaFiscal(nomeGrupo);
-      podeVerMenuPonto = grupoUsuariosMenuPonto(nomeGrupo);
-      menuRecepcao = grupoUsuariosMenuRestritoBalcao(nomeGrupo);
       const isPodologo = grupoUsuariosSomenteMenuInicioCalendario(nomeGrupo);
       const isAdministrador = grupoUsuariosAdministrador(nomeGrupo);
-      somenteMenuInicio = !menuRecepcao && isPodologo;
-      menuAtendimento = isPodologo || isAdministrador;
+      somenteMenuInicio = isPodologo;
       podeAgendarRetroativo = isAdministrador;
-      podeVerRelatorioCaixa = grupoUsuariosRelatorioCaixa(nomeGrupo);
       podeEmitirNfseNoCaixa = grupoUsuariosNfseNoCaixa(nomeGrupo);
       podePersonalizarMensagemWhatsappTaxa =
         grupoUsuariosPodePersonalizarMensagemWhatsappTaxa(nomeGrupo);
       podeExcluirImportacaoEstoque = grupoUsuariosRelatorioCaixa(nomeGrupo);
+
+      try {
+        const efetivo = await menusEfetivosDoUsuario(supabase, userId);
+        menusLiberados = efetivo.menus;
+      } catch (e) {
+        console.error(e);
+        menusLiberados = [];
+      }
+
+      menuAtendimento = usuarioTemMenu(menusLiberados, "atendimentos.atendimento");
+      podeVerMenuNotaFiscal = usuarioTemMenuPrefixo(menusLiberados, "nota-fiscal");
+      podeVerMenuPonto = usuarioTemMenu(menusLiberados, "ponto");
+      podeVerRelatorioCaixa =
+        usuarioTemMenuPrefixo(menusLiberados, "relatorios") ||
+        usuarioTemMenu(menusLiberados, "financeiro.caixa-movimento");
     }
 
     const nomeEmpresaComId = nomeFantasia
@@ -107,8 +120,9 @@ export const getNomesSaudacao = cache(
       nomeCompleto,
       nomeEmpresaComId,
       nomeEmpresaCurto,
+      menusLiberados,
       somenteMenuInicio,
-      menuRecepcao,
+      menuRecepcao: false,
       menuAtendimento,
       podeAgendarRetroativo,
       podeVerRelatorioCaixa,

@@ -1,6 +1,6 @@
 import { redirect } from "next/navigation";
 import { getSession } from "@/lib/auth/session";
-import { getUsuarioPodeRelatorioCaixa } from "@/lib/dashboard/menu-grupo";
+import { getUsuarioPodeMenuChave } from "@/lib/dashboard/menu-grupo";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { CaixaMovimentoClient } from "./caixa-movimento-client";
 
@@ -15,7 +15,7 @@ export default async function CaixaMovimentoPage() {
   if (!Number.isFinite(sessionUserId) || sessionUserId <= 0) redirect("/inicio");
 
   const supabase = createAdminClient();
-  const pode = await getUsuarioPodeRelatorioCaixa(supabase, sessionUserId);
+  const pode = await getUsuarioPodeMenuChave(supabase, sessionUserId, "financeiro.caixa-movimento");
   if (!pode) redirect("/inicio");
 
   return (

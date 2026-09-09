@@ -1,13 +1,10 @@
 "use client";
 
 import { formatarCnpjCpf } from "@/lib/estoque/parse-nfe-xml";
+import { empresaCompartilhaParceirosPodoquiro } from "@/lib/estoque/empresas-parceiros-compartilhados";
 import type { PapelParceiro, ParceiroEstoqueRow } from "@/lib/estoque/parceiro-campos";
 import { useCallback, useEffect, useId, useState } from "react";
-
-const UFS = [
-  "AC", "AL", "AP", "AM", "BA", "CE", "DF", "ES", "GO", "MA", "MT", "MS", "MG",
-  "PA", "PB", "PR", "PE", "PI", "RJ", "RN", "RS", "RO", "RR", "SC", "SP", "SE", "TO",
-];
+import { ModalCompradorEstoque } from "./modal-comprador-estoque";
 
 const FORM_VAZIO = {
   nome: "",
@@ -54,10 +51,11 @@ function rowParaForm(row: ParceiroEstoqueRow): FormParceiro {
 type Props = {
   papel: PapelParceiro;
   empresaId: string;
+  empresaNome?: string;
   disabled?: boolean;
 };
 
-export function ParceirosEstoqueTab({ papel, empresaId, disabled }: Props) {
+export function ParceirosEstoqueTab({ papel, empresaId, empresaNome, disabled }: Props) {
   const titulo = papel === "fornecedor" ? "Fornecedores" : "Compradores";
   const formId = useId();
   const [lista, setLista] = useState<ParceiroEstoqueRow[]>([]);
@@ -109,7 +107,7 @@ export function ParceirosEstoqueTab({ papel, empresaId, disabled }: Props) {
     setError(null);
   }
 
-  async function salvar() {
+  async function salvar(dados: FormParceiro = form) {
     setSalvando(true);
     setError(null);
     setSucesso(null);
@@ -124,7 +122,7 @@ export function ParceirosEstoqueTab({ papel, empresaId, disabled }: Props) {
         body: JSON.stringify({
           papel,
           id_empresa: Number(empresaId),
-          ...form,
+          ...dados,
         }),
       });
       const j = (await res.json()) as { error?: string };
@@ -163,6 +161,16 @@ export function ParceirosEstoqueTab({ papel, empresaId, disabled }: Props) {
     setForm((prev) => ({ ...prev, [k]: v }));
   }
 
+  function salvarParceiro() {
+    const doc = form.doc.replace(/\D/g, "");
+    const payload = { ...form };
+    if (doc.length > 11) {
+      payload.nome =
+        payload.fantasia.trim() || payload.razao_social.trim() || payload.nome.trim();
+    }
+    void salvar(payload);
+  }
+
   return (
     <>
       <div className="card card-outline card-secondary">
@@ -179,7 +187,7 @@ export function ParceirosEstoqueTab({ papel, empresaId, disabled }: Props) {
           </button>
         </div>
         <div className="card-body">
-          {error ? (
+          {error && !formAberto ? (
             <div className="alert alert-danger py-2 small" role="alert">
               {error}
             </div>
@@ -188,6 +196,12 @@ export function ParceirosEstoqueTab({ papel, empresaId, disabled }: Props) {
             <div className="alert alert-success py-2 small" role="alert">
               {sucesso}
             </div>
+          ) : null}
+          {empresaCompartilhaParceirosPodoquiro(empresaNome) ? (
+            <p className="small text-muted mb-3">
+              Cadastro compartilhado entre <strong>Podoquiro</strong> e{" "}
+              <strong>Podoquiro Mercadorias</strong>. O que for incluído em uma aparece na outra.
+            </p>
           ) : null}
           <div className="form-group mb-3" style={{ maxWidth: "22rem" }}>
             <label htmlFor={`${formId}-busca`}>Buscar</label>
@@ -277,215 +291,17 @@ export function ParceirosEstoqueTab({ papel, empresaId, disabled }: Props) {
       </div>
 
       {formAberto ? (
-        <>
-          <div
-            className="modal fade show"
-            style={{ display: "block" }}
-            tabIndex={-1}
-            role="dialog"
-            aria-modal="true"
-          >
-            <div className="modal-dialog modal-lg" role="document">
-              <div className="modal-content">
-                <div className="modal-header">
-                  <h5 className="modal-title">
-                    {editandoId ? "Editar" : "Novo"}{" "}
-                    {papel === "fornecedor" ? "fornecedor" : "comprador"}
-                  </h5>
-                  <button
-                    type="button"
-                    className="close"
-                    aria-label="Fechar"
-                    onClick={() => setFormAberto(false)}
-                    disabled={salvando}
-                  >
-                    <span aria-hidden>×</span>
-                  </button>
-                </div>
-                <div className="modal-body">
-                  <div className="row">
-                    <div className="col-md-6 form-group">
-                      <label htmlFor={`${formId}-nome`}>Nome *</label>
-                      <input
-                        id={`${formId}-nome`}
-                        className="form-control"
-                        value={form.nome}
-                        onChange={(e) => setCampo("nome", e.target.value)}
-                      />
-                    </div>
-                    <div className="col-md-6 form-group">
-                      <label htmlFor={`${formId}-doc`}>CPF/CNPJ *</label>
-                      <input
-                        id={`${formId}-doc`}
-                        className="form-control"
-                        value={form.doc}
-                        onChange={(e) => setCampo("doc", e.target.value)}
-                      />
-                    </div>
-                    <div className="col-md-6 form-group">
-                      <label htmlFor={`${formId}-razao`}>Razão social</label>
-                      <input
-                        id={`${formId}-razao`}
-                        className="form-control"
-                        value={form.razao_social}
-                        onChange={(e) => setCampo("razao_social", e.target.value)}
-                      />
-                    </div>
-                    <div className="col-md-6 form-group">
-                      <label htmlFor={`${formId}-fantasia`}>Nome fantasia</label>
-                      <input
-                        id={`${formId}-fantasia`}
-                        className="form-control"
-                        value={form.fantasia}
-                        onChange={(e) => setCampo("fantasia", e.target.value)}
-                      />
-                    </div>
-                    <div className="col-md-4 form-group">
-                      <label htmlFor={`${formId}-ie`}>Inscrição estadual</label>
-                      <input
-                        id={`${formId}-ie`}
-                        className="form-control"
-                        value={form.ie}
-                        onChange={(e) => setCampo("ie", e.target.value)}
-                      />
-                    </div>
-                    <div className="col-md-4 form-group">
-                      <label htmlFor={`${formId}-email`}>E-mail</label>
-                      <input
-                        id={`${formId}-email`}
-                        className="form-control"
-                        value={form.email}
-                        onChange={(e) => setCampo("email", e.target.value)}
-                      />
-                    </div>
-                    <div className="col-md-4 form-group">
-                      <label htmlFor={`${formId}-fone`}>Telefone</label>
-                      <input
-                        id={`${formId}-fone`}
-                        className="form-control"
-                        value={form.fone}
-                        onChange={(e) => setCampo("fone", e.target.value)}
-                      />
-                    </div>
-                    <div className="col-md-3 form-group">
-                      <label htmlFor={`${formId}-cep`}>CEP</label>
-                      <input
-                        id={`${formId}-cep`}
-                        className="form-control"
-                        value={form.cep}
-                        onChange={(e) => setCampo("cep", e.target.value)}
-                      />
-                    </div>
-                    <div className="col-md-7 form-group">
-                      <label htmlFor={`${formId}-end`}>Endereço</label>
-                      <input
-                        id={`${formId}-end`}
-                        className="form-control"
-                        value={form.endereco}
-                        onChange={(e) => setCampo("endereco", e.target.value)}
-                      />
-                    </div>
-                    <div className="col-md-2 form-group">
-                      <label htmlFor={`${formId}-nro`}>Nº</label>
-                      <input
-                        id={`${formId}-nro`}
-                        className="form-control"
-                        value={form.numero}
-                        onChange={(e) => setCampo("numero", e.target.value)}
-                      />
-                    </div>
-                    <div className="col-md-4 form-group">
-                      <label htmlFor={`${formId}-cpl`}>Complemento</label>
-                      <input
-                        id={`${formId}-cpl`}
-                        className="form-control"
-                        value={form.complemento}
-                        onChange={(e) => setCampo("complemento", e.target.value)}
-                      />
-                    </div>
-                    <div className="col-md-4 form-group">
-                      <label htmlFor={`${formId}-bairro`}>Bairro</label>
-                      <input
-                        id={`${formId}-bairro`}
-                        className="form-control"
-                        value={form.bairro}
-                        onChange={(e) => setCampo("bairro", e.target.value)}
-                      />
-                    </div>
-                    <div className="col-md-3 form-group">
-                      <label htmlFor={`${formId}-mun`}>Município</label>
-                      <input
-                        id={`${formId}-mun`}
-                        className="form-control"
-                        value={form.municipio}
-                        onChange={(e) => setCampo("municipio", e.target.value)}
-                      />
-                    </div>
-                    <div className="col-md-1 form-group">
-                      <label htmlFor={`${formId}-uf`}>UF</label>
-                      <select
-                        id={`${formId}-uf`}
-                        className="form-control"
-                        value={form.uf}
-                        onChange={(e) => setCampo("uf", e.target.value)}
-                      >
-                        <option value="">—</option>
-                        {UFS.map((uf) => (
-                          <option key={uf} value={uf}>
-                            {uf}
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-                    <div className="col-12 form-group">
-                      <label htmlFor={`${formId}-obs`}>Observação</label>
-                      <textarea
-                        id={`${formId}-obs`}
-                        className="form-control"
-                        rows={2}
-                        value={form.observacao}
-                        onChange={(e) => setCampo("observacao", e.target.value)}
-                      />
-                    </div>
-                    <div className="col-12 form-group mb-0">
-                      <div className="custom-control custom-switch">
-                        <input
-                          type="checkbox"
-                          className="custom-control-input"
-                          id={`${formId}-ativo`}
-                          checked={form.ativo}
-                          onChange={(e) => setCampo("ativo", e.target.checked)}
-                        />
-                        <label className="custom-control-label" htmlFor={`${formId}-ativo`}>
-                          Ativo
-                        </label>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-                <div className="modal-footer">
-                  <button
-                    type="button"
-                    className="btn btn-secondary"
-                    onClick={() => setFormAberto(false)}
-                    disabled={salvando}
-                  >
-                    Cancelar
-                  </button>
-                  <button
-                    type="button"
-                    className="btn btn-primary"
-                    onClick={() => void salvar()}
-                    disabled={salvando}
-                  >
-                    {salvando ? "Salvando…" : "Salvar"}
-                  </button>
-                </div>
-              </div>
-            </div>
-          </div>
-          <div className="modal-backdrop fade show" role="presentation" />
-        </>
+        <ModalCompradorEstoque
+          papel={papel}
+          formId={`${formId}-parceiro`}
+          editandoId={editandoId}
+          form={form}
+          salvando={salvando}
+          error={error}
+          onCampo={setCampo}
+          onClose={() => setFormAberto(false)}
+          onSave={salvarParceiro}
+        />
       ) : null}
 
       {confirmExcluir ? (

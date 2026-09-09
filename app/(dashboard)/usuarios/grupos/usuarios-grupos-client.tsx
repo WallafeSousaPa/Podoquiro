@@ -11,6 +11,16 @@ import {
   useState,
 } from "react";
 
+function grupoEhAdministrador(nome: string | null | undefined): boolean {
+  if (nome == null || String(nome).trim() === "") return false;
+  const c = String(nome)
+    .normalize("NFD")
+    .replace(/\p{M}/gu, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]/g, "");
+  return c.includes("admin");
+}
+
 function formatarData(iso: string) {
   try {
     return new Date(iso).toLocaleString("pt-BR", {
@@ -52,9 +62,14 @@ function ModalBackdrop({
 type Props = {
   initialRows: UsuarioGrupo[];
   loadError?: string | null;
+  sessaoEhAdministrador: boolean;
 };
 
-export function UsuariosGruposClient({ initialRows, loadError }: Props) {
+export function UsuariosGruposClient({
+  initialRows,
+  loadError,
+  sessaoEhAdministrador,
+}: Props) {
   const router = useRouter();
   const formTitleId = useId();
   const confirmTitleId = useId();
@@ -123,6 +138,16 @@ export function UsuariosGruposClient({ initialRows, loadError }: Props) {
     const trimmed = nome.trim();
     if (!trimmed) {
       setFormError("Informe o nome do grupo.");
+      return;
+    }
+    if (
+      !sessaoEhAdministrador &&
+      (grupoEhAdministrador(trimmed) ||
+        grupoEhAdministrador(editing?.grupo_usuarios))
+    ) {
+      setFormError(
+        "Somente outro administrador pode definir ou alterar o tipo Administrador / Administrativo.",
+      );
       return;
     }
 
@@ -300,15 +325,22 @@ export function UsuariosGruposClient({ initialRows, loadError }: Props) {
                       )}
                     </td>
                     <td className="text-right text-nowrap">
+                      {(() => {
+                        const grupoAdmin = grupoEhAdministrador(row.grupo_usuarios);
+                        const bloquearAdmin = grupoAdmin && !sessaoEhAdministrador;
+                        return (
+                          <>
                       <button
                         type="button"
                         className="btn btn-sm btn-outline-primary mr-1"
                         onClick={() => openEdit(row)}
-                        disabled={!row.ativo}
+                        disabled={!row.ativo || bloquearAdmin}
                         title={
-                          row.ativo
-                            ? "Editar"
-                            : "Ative o grupo para editar o nome"
+                          bloquearAdmin
+                            ? "Somente outro administrador pode alterar este tipo"
+                            : row.ativo
+                              ? "Editar"
+                              : "Ative o grupo para editar o nome"
                         }
                       >
                         <i className="fas fa-edit" aria-hidden /> Editar
@@ -320,7 +352,12 @@ export function UsuariosGruposClient({ initialRows, loadError }: Props) {
                           onClick={() =>
                             setConfirmStatus({ row, acao: "inativar" })
                           }
-                          title="Inativar"
+                          disabled={bloquearAdmin}
+                          title={
+                            bloquearAdmin
+                              ? "Somente outro administrador pode alterar este tipo"
+                              : "Inativar"
+                          }
                         >
                           <i className="fas fa-ban" aria-hidden /> Inativar
                         </button>
@@ -331,11 +368,19 @@ export function UsuariosGruposClient({ initialRows, loadError }: Props) {
                           onClick={() =>
                             setConfirmStatus({ row, acao: "ativar" })
                           }
-                          title="Ativar novamente"
+                          disabled={bloquearAdmin}
+                          title={
+                            bloquearAdmin
+                              ? "Somente outro administrador pode alterar este tipo"
+                              : "Ativar novamente"
+                          }
                         >
                           <i className="fas fa-check" aria-hidden /> Ativar
                         </button>
                       )}
+                          </>
+                        );
+                      })()}
                     </td>
                   </tr>
                 ))

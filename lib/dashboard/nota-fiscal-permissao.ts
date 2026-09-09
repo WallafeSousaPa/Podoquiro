@@ -6,7 +6,7 @@ import {
 } from "@/lib/dashboard/menu-grupo";
 import { createAdminClient } from "@/lib/supabase/admin";
 
-/** Bloqueia API de Nota Fiscal para quem não é Administrador / Administrativo. */
+/** Bloqueia API de Nota Fiscal para quem não tem o menu correspondente no banco. */
 export async function respostaSeSemPermissaoNotaFiscal(
   session: SessionPayload | null,
 ): Promise<NextResponse | null> {

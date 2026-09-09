@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { type FormEvent, type ReactNode, useEffect, useId, useState } from "react";
+import { type FormEvent, type ReactNode, useEffect, useId, useMemo, useState } from "react";
 import { isCpfLengthOk, normalizeCpfDigits } from "@/lib/pacientes";
 
 type GrupoItem = {
@@ -48,6 +48,16 @@ const EXPEDIENTE_VAZIO: ExpedienteForm = {
   horario_fim_bloqueado: "",
 };
 
+function grupoEhAdministrador(nome: string | null | undefined): boolean {
+  if (nome == null || String(nome).trim() === "") return false;
+  const c = String(nome)
+    .normalize("NFD")
+    .replace(/\p{M}/gu, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]/g, "");
+  return c.includes("admin");
+}
+
 function formatCpfExibicao(digits: string | null | undefined): string {
   if (digits == null || digits === "") return "-";
   const d = normalizeCpfDigits(digits);
@@ -86,6 +96,8 @@ type Props = {
   grupos: GrupoItem[];
   empresas: EmpresaItem[];
   idEmpresaSessao: number;
+  idUsuarioSessao: number;
+  sessaoEhAdministrador: boolean;
   usuarios: UsuarioItem[];
   loadError?: string | null;
 };
@@ -94,6 +106,8 @@ export function UsuariosCadastroClient({
   grupos,
   empresas,
   idEmpresaSessao,
+  idUsuarioSessao,
+  sessaoEhAdministrador,
   usuarios,
   loadError,
 }: Props) {
@@ -135,6 +149,21 @@ export function UsuariosCadastroClient({
   const [savingExpediente, setSavingExpediente] = useState(false);
   const [expedienteError, setExpedienteError] = useState<string | null>(null);
   const cardCorPickerValue = isHexCorValida(cardCor) ? cardCor : "#2563EB";
+
+  const grupoAtualEhAdmin = editing ? grupoEhAdministrador(editing.grupo_usuarios) : false;
+  const editandoASiemesmo = editing != null && editing.id === idUsuarioSessao;
+  const grupoSelectBloqueado =
+    (!sessaoEhAdministrador && grupoAtualEhAdmin) ||
+    (editandoASiemesmo && grupoAtualEhAdmin);
+
+  const gruposNoSelect = useMemo(() => {
+    return grupos.filter((g) => {
+      if (!grupoEhAdministrador(g.grupo_usuarios)) return true;
+      if (sessaoEhAdministrador && !editandoASiemesmo) return true;
+      if (editing && editing.id_grupo_usuarios === g.id) return true;
+      return false;
+    });
+  }, [grupos, sessaoEhAdministrador, editing, editandoASiemesmo]);
 
   function resetForm() {
     setEditing(null);
@@ -194,6 +223,20 @@ export function UsuariosCadastroClient({
     }
     if (!idGrupo) {
       setFormError("Selecione o grupo de usuários.");
+      return;
+    }
+    const grupoEscolhido = grupos.find((g) => String(g.id) === idGrupo);
+    const novoEhAdmin = grupoEhAdministrador(grupoEscolhido?.grupo_usuarios);
+    if (novoEhAdmin && (!sessaoEhAdministrador || editandoASiemesmo)) {
+      setFormError(
+        "Somente outro administrador pode definir ou alterar o tipo Administrador / Administrativo.",
+      );
+      return;
+    }
+    if (grupoAtualEhAdmin && !sessaoEhAdministrador && Number(idGrupo) !== editing?.id_grupo_usuarios) {
+      setFormError(
+        "Somente outro administrador pode definir ou alterar o tipo Administrador / Administrativo.",
+      );
       return;
     }
     if (!idEmpresa) {
@@ -570,14 +613,24 @@ export function UsuariosCadastroClient({
                       value={idGrupo}
                       onChange={(e) => setIdGrupo(e.target.value)}
                       required
+                      disabled={grupoSelectBloqueado}
                     >
                       <option value="">Selecione...</option>
-                      {grupos.map((g) => (
+                      {gruposNoSelect.map((g) => (
                         <option key={g.id} value={g.id}>
                           {g.grupo_usuarios}
                         </option>
                       ))}
                     </select>
+                    {grupoSelectBloqueado ? (
+                      <small className="form-text text-muted">
+                        Somente outro administrador pode alterar este tipo de usuário.
+                      </small>
+                    ) : !sessaoEhAdministrador ? (
+                      <small className="form-text text-muted">
+                        O tipo Administrativo só pode ser atribuído por um administrador.
+                      </small>
+                    ) : null}
                   </div>
                   <div className="form-group form-check">
                     <input

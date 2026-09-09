@@ -1,5 +1,6 @@
 import { redirect } from "next/navigation";
 import { getSession } from "@/lib/auth/session";
+import { usuarioTemMenu } from "@/lib/dashboard/menus-catalogo";
 import { getNomesSaudacao } from "@/lib/dashboard/saudacao";
 import { RelatorioCaixaClient } from "./relatorio-caixa-client";
 
@@ -9,12 +10,12 @@ export default async function RelatorioCaixaPage() {
     redirect("/login");
   }
 
-  const { podeVerRelatorioCaixa } = await getNomesSaudacao(
+  const { menusLiberados } = await getNomesSaudacao(
     session.sub,
     session.usuario,
     session.idEmpresa,
   );
-  if (!podeVerRelatorioCaixa) {
+  if (!usuarioTemMenu(menusLiberados, "relatorios.caixa")) {
     redirect("/inicio");
   }
 

@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation";
 import { getSession } from "@/lib/auth/session";
 import { normalizarHoraHHMM } from "@/lib/agenda/expediente-tempo";
+import { getUsuarioGrupoAdministrativo } from "@/lib/dashboard/menu-grupo";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { UsuariosCadastroClient } from "./usuarios-cadastro-client";
 
@@ -53,6 +54,11 @@ export default async function UsuariosCadastroPage() {
   }
 
   const supabase = createAdminClient();
+  const idUsuarioSessao = Number(session.sub);
+  const sessaoEhAdministrador =
+    Number.isFinite(idUsuarioSessao) && idUsuarioSessao > 0
+      ? await getUsuarioGrupoAdministrativo(supabase, idUsuarioSessao)
+      : false;
   let grupos: GrupoItem[] = [];
   let empresas: EmpresaOption[] = [];
   let usuarios: UsuarioRaw[] = [];
@@ -178,6 +184,8 @@ export default async function UsuariosCadastroPage() {
                 grupos={grupos}
                 empresas={empresas}
                 idEmpresaSessao={empresaId}
+                idUsuarioSessao={idUsuarioSessao}
+                sessaoEhAdministrador={sessaoEhAdministrador}
                 usuarios={usuariosView}
                 loadError={loadError}
               />

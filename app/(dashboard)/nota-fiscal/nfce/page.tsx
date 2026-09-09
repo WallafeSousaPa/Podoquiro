@@ -1,5 +1,6 @@
 import { redirect } from "next/navigation";
 import { getSession } from "@/lib/auth/session";
+import { usuarioTemMenu } from "@/lib/dashboard/menus-catalogo";
 import { getNomesSaudacao } from "@/lib/dashboard/saudacao";
 import { NfceClient } from "./nfce-client";
 
@@ -9,13 +10,13 @@ export default async function NotaFiscalNfcePage() {
     redirect("/login");
   }
 
-  const { podeVerMenuNotaFiscal } = await getNomesSaudacao(
+  const { menusLiberados } = await getNomesSaudacao(
     session.sub,
     session.usuario,
     session.idEmpresa,
   );
-  if (!podeVerMenuNotaFiscal) {
-    redirect("/nota-fiscal/emissao");
+  if (!usuarioTemMenu(menusLiberados, "nota-fiscal.nfce")) {
+    redirect("/inicio");
   }
 
   return (

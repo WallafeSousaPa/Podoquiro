@@ -1,6 +1,9 @@
 import bcrypt from "bcryptjs";
 import { NextResponse } from "next/server";
 import { getSession } from "@/lib/auth/session";
+import {
+  recusarAlteracaoTipoAdministrador,
+} from "@/lib/dashboard/menu-grupo";
 import { isCpfLengthOk, normalizeCpfDigits } from "@/lib/pacientes";
 import { createAdminClient } from "@/lib/supabase/admin";
 
@@ -127,7 +130,7 @@ export async function POST(request: Request) {
 
   const { data: grupoAtivo, error: grupoError } = await supabase
     .from("usuarios_grupos")
-    .select("id")
+    .select("id, grupo_usuarios")
     .eq("id", idGrupo)
     .eq("ativo", true)
     .maybeSingle();
@@ -140,6 +143,15 @@ export async function POST(request: Request) {
       { error: "Grupo de usuários inválido ou inativo." },
       { status: 400 },
     );
+  }
+
+  const recusaAdmin = await recusarAlteracaoTipoAdministrador({
+    supabase,
+    idUsuarioSessao: Number(session.sub),
+    nomeGrupoNovo: grupoAtivo.grupo_usuarios,
+  });
+  if (recusaAdmin) {
+    return NextResponse.json({ error: recusaAdmin.error }, { status: 403 });
   }
 
   const exibirNaAgenda =

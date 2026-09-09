@@ -1,5 +1,6 @@
 import { redirect } from "next/navigation";
 import { getSession } from "@/lib/auth/session";
+import { usuarioTemMenu } from "@/lib/dashboard/menus-catalogo";
 import { getNomesSaudacao } from "@/lib/dashboard/saudacao";
 import { NotaFiscalEmissaoClient } from "./nota-fiscal-emissao-client";
 
@@ -9,11 +10,14 @@ export default async function NotaFiscalEmissaoPage() {
     redirect("/login");
   }
 
-  const { podeVerMenuNotaFiscal } = await getNomesSaudacao(
+  const { menusLiberados } = await getNomesSaudacao(
     session.sub,
     session.usuario,
     session.idEmpresa,
   );
+  if (!usuarioTemMenu(menusLiberados, "nota-fiscal.emissao")) {
+    redirect("/inicio");
+  }
 
   return (
     <>
@@ -40,7 +44,7 @@ export default async function NotaFiscalEmissaoPage() {
         <div className="container-fluid">
           <div className="row">
             <div className="col-12">
-              <NotaFiscalEmissaoClient exibirParametros={podeVerMenuNotaFiscal} />
+              <NotaFiscalEmissaoClient exibirParametros />
             </div>
           </div>
         </div>

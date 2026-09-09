@@ -6,7 +6,7 @@ import {
   parsePositiveIdsFromFormData,
 } from "@/lib/avaliacoes/evolucao";
 import { syncPacientesEvolucaoVinculos } from "@/lib/avaliacoes/sync-pacientes-evolucao-vinculos";
-import { getUsuarioPodeRelatorioCaixa } from "@/lib/dashboard/menu-grupo";
+import { getUsuarioGrupoAdministrativo } from "@/lib/dashboard/menu-grupo";
 import { getSession } from "@/lib/auth/session";
 import { createAdminClient } from "@/lib/supabase/admin";
 
@@ -57,7 +57,7 @@ export async function DELETE(_request: Request, context: RouteContext) {
   if (!id) return NextResponse.json({ error: "ID inválido." }, { status: 400 });
 
   const supabase = createAdminClient();
-  const podeExcluir = await getUsuarioPodeRelatorioCaixa(supabase, idUsuarioSessao);
+  const podeExcluir = await getUsuarioGrupoAdministrativo(supabase, idUsuarioSessao);
   if (!podeExcluir) {
     return NextResponse.json(
       { error: "Somente usuários dos grupos Administrador ou Administrativo podem excluir avaliações." },

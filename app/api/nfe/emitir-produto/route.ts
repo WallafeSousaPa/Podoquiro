@@ -52,7 +52,7 @@ function eanOuSemGtin(barcode: string | null | undefined): string {
   return "SEM GTIN";
 }
 
-type BodyItem = { id_produto: string; quantidade?: number };
+type BodyItem = { id_produto: string; quantidade?: number; v_un?: number };
 
 type BodyDest = {
   cpf?: string;
@@ -228,6 +228,7 @@ export async function POST(request: Request) {
 
   const ids: string[] = [];
   const qtdPorId = new Map<string, number>();
+  const vUnPorId = new Map<string, number>();
   for (const row of itensRaw) {
     if (!row || typeof row !== "object") continue;
     const id = String((row as BodyItem).id_produto ?? "").trim();
@@ -240,6 +241,8 @@ export async function POST(request: Request) {
     }
     ids.push(id);
     qtdPorId.set(id, (qtdPorId.get(id) ?? 0) + q);
+    const vUn = Number((row as BodyItem).v_un);
+    if (Number.isFinite(vUn) && vUn >= 0) vUnPorId.set(id, vUn);
   }
 
   if (ids.length === 0) {
@@ -274,10 +277,11 @@ export async function POST(request: Request) {
       );
     }
     const qCom = qtdPorId.get(id) ?? 0;
-    const precoBase =
+    const precoCatalogo =
       p.preco_venda != null && Number(p.preco_venda) >= 0
         ? Number(p.preco_venda)
         : Number(p.preco);
+    const precoBase = vUnPorId.has(id) ? vUnPorId.get(id)! : precoCatalogo;
     const vProd = roundMoney(qCom * precoBase);
     const cProd = (p.sku && String(p.sku).trim()) || id.slice(0, 8);
     linhas.push({

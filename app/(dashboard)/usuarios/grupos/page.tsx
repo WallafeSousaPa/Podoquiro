@@ -1,7 +1,21 @@
 import { listUsuariosGrupos } from "@/lib/data/usuarios-grupos";
+import { getSession } from "@/lib/auth/session";
+import { getUsuarioGrupoAdministrativo } from "@/lib/dashboard/menu-grupo";
+import { createAdminClient } from "@/lib/supabase/admin";
+import { redirect } from "next/navigation";
 import { UsuariosGruposClient } from "./usuarios-grupos-client";
 
 export default async function UsuariosGruposPage() {
+  const session = await getSession();
+  if (!session) redirect("/login");
+
+  const supabase = createAdminClient();
+  const idUsuarioSessao = Number(session.sub);
+  const sessaoEhAdministrador =
+    Number.isFinite(idUsuarioSessao) && idUsuarioSessao > 0
+      ? await getUsuarioGrupoAdministrativo(supabase, idUsuarioSessao)
+      : false;
+
   let rows: Awaited<ReturnType<typeof listUsuariosGrupos>> = [];
   let loadError: string | null = null;
 
@@ -35,7 +49,11 @@ export default async function UsuariosGruposPage() {
 
       <section className="content">
         <div className="container-fluid">
-          <UsuariosGruposClient initialRows={rows} loadError={loadError} />
+          <UsuariosGruposClient
+            initialRows={rows}
+            loadError={loadError}
+            sessaoEhAdministrador={sessaoEhAdministrador}
+          />
         </div>
       </section>
     </>

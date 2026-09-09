@@ -2,6 +2,7 @@
 
 import { formatarCnpjCpf } from "@/lib/estoque/parse-nfe-xml";
 import type { ParceiroEstoqueRow } from "@/lib/estoque/parceiro-campos";
+import { gerarDanfeNfePdfUrl } from "@/lib/client/render-danfe-nfe-pdf";
 import {
   ROTULO_NOTA_VENDA,
   ROTULO_TIPO_SAIDA,
@@ -54,6 +55,7 @@ type SaidaListaRow = {
   nota_venda_status: NotaVendaStatus;
   observacao: string | null;
   created_at: string;
+  id_nfe_emissao: string | null;
 };
 
 type SaidaItemDetalhe = {
@@ -148,8 +150,28 @@ export function SaidasEstoqueClient({
   const [error, setError] = useState<string | null>(null);
   const [sucesso, setSucesso] = useState<string | null>(null);
   const [confirmSaida, setConfirmSaida] = useState(false);
+  const [perguntarNota, setPerguntarNota] = useState<{
+    id: string;
+    destNome: string;
+    destDoc: string;
+    destTipo: "CPF" | "CNPJ";
+  } | null>(null);
   const [detalhe, setDetalhe] = useState<SaidaDetalhe | null>(null);
   const [confirmCancelar, setConfirmCancelar] = useState<SaidaListaRow | null>(null);
+  const [emitindoNota, setEmitindoNota] = useState(false);
+  const [danfeUrl, setDanfeUrl] = useState<string | null>(null);
+  const [danfeCarregando, setDanfeCarregando] = useState(false);
+  const [danfeNfeId, setDanfeNfeId] = useState<string | null>(null);
+  const [danfeSaidaId, setDanfeSaidaId] = useState<string | null>(null);
+  const [confirmCancelarNota, setConfirmCancelarNota] = useState<{
+    idNfe: string;
+    idSaida?: string;
+  } | null>(null);
+  const [justificativaCancel, setJustificativaCancel] = useState(
+    "Cancelamento da nota fiscal por erro na emissão.",
+  );
+  const [cancelandoNota, setCancelandoNota] = useState(false);
+  const [erroCancelNota, setErroCancelNota] = useState<string | null>(null);
 
   const nomeEmpresaSelecionada = nomeEmpresaLabel(empresas, Number(empresaId));
 
@@ -295,21 +317,96 @@ export function SaidasEstoqueClient({
           })),
         }),
       });
-      const j = (await res.json()) as { error?: string };
+      const j = (await res.json()) as {
+        data?: {
+          id: string;
+          dest_nome?: string | null;
+          dest_doc?: string | null;
+          dest_tipo?: "CPF" | "CNPJ" | null;
+        };
+        error?: string;
+      };
       if (!res.ok) throw new Error(j.error ?? "Não foi possível registrar a saída.");
       setConfirmSaida(false);
       setLinhas([]);
       setObservacao("");
-      setSucesso(
-        tipo === "venda"
-          ? "Saída registrada. A nota de venda ficou pronta (ainda não foi gerada)."
-          : "Saída registrada e estoque baixado.",
-      );
       await Promise.all([carregarLista(), carregarProdutos()]);
+      if (tipo === "venda" && j.data?.id) {
+        setPerguntarNota({
+          id: j.data.id,
+          destNome: j.data.dest_nome || compradorSel?.nome || "comprador",
+          destDoc: j.data.dest_doc ?? "",
+          destTipo: j.data.dest_tipo === "CNPJ" ? "CNPJ" : "CPF",
+        });
+        setSucesso("Saída registrada. Informe se deseja emitir a nota fiscal.");
+      } else {
+        setSucesso("Saída registrada e estoque baixado.");
+      }
     } catch (e) {
       setError(e instanceof Error ? e.message : "Não foi possível registrar a saída.");
     } finally {
       setEnviando(false);
+    }
+  }
+
+  async function emitirNotaSaida(idSaida: string) {
+    setEmitindoNota(true);
+    setError(null);
+    try {
+      const res = await fetch(`/api/estoque/saidas/${idSaida}/emitir-nfe`, {
+        method: "POST",
+        credentials: "include",
+      });
+      const j = (await res.json()) as {
+        error?: string;
+        xMotivo?: string;
+        nNF?: number;
+        serie?: number;
+        dest_tipo?: "CPF" | "CNPJ";
+        id_nfe_emissao?: string;
+      };
+      if (!res.ok) throw new Error(j.error ?? j.xMotivo ?? "Não foi possível emitir a nota.");
+      setPerguntarNota(null);
+      setSucesso(
+        j.nNF
+          ? `Nota fiscal ${j.dest_tipo ?? ""} nº ${j.nNF} (série ${j.serie}) autorizada.`
+          : "Nota fiscal emitida.",
+      );
+      await carregarLista();
+      if (detalhe?.id === idSaida) await abrirDetalhe(idSaida);
+      if (j.id_nfe_emissao) await abrirDanfe(j.id_nfe_emissao, idSaida);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Não foi possível emitir a nota.");
+    } finally {
+      setEmitindoNota(false);
+    }
+  }
+
+  function fecharDanfe() {
+    if (danfeUrl) URL.revokeObjectURL(danfeUrl);
+    setDanfeUrl(null);
+    setDanfeNfeId(null);
+    setDanfeSaidaId(null);
+  }
+
+  async function abrirDanfe(idNfe: string, idSaida?: string) {
+    setDanfeCarregando(true);
+    setError(null);
+    try {
+      const res = await fetch(`/api/nfe/danfe-dados?id=${encodeURIComponent(idNfe)}`, {
+        credentials: "include",
+      });
+      const j = await res.json();
+      if (!res.ok) throw new Error(j.error ?? "Falha ao carregar o DANFE.");
+      const url = await gerarDanfeNfePdfUrl(j);
+      if (danfeUrl) URL.revokeObjectURL(danfeUrl);
+      setDanfeUrl(url);
+      setDanfeNfeId(idNfe);
+      setDanfeSaidaId(idSaida ?? null);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Falha ao gerar o PDF da nota.");
+    } finally {
+      setDanfeCarregando(false);
     }
   }
 
@@ -343,6 +440,50 @@ export function SaidasEstoqueClient({
       setError(e instanceof Error ? e.message : "Não foi possível cancelar.");
     } finally {
       setEnviando(false);
+    }
+  }
+
+  function abrirCancelarNota(idNfe: string, idSaida?: string) {
+    setJustificativaCancel("Cancelamento da nota fiscal por erro na emissão.");
+    setErroCancelNota(null);
+    setConfirmCancelarNota({ idNfe, idSaida });
+  }
+
+  async function cancelarNota() {
+    if (!confirmCancelarNota) return;
+    const just = justificativaCancel.replace(/\s+/g, " ").trim();
+    if (just.length < 15) {
+      setErroCancelNota("A justificativa do cancelamento deve ter no mínimo 15 caracteres.");
+      return;
+    }
+    setCancelandoNota(true);
+    setErroCancelNota(null);
+    const { idNfe, idSaida } = confirmCancelarNota;
+    try {
+      const res = await fetch("/api/nfe/cancelar", {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          id: idNfe,
+          justificativa: just,
+        }),
+      });
+      const j = (await res.json()) as { error?: string; xMotivo?: string };
+      if (!res.ok) throw new Error(j.error ?? j.xMotivo ?? "Não foi possível cancelar a nota.");
+      setConfirmCancelarNota(null);
+      fecharDanfe();
+      setSucesso("Nota fiscal cancelada na SEFAZ. Você pode emitir uma nova, se precisar.");
+      await carregarLista();
+      if (idSaida) {
+        await abrirDetalhe(idSaida);
+      } else if (detalhe?.id_nfe_emissao === idNfe) {
+        await abrirDetalhe(detalhe.id);
+      }
+    } catch (e) {
+      setErroCancelNota(e instanceof Error ? e.message : "Não foi possível cancelar a nota.");
+    } finally {
+      setCancelandoNota(false);
     }
   }
 
@@ -408,10 +549,20 @@ export function SaidasEstoqueClient({
       </div>
 
       {aba === "fornecedores" ? (
-        <ParceirosEstoqueTab papel="fornecedor" empresaId={empresaId} disabled={enviando} />
+        <ParceirosEstoqueTab
+          papel="fornecedor"
+          empresaId={empresaId}
+          empresaNome={nomeEmpresaSelecionada}
+          disabled={enviando}
+        />
       ) : null}
       {aba === "compradores" ? (
-        <ParceirosEstoqueTab papel="comprador" empresaId={empresaId} disabled={enviando} />
+        <ParceirosEstoqueTab
+          papel="comprador"
+          empresaId={empresaId}
+          empresaNome={nomeEmpresaSelecionada}
+          disabled={enviando}
+        />
       ) : null}
 
       {aba === "saidas" ? (
@@ -423,9 +574,9 @@ export function SaidasEstoqueClient({
             <div className="card-body">
               <p className="text-muted small mb-3">
                 Baixa produtos do estoque de <strong>{nomeEmpresaSelecionada}</strong>.
-                Tipos: venda, transferência, perda e avulso. Na venda, o destinatário é o
-                comprador cadastrado e a nota fica <strong>pronta</strong> — a emissão ainda
-                não é feita.
+                Tipos: venda, transferência, perda e avulso. Na venda, após confirmar a
+                baixa, o sistema pergunta se deseja emitir a NF-e para o CPF ou CNPJ do
+                comprador.
               </p>
               {error ? (
                 <div className="alert alert-danger py-2 small" role="alert">
@@ -795,7 +946,31 @@ export function SaidasEstoqueClient({
                           >
                             Ver
                           </button>
-                          {podeCancelar && row.status === "confirmada" ? (
+                          {row.tipo === "venda" &&
+                          row.nota_venda_status === "gerada" &&
+                          row.id_nfe_emissao ? (
+                            <>
+                              <button
+                                type="button"
+                                className="btn btn-outline-secondary btn-sm ml-1"
+                                disabled={danfeCarregando}
+                                onClick={() => void abrirDanfe(row.id_nfe_emissao!, row.id)}
+                              >
+                                {danfeCarregando ? "PDF…" : "DANFE"}
+                              </button>
+                              <button
+                                type="button"
+                                className="btn btn-outline-danger btn-sm ml-1"
+                                disabled={cancelandoNota}
+                                onClick={() => abrirCancelarNota(row.id_nfe_emissao!, row.id)}
+                              >
+                                Cancelar nota
+                              </button>
+                            </>
+                          ) : null}
+                          {podeCancelar &&
+                          row.status === "confirmada" &&
+                          row.nota_venda_status !== "gerada" ? (
                             <button
                               type="button"
                               className="btn btn-outline-danger btn-sm ml-1"
@@ -848,8 +1023,8 @@ export function SaidasEstoqueClient({
                   </p>
                   {tipo === "venda" ? (
                     <p className="mb-0 text-muted small">
-                      A nota de venda origem → destinatário ficará pronta. Por enquanto
-                      ela não será gerada.
+                      Depois de confirmar, você poderá emitir a nota fiscal para o CPF ou
+                      CNPJ do comprador.
                     </p>
                   ) : null}
                 </div>
@@ -869,6 +1044,74 @@ export function SaidasEstoqueClient({
                     disabled={enviando}
                   >
                     {enviando ? "Processando…" : "Confirmar"}
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div className="modal-backdrop fade show" role="presentation" />
+        </>
+      ) : null}
+
+      {perguntarNota ? (
+        <>
+          <div
+            className="modal fade show"
+            style={{ display: "block" }}
+            tabIndex={-1}
+            role="dialog"
+            aria-modal="true"
+          >
+            <div className="modal-dialog" role="document">
+              <div className="modal-content">
+                <div className="modal-header">
+                  <h5 className="modal-title">Emitir nota fiscal?</h5>
+                  <button
+                    type="button"
+                    className="close"
+                    aria-label="Fechar"
+                    onClick={() => setPerguntarNota(null)}
+                    disabled={emitindoNota}
+                  >
+                    <span aria-hidden>×</span>
+                  </button>
+                </div>
+                <div className="modal-body">
+                  <p>
+                    A saída de venda foi registrada. Deseja emitir a NF-e para o
+                    comprador agora?
+                  </p>
+                  <p className="mb-1">
+                    <strong>{perguntarNota.destNome}</strong>
+                  </p>
+                  <p className="mb-0">
+                    {perguntarNota.destTipo}:{" "}
+                    <strong>
+                      {formatarCnpjCpf(perguntarNota.destDoc, perguntarNota.destTipo)}
+                    </strong>
+                  </p>
+                  {error ? (
+                    <div className="alert alert-danger py-2 small mt-3 mb-0" role="alert">
+                      {error}
+                    </div>
+                  ) : null}
+                </div>
+                <div className="modal-footer">
+                  <button
+                    type="button"
+                    className="btn btn-secondary"
+                    onClick={() => setPerguntarNota(null)}
+                    disabled={emitindoNota}
+                  >
+                    Agora não
+                  </button>
+                  <button
+                    type="button"
+                    className="btn btn-success"
+                    onClick={() => void emitirNotaSaida(perguntarNota.id)}
+                    disabled={emitindoNota}
+                  >
+                    {emitindoNota ? "Emitindo…" : "Emitir nota"}
                   </button>
                 </div>
               </div>
@@ -903,6 +1146,11 @@ export function SaidasEstoqueClient({
                   </button>
                 </div>
                 <div className="modal-body">
+                  {error && detalhe ? (
+                    <div className="alert alert-danger py-2 small" role="alert">
+                      {error}
+                    </div>
+                  ) : null}
                   <p className="small text-muted mb-2">
                     {formatDataHora(detalhe.data_saida)}
                     {detalhe.status === "cancelada" ? " · Cancelada" : ""}
@@ -923,6 +1171,7 @@ export function SaidasEstoqueClient({
                     <p className="small">
                       Nota de venda:{" "}
                       <strong>{ROTULO_NOTA_VENDA[detalhe.nota_venda_status]}</strong>
+                      {detalhe.dest_tipo ? ` · ${detalhe.dest_tipo}` : ""}
                     </p>
                   ) : null}
                   {detalhe.observacao ? (
@@ -972,7 +1221,9 @@ export function SaidasEstoqueClient({
                   </table>
                 </div>
                 <div className="modal-footer">
-                  {podeCancelar && detalhe.status === "confirmada" ? (
+                  {podeCancelar &&
+                  detalhe.status === "confirmada" &&
+                  detalhe.nota_venda_status !== "gerada" ? (
                     <button
                       type="button"
                       className="btn btn-outline-danger mr-auto"
@@ -983,6 +1234,40 @@ export function SaidasEstoqueClient({
                     >
                       Cancelar saída
                     </button>
+                  ) : null}
+                  {detalhe.tipo === "venda" &&
+                  detalhe.status === "confirmada" &&
+                  detalhe.nota_venda_status === "pronta" ? (
+                    <button
+                      type="button"
+                      className="btn btn-success"
+                      disabled={emitindoNota}
+                      onClick={() => void emitirNotaSaida(detalhe.id)}
+                    >
+                      {emitindoNota ? "Emitindo…" : "Emitir nota fiscal"}
+                    </button>
+                  ) : null}
+                  {detalhe.tipo === "venda" &&
+                  detalhe.nota_venda_status === "gerada" &&
+                  detalhe.id_nfe_emissao ? (
+                    <>
+                      <button
+                        type="button"
+                        className="btn btn-primary"
+                        disabled={danfeCarregando}
+                        onClick={() => void abrirDanfe(detalhe.id_nfe_emissao!, detalhe.id)}
+                      >
+                        {danfeCarregando ? "Gerando PDF…" : "Ver DANFE"}
+                      </button>
+                      <button
+                        type="button"
+                        className="btn btn-outline-danger"
+                        disabled={cancelandoNota}
+                        onClick={() => abrirCancelarNota(detalhe.id_nfe_emissao!, detalhe.id)}
+                      >
+                        Cancelar nota
+                      </button>
+                    </>
                   ) : null}
                   <button
                     type="button"
@@ -1049,6 +1334,148 @@ export function SaidasEstoqueClient({
             </div>
           </div>
           <div className="modal-backdrop fade show" role="presentation" />
+        </>
+      ) : null}
+
+      {confirmCancelarNota ? (
+        <>
+          <div
+            className="modal fade show"
+            style={{ display: "block", zIndex: 1070 }}
+            tabIndex={-1}
+            role="dialog"
+            aria-modal="true"
+          >
+            <div className="modal-dialog" role="document">
+              <div className="modal-content">
+                <div className="modal-header">
+                  <h5 className="modal-title">Cancelar nota fiscal</h5>
+                  <button
+                    type="button"
+                    className="close"
+                    aria-label="Fechar"
+                    onClick={() => setConfirmCancelarNota(null)}
+                    disabled={cancelandoNota}
+                  >
+                    <span aria-hidden>×</span>
+                  </button>
+                </div>
+                <div className="modal-body">
+                  {erroCancelNota ? (
+                    <div className="alert alert-danger py-2 small" role="alert">
+                      {erroCancelNota}
+                    </div>
+                  ) : null}
+                  <p>
+                    O cancelamento é enviado à SEFAZ e <strong>não pode ser desfeito</strong>.
+                    A SEFAZ costuma aceitar apenas dentro do prazo legal (em geral 24 horas após
+                    a autorização).
+                  </p>
+                  <div className="form-group mb-0">
+                    <label htmlFor="nfe-justificativa-cancel">Justificativa</label>
+                    <textarea
+                      id="nfe-justificativa-cancel"
+                      className="form-control"
+                      rows={3}
+                      maxLength={255}
+                      value={justificativaCancel}
+                      disabled={cancelandoNota}
+                      onChange={(e) => setJustificativaCancel(e.target.value)}
+                    />
+                    <small className="form-text text-muted">
+                      Mínimo 15 caracteres. {justificativaCancel.trim().length}/255
+                    </small>
+                  </div>
+                </div>
+                <div className="modal-footer">
+                  <button
+                    type="button"
+                    className="btn btn-secondary"
+                    onClick={() => setConfirmCancelarNota(null)}
+                    disabled={cancelandoNota}
+                  >
+                    Voltar
+                  </button>
+                  <button
+                    type="button"
+                    className="btn btn-danger"
+                    onClick={() => void cancelarNota()}
+                    disabled={cancelandoNota || justificativaCancel.trim().length < 15}
+                  >
+                    {cancelandoNota ? "Cancelando…" : "Confirmar cancelamento"}
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div
+            className="modal-backdrop fade show"
+            role="presentation"
+            style={{ zIndex: 1065 }}
+          />
+        </>
+      ) : null}
+
+      {danfeUrl ? (
+        <>
+          <div
+            className="modal fade show"
+            style={{ display: "block", zIndex: 1060 }}
+            tabIndex={-1}
+            role="dialog"
+            aria-modal="true"
+          >
+            <div className="modal-dialog modal-xl" role="document" style={{ maxWidth: "900px" }}>
+              <div className="modal-content">
+                <div className="modal-header">
+                  <h5 className="modal-title">DANFE — NF-e</h5>
+                  <button
+                    type="button"
+                    className="close"
+                    aria-label="Fechar"
+                    onClick={fecharDanfe}
+                  >
+                    <span aria-hidden>×</span>
+                  </button>
+                </div>
+                <div className="modal-body p-0" style={{ height: "75vh" }}>
+                  <iframe
+                    title="DANFE da nota fiscal"
+                    src={danfeUrl}
+                    style={{ width: "100%", height: "100%", border: 0 }}
+                  />
+                </div>
+                <div className="modal-footer">
+                  <a
+                    className="btn btn-outline-primary"
+                    href={danfeUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                  >
+                    Abrir em nova aba
+                  </a>
+                  {danfeNfeId ? (
+                    <button
+                      type="button"
+                      className="btn btn-outline-danger"
+                      disabled={cancelandoNota}
+                      onClick={() => abrirCancelarNota(danfeNfeId, danfeSaidaId ?? undefined)}
+                    >
+                      Cancelar nota
+                    </button>
+                  ) : null}
+                  <button type="button" className="btn btn-secondary" onClick={fecharDanfe}>
+                    Fechar
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div
+            className="modal-backdrop fade show"
+            role="presentation"
+            style={{ zIndex: 1055 }}
+          />
         </>
       ) : null}
     </>

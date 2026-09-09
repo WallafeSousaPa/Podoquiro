@@ -1,9 +1,9 @@
 import { NextResponse } from "next/server";
 import { getSession } from "@/lib/auth/session";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { erroUnicoDocParceiro, parseParceiroBody } from "@/lib/estoque/parceiro-campos";
+import { idsEmpresasParceirosVisiveis } from "@/lib/estoque/empresas-parceiros-compartilhados";
+import { erroUnicoDocParceiro, parseParceiroBody, tabelaParceiro } from "@/lib/estoque/parceiro-campos";
 import { empresaIdDaSessao } from "@/lib/estoque/parse-empresa-id";
-import { tabelaParceiro } from "@/lib/estoque/parceiro-campos";
 
 function isUuid(s: string): boolean {
   return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(s);
@@ -46,6 +46,35 @@ export async function PATCH(request: Request, context: RouteContext) {
   }
 
   const supabase = createAdminClient();
+  const { data: atual } = await supabase
+    .from(tabela)
+    .select("id, id_empresa, doc")
+    .eq("id", id)
+    .maybeSingle();
+  if (!atual) {
+    return NextResponse.json({ error: "Cadastro não encontrado." }, { status: 404 });
+  }
+
+  if (parsed.data.doc) {
+    const idsEscopo = await idsEmpresasParceirosVisiveis(supabase, Number(atual.id_empresa));
+    const { data: existentes, error: dupErr } = await supabase
+      .from(tabela)
+      .select("id")
+      .in("id_empresa", idsEscopo)
+      .eq("doc", parsed.data.doc)
+      .neq("id", id)
+      .limit(1);
+    if (dupErr) {
+      return NextResponse.json({ error: dupErr.message }, { status: 500 });
+    }
+    if (existentes && existentes.length > 0) {
+      return NextResponse.json(
+        { error: "Já existe um cadastro com este CPF/CNPJ." },
+        { status: 409 },
+      );
+    }
+  }
+
   const { data, error } = await supabase
     .from(tabela)
     .update(parsed.data)

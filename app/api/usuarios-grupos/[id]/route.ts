@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { getSession } from "@/lib/auth/session";
+import { recusarAlteracaoTipoAdministrador } from "@/lib/dashboard/menu-grupo";
 import { createAdminClient } from "@/lib/supabase/admin";
 
 type RouteContext = { params: Promise<{ id: string }> };
@@ -57,6 +58,29 @@ export async function PATCH(request: Request, context: RouteContext) {
   }
 
   const supabase = createAdminClient();
+  const { data: atual, error: atualErr } = await supabase
+    .from("usuarios_grupos")
+    .select("grupo_usuarios")
+    .eq("id", id)
+    .maybeSingle();
+  if (atualErr) {
+    console.error(atualErr);
+    return NextResponse.json({ error: atualErr.message }, { status: 500 });
+  }
+  if (!atual) {
+    return NextResponse.json({ error: "Registro não encontrado." }, { status: 404 });
+  }
+
+  const recusaAdmin = await recusarAlteracaoTipoAdministrador({
+    supabase,
+    idUsuarioSessao: Number(session.sub),
+    nomeGrupoNovo:
+      typeof patch.grupo_usuarios === "string" ? patch.grupo_usuarios : atual.grupo_usuarios,
+    nomeGrupoAtual: atual.grupo_usuarios,
+  });
+  if (recusaAdmin) {
+    return NextResponse.json({ error: recusaAdmin.error }, { status: 403 });
+  }
   const { data, error } = await supabase
     .from("usuarios_grupos")
     .update(patch)

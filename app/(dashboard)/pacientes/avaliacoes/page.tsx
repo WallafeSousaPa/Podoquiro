@@ -2,7 +2,7 @@ import { redirect } from "next/navigation";
 import { diasEntreAnamnesesDoValorDb } from "@/lib/avaliacoes/anamnese-intervalo";
 import { SELECT_PACIENTES_EVOLUCAO_VINCULOS } from "@/lib/avaliacoes/evolucao";
 import { getSession } from "@/lib/auth/session";
-import { getUsuarioPodeRelatorioCaixa } from "@/lib/dashboard/menu-grupo";
+import { getUsuarioGrupoAdministrativo } from "@/lib/dashboard/menu-grupo";
 import { nomeExibicaoPaciente } from "@/lib/pacientes";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { AvaliacoesClient } from "./avaliacoes-client";
@@ -81,7 +81,7 @@ export default async function PacientesAvaliacoesPage() {
     if (err) throw new Error(err.message);
 
     if (Number.isFinite(idUsuarioSessao) && idUsuarioSessao > 0) {
-      podeParametrizarAnamnese = await getUsuarioPodeRelatorioCaixa(supabase, idUsuarioSessao);
+      podeParametrizarAnamnese = await getUsuarioGrupoAdministrativo(supabase, idUsuarioSessao);
     }
     diasEntreAnamnesesInicial = diasEntreAnamnesesDoValorDb(empresaRes.data?.dias_entre_anamneses);
 

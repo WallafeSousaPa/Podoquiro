@@ -1,8 +1,28 @@
 import { NextResponse } from "next/server";
 import { getSession } from "@/lib/auth/session";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { idsEmpresasParceirosVisiveis } from "@/lib/estoque/empresas-parceiros-compartilhados";
 import { erroUnicoDocParceiro, parseParceiroBody, tabelaParceiro } from "@/lib/estoque/parceiro-campos";
+import type { ParceiroEstoqueRow } from "@/lib/estoque/parceiro-campos";
 import { empresaIdDaSessao, parseEmpresaIdValor } from "@/lib/estoque/parse-empresa-id";
+
+function preferirParceiroDaEmpresa(
+  rows: ParceiroEstoqueRow[],
+  idEmpresa: number,
+): ParceiroEstoqueRow[] {
+  const byDoc = new Map<string, ParceiroEstoqueRow>();
+  for (const row of rows) {
+    const prev = byDoc.get(row.doc);
+    if (!prev) {
+      byDoc.set(row.doc, row);
+      continue;
+    }
+    if (row.id_empresa === idEmpresa && prev.id_empresa !== idEmpresa) {
+      byDoc.set(row.doc, row);
+    }
+  }
+  return [...byDoc.values()].sort((a, b) => a.nome.localeCompare(b.nome, "pt-BR"));
+}
 
 export async function GET(request: Request) {
   const session = await getSession();
@@ -26,8 +46,15 @@ export async function GET(request: Request) {
 
   const empresaId = parseEmpresaIdValor(searchParams.get("id_empresa")) ?? sessionEmpresaId;
   const supabase = createAdminClient();
+  let idsEscopo: number[];
+  try {
+    idsEscopo = await idsEmpresasParceirosVisiveis(supabase, empresaId);
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : "Falha ao resolver empresas.";
+    return NextResponse.json({ error: msg }, { status: 500 });
+  }
 
-  let query = supabase.from(tabela).select("*").eq("id_empresa", empresaId).order("nome", {
+  let query = supabase.from(tabela).select("*").in("id_empresa", idsEscopo).order("nome", {
     ascending: true,
   });
 
@@ -54,7 +81,8 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 
-  return NextResponse.json({ data: data ?? [] });
+  const rows = preferirParceiroDaEmpresa((data ?? []) as ParceiroEstoqueRow[], empresaId);
+  return NextResponse.json({ data: rows });
 }
 
 export async function POST(request: Request) {
@@ -90,6 +118,32 @@ export async function POST(request: Request) {
   }
 
   const supabase = createAdminClient();
+  let idsEscopo: number[];
+  try {
+    idsEscopo = await idsEmpresasParceirosVisiveis(supabase, empresaId);
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : "Falha ao resolver empresas.";
+    return NextResponse.json({ error: msg }, { status: 500 });
+  }
+
+  if (parsed.data.doc) {
+    const { data: existentes, error: dupErr } = await supabase
+      .from(tabela)
+      .select("id")
+      .in("id_empresa", idsEscopo)
+      .eq("doc", parsed.data.doc)
+      .limit(1);
+    if (dupErr) {
+      return NextResponse.json({ error: dupErr.message }, { status: 500 });
+    }
+    if (existentes && existentes.length > 0) {
+      return NextResponse.json(
+        { error: "Já existe um cadastro com este CPF/CNPJ." },
+        { status: 409 },
+      );
+    }
+  }
+
   const { data, error } = await supabase
     .from(tabela)
     .insert({
