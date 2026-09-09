@@ -40,6 +40,8 @@ type LinhaSaida = {
   un_medida: string;
   qtd: number;
   v_un: number;
+  v_custo: number;
+  v_desc: number;
 };
 
 type SaidaListaRow = {
@@ -68,6 +70,8 @@ type SaidaItemDetalhe = {
   un_medida: string | null;
   qtd: number;
   v_un: number;
+  v_custo?: number;
+  v_desc?: number;
   v_total: number;
   saldo_anterior: number | null;
   saldo_posterior: number | null;
@@ -114,9 +118,20 @@ function nomeEmpresaLabel(empresas: EmpresaListaItem[], id: number) {
   return n || `Empresa #${id}`;
 }
 
-function precoSaida(p: ProdutoOpcao): number {
-  const v = p.preco_venda != null ? Number(p.preco_venda) : Number(p.preco);
+function precoVendaCadastro(p: ProdutoOpcao): number {
+  if (p.preco_venda == null) return 0;
+  const v = Number(p.preco_venda);
   return Number.isFinite(v) && v >= 0 ? v : 0;
+}
+
+function roundMoney(n: number): number {
+  return Math.round(n * 100) / 100;
+}
+
+function totalLinhaSaida(l: Pick<LinhaSaida, "qtd" | "v_un" | "v_desc">): number {
+  const bruto = roundMoney(l.qtd * l.v_un);
+  const desc = Math.min(Math.max(0, roundMoney(l.v_desc)), bruto);
+  return roundMoney(bruto - desc);
 }
 
 type Props = {
@@ -149,6 +164,7 @@ export function SaidasEstoqueClient({
   const [enviando, setEnviando] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [sucesso, setSucesso] = useState<string | null>(null);
+  const [avisoSemVenda, setAvisoSemVenda] = useState<string | null>(null);
   const [confirmSaida, setConfirmSaida] = useState(false);
   const [perguntarNota, setPerguntarNota] = useState<{
     id: string;
@@ -246,7 +262,11 @@ export function SaidasEstoqueClient({
   );
 
   const valorTotal = useMemo(
-    () => linhas.reduce((s, l) => s + l.qtd * l.v_un, 0),
+    () => linhas.reduce((s, l) => s + totalLinhaSaida(l), 0),
+    [linhas],
+  );
+  const custoTotal = useMemo(
+    () => linhas.reduce((s, l) => s + roundMoney(l.qtd * l.v_custo), 0),
     [linhas],
   );
 
@@ -256,6 +276,12 @@ export function SaidasEstoqueClient({
   function adicionarProduto() {
     const p = produtos.find((x) => x.id === produtoAdd);
     if (!p) return;
+    const venda = precoVendaCadastro(p);
+    if (venda <= 0) {
+      setAvisoSemVenda(p.produto);
+      return;
+    }
+    setError(null);
     setLinhas((prev) => [
       ...prev,
       {
@@ -266,19 +292,36 @@ export function SaidasEstoqueClient({
         qtd_estoque: Number(p.qtd_estoque) || 0,
         un_medida: p.un_medida || "UN",
         qtd: 1,
-        v_un: precoSaida(p),
+        v_un: venda,
+        v_custo: Number.isFinite(Number(p.preco)) && Number(p.preco) >= 0 ? Number(p.preco) : 0,
+        v_desc: 0,
       },
     ]);
     setProdutoAdd("");
   }
 
   function atualizarLinha(key: string, patch: Partial<LinhaSaida>) {
-    setLinhas((prev) => prev.map((l) => (l.key === key ? { ...l, ...patch } : l)));
+    setLinhas((prev) =>
+      prev.map((l) => {
+        if (l.key !== key) return l;
+        const next = { ...l, ...patch };
+        const bruto = roundMoney(next.qtd * next.v_un);
+        if (next.v_desc > bruto) next.v_desc = bruto;
+        return next;
+      }),
+    );
   }
 
   function podeConfirmar(): string | null {
     if (linhas.length === 0) return "Inclua ao menos um produto.";
     if (linhas.some((l) => l.qtd <= 0)) return "Quantidade deve ser maior que zero.";
+    if (linhas.some((l) => l.v_desc < 0)) return "Desconto não pode ser negativo.";
+    if (linhas.some((l) => roundMoney(l.v_desc) > roundMoney(l.qtd * l.v_un))) {
+      return "O desconto não pode ser maior que o total do produto.";
+    }
+    if (linhas.some((l) => l.v_un <= 0)) {
+      return "Há produto sem valor de venda. Cadastre em Estoque → Cadastro.";
+    }
     if (tipo === "venda" && !idComprador) return "Selecione o comprador (destinatário).";
     if (tipo === "transferencia" && !idEmpresaDestino) {
       return "Selecione a empresa de destino.";
@@ -314,6 +357,7 @@ export function SaidasEstoqueClient({
             id_produto: l.id_produto,
             qtd: l.qtd,
             v_un: l.v_un,
+            v_desc: roundMoney(l.v_desc),
           })),
         }),
       });
@@ -565,6 +609,54 @@ export function SaidasEstoqueClient({
         />
       ) : null}
 
+      {avisoSemVenda ? (
+        <>
+          <div
+            className="modal fade show"
+            style={{ display: "block" }}
+            tabIndex={-1}
+            role="dialog"
+            aria-modal="true"
+          >
+            <div className="modal-dialog modal-dialog-centered" role="document">
+              <div className="modal-content">
+                <div className="modal-header">
+                  <h5 className="modal-title">Valor de venda não cadastrado</h5>
+                  <button
+                    type="button"
+                    className="close"
+                    aria-label="Fechar"
+                    onClick={() => setAvisoSemVenda(null)}
+                  >
+                    <span aria-hidden>×</span>
+                  </button>
+                </div>
+                <div className="modal-body">
+                  <p className="mb-2">
+                    <strong>{avisoSemVenda}</strong> não tem valor de venda cadastrado.
+                  </p>
+                  <p className="mb-0">
+                    Cadastre o valor em <strong>Estoque → Cadastro</strong> (em reais ou
+                    percentual sobre o custo) e depois volte para incluir o produto na
+                    saída.
+                  </p>
+                </div>
+                <div className="modal-footer">
+                  <button
+                    type="button"
+                    className="btn btn-primary"
+                    onClick={() => setAvisoSemVenda(null)}
+                  >
+                    Fechar
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div className="modal-backdrop fade show" role="presentation" />
+        </>
+      ) : null}
+
       {aba === "saidas" ? (
         <>
           <div className="card card-outline card-primary mb-3">
@@ -697,12 +789,17 @@ export function SaidasEstoqueClient({
                     onChange={(e) => setProdutoAdd(e.target.value)}
                   >
                     <option value="">Selecione o produto…</option>
-                    {produtosDisponiveis.map((p) => (
-                      <option key={p.id} value={p.id}>
-                        {p.produto} · estoque {p.qtd_estoque}
-                        {p.sku ? ` · ${p.sku}` : ""}
-                      </option>
-                    ))}
+                    {produtosDisponiveis.map((p) => {
+                      const venda = precoVendaCadastro(p);
+                      return (
+                        <option key={p.id} value={p.id}>
+                          {p.produto} · estoque {p.qtd_estoque}
+                          {p.sku ? ` · ${p.sku}` : ""} · custo{" "}
+                          {formatBRL(Number(p.preco) || 0)} · venda{" "}
+                          {venda > 0 ? formatBRL(venda) : "não cadastrada"}
+                        </option>
+                      );
+                    })}
                   </select>
                 </div>
                 <div className="col-md-4 form-group mb-0">
@@ -728,8 +825,14 @@ export function SaidasEstoqueClient({
                       <th className="text-right" style={{ width: "8rem" }}>
                         Qtd. saída
                       </th>
+                      <th className="text-right" style={{ width: "8rem" }}>
+                        Custo
+                      </th>
                       <th className="text-right" style={{ width: "9rem" }}>
-                        V. unit.
+                        Venda
+                      </th>
+                      <th className="text-right" style={{ width: "8rem" }}>
+                        Desc. (R$)
                       </th>
                       <th className="text-right" style={{ width: "8rem" }}>
                         Total
@@ -740,7 +843,7 @@ export function SaidasEstoqueClient({
                   <tbody>
                     {linhas.length === 0 ? (
                       <tr>
-                        <td colSpan={6} className="text-muted text-center py-3">
+                        <td colSpan={8} className="text-muted text-center py-3">
                           Nenhum produto na saída.
                         </td>
                       </tr>
@@ -748,7 +851,14 @@ export function SaidasEstoqueClient({
                       linhas.map((l) => {
                         const apos = l.qtd_estoque - l.qtd;
                         return (
-                          <tr key={l.key} className={l.qtd > l.qtd_estoque ? "table-warning" : undefined}>
+                          <tr
+                            key={l.key}
+                            className={
+                              l.qtd > l.qtd_estoque || (tipo === "venda" && l.v_un <= 0)
+                                ? "table-warning"
+                                : undefined
+                            }
+                          >
                             <td>
                               <div>{l.produto}</div>
                               <div className="small text-muted">
@@ -773,23 +883,26 @@ export function SaidasEstoqueClient({
                                 }}
                               />
                             </td>
+                            <td className="text-right">{formatBRL(l.v_custo)}</td>
+                            <td className="text-right">{formatBRL(l.v_un)}</td>
                             <td>
                               <input
                                 type="number"
                                 min={0}
                                 step="0.01"
                                 className="form-control form-control-sm text-right"
-                                value={l.v_un}
+                                value={l.v_desc}
                                 disabled={enviando}
+                                aria-label={`Desconto de ${l.produto}`}
                                 onChange={(e) => {
                                   const n = Number(e.target.value);
                                   atualizarLinha(l.key, {
-                                    v_un: Number.isFinite(n) && n >= 0 ? n : 0,
+                                    v_desc: Number.isFinite(n) && n >= 0 ? n : 0,
                                   });
                                 }}
                               />
                             </td>
-                            <td className="text-right">{formatBRL(l.qtd * l.v_un)}</td>
+                            <td className="text-right">{formatBRL(totalLinhaSaida(l))}</td>
                             <td>
                               <button
                                 type="button"
@@ -811,9 +924,13 @@ export function SaidasEstoqueClient({
                   {linhas.length > 0 ? (
                     <tfoot>
                       <tr>
-                        <td colSpan={4} className="text-right">
-                          <strong>Total</strong>
+                        <td colSpan={3} className="text-right">
+                          <strong>Totais</strong>
                         </td>
+                        <td className="text-right">
+                          <strong>{formatBRL(custoTotal)}</strong>
+                        </td>
+                        <td colSpan={2} />
                         <td className="text-right">
                           <strong>{formatBRL(valorTotal)}</strong>
                         </td>
@@ -823,6 +940,10 @@ export function SaidasEstoqueClient({
                   ) : null}
                 </table>
               </div>
+              <p className="small text-muted mb-2">
+                Custo e venda vêm do cadastro do produto. A venda não pode ser alterada
+                nesta tela. O desconto, se houver, reduz o total da nota.
+              </p>
 
               {estoqueInsuficiente ? (
                 <p className="small text-warning mb-2">
@@ -1018,8 +1139,10 @@ export function SaidasEstoqueClient({
                   <p>
                     Confirmar <strong>{ROTULO_TIPO_SAIDA[tipo]}</strong> de{" "}
                     {linhas.length} produto(s) no estoque de{" "}
-                    <strong>{nomeEmpresaSelecionada}</strong>? Total{" "}
-                    <strong>{formatBRL(valorTotal)}</strong>.
+                    <strong>{nomeEmpresaSelecionada}</strong>?{" "}
+                    {tipo === "venda" ? "Total da venda " : "Total "}
+                    <strong>{formatBRL(valorTotal)}</strong>
+                    {tipo === "venda" ? " (valor da nota fiscal)." : "."}
                   </p>
                   {tipo === "venda" ? (
                     <p className="mb-0 text-muted small">
@@ -1183,7 +1306,9 @@ export function SaidasEstoqueClient({
                         <th>#</th>
                         <th>Produto</th>
                         <th className="text-right">Qtd</th>
-                        <th className="text-right">V. unit.</th>
+                        <th className="text-right">Custo</th>
+                        <th className="text-right">Venda</th>
+                        <th className="text-right">Desc.</th>
                         <th className="text-right">Total</th>
                         <th className="text-right">Estoque</th>
                       </tr>
@@ -1199,7 +1324,17 @@ export function SaidasEstoqueClient({
                             ) : null}
                           </td>
                           <td className="text-right">{it.qtd}</td>
+                          <td className="text-right">
+                            {Number(it.v_custo ?? 0) > 0
+                              ? formatBRL(Number(it.v_custo))
+                              : "—"}
+                          </td>
                           <td className="text-right">{formatBRL(Number(it.v_un))}</td>
+                          <td className="text-right">
+                            {Number(it.v_desc ?? 0) > 0
+                              ? formatBRL(Number(it.v_desc))
+                              : "—"}
+                          </td>
                           <td className="text-right">{formatBRL(Number(it.v_total))}</td>
                           <td className="text-right small">
                             {it.saldo_anterior ?? "—"} → {it.saldo_posterior ?? "—"}
@@ -1209,9 +1344,22 @@ export function SaidasEstoqueClient({
                     </tbody>
                     <tfoot>
                       <tr>
-                        <td colSpan={4} className="text-right">
-                          <strong>Total</strong>
+                        <td colSpan={3} className="text-right">
+                          <strong>Totais</strong>
                         </td>
+                        <td className="text-right">
+                          <strong>
+                            {formatBRL(
+                              detalhe.itens.reduce(
+                                (s, it) =>
+                                  s +
+                                  roundMoney(Number(it.qtd) * Number(it.v_custo ?? 0)),
+                                0,
+                              ),
+                            )}
+                          </strong>
+                        </td>
+                        <td colSpan={2} />
                         <td className="text-right">
                           <strong>{formatBRL(Number(detalhe.valor_total))}</strong>
                         </td>

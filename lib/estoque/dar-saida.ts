@@ -16,6 +16,8 @@ export type ItemSaidaInput = {
   id_produto: string;
   qtd: number;
   v_un: number;
+  /** Desconto em reais do item (R$). */
+  v_desc?: number;
 };
 
 type ProdutoSaida = {
@@ -35,6 +37,17 @@ type ProdutoSaida = {
 
 function roundMoney(n: number): number {
   return Math.round(n * 100) / 100;
+}
+
+function descontoLinha(qtd: number, vUn: number, vDesc: number): number {
+  const bruto = roundMoney(qtd * vUn);
+  const desc = roundMoney(vDesc);
+  if (!Number.isFinite(desc) || desc <= 0) return 0;
+  return Math.min(desc, bruto);
+}
+
+function totalLinha(qtd: number, vUn: number, vDesc: number): number {
+  return roundMoney(roundMoney(qtd * vUn) - descontoLinha(qtd, vUn, vDesc));
 }
 
 function origemDaSaida(tipo: TipoSaidaEstoque): OrigemMovimentacaoEstoque {
@@ -84,8 +97,19 @@ export async function darSaidaEstoque(
     if (!Number.isInteger(item.qtd) || item.qtd <= 0) {
       throw new Error("Quantidade deve ser um inteiro maior que zero.");
     }
-    if (!Number.isFinite(item.v_un) || item.v_un < 0) {
-      throw new Error("Valor unitário inválido.");
+    const vUnCatalogo =
+      p.preco_venda != null && Number(p.preco_venda) > 0 ? Number(p.preco_venda) : 0;
+    if (!Number.isFinite(vUnCatalogo) || vUnCatalogo <= 0) {
+      throw new Error(
+        `"${p.produto}" não tem valor de venda cadastrado. Cadastre em Estoque → Cadastro.`,
+      );
+    }
+    const vDesc = item.v_desc ?? 0;
+    if (!Number.isFinite(vDesc) || vDesc < 0) {
+      throw new Error("Desconto inválido.");
+    }
+    if (roundMoney(vDesc) > roundMoney(item.qtd * vUnCatalogo)) {
+      throw new Error(`Desconto de "${p.produto}" não pode ser maior que o total do item.`);
     }
   }
 
@@ -144,10 +168,21 @@ export async function darSaidaEstoque(
   const linhas: {
     input: ItemSaidaInput;
     produto: ProdutoSaida;
+    vDesc: number;
     vTotal: number;
   }[] = params.itens.map((input) => {
     const produto = byId.get(input.id_produto)!;
-    return { input, produto, vTotal: roundMoney(input.qtd * input.v_un) };
+    const vUn =
+      produto.preco_venda != null && Number(produto.preco_venda) > 0
+        ? Number(produto.preco_venda)
+        : 0;
+    const vDesc = descontoLinha(input.qtd, vUn, input.v_desc ?? 0);
+    return {
+      input: { ...input, v_un: vUn },
+      produto,
+      vDesc,
+      vTotal: totalLinha(input.qtd, vUn, vDesc),
+    };
   });
   const valorTotal = roundMoney(linhas.reduce((s, l) => s + l.vTotal, 0));
 
@@ -259,6 +294,8 @@ export async function darSaidaEstoque(
       un_medida: linha.produto.un_medida || "UN",
       qtd: linha.input.qtd,
       v_un: linha.input.v_un,
+      v_custo: roundMoney(Number(linha.produto.preco) || 0),
+      v_desc: linha.vDesc,
       v_total: linha.vTotal,
       saldo_anterior: saldoAnterior,
       saldo_posterior: saldoPosterior,
@@ -276,6 +313,7 @@ export async function darSaidaEstoque(
       un_medida: linha.produto.un_medida || "UN",
       quantidade: linha.input.qtd,
       v_un: linha.input.v_un,
+      v_desc: linha.vDesc,
       v_total: linha.vTotal,
     });
   }

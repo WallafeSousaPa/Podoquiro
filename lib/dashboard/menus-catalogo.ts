@@ -6,6 +6,8 @@ export type MenuLateralItem = {
   href: string;
   /** Prefixos de rota cobertos por este item (o mais específico vence). */
   rotas: string[];
+  /** Não aparece no menu lateral; só em Usuários › Menus. */
+  somenteAcao?: boolean;
 };
 
 export type MenuLateralGrupo = {
@@ -116,6 +118,13 @@ export const MENUS_LATERAIS: MenuLateralGrupo[] = [
         label: "Cadastro",
         href: "/estoque/cadastro",
         rotas: ["/estoque/cadastro"],
+      },
+      {
+        chave: "estoque.cadastro.preco_venda",
+        label: "Cadastrar/editar valor de venda",
+        href: "/estoque/cadastro",
+        rotas: [],
+        somenteAcao: true,
       },
       {
         chave: "estoque.importacao",
@@ -278,6 +287,8 @@ export function todosItensMenuLateral(): MenuLateralItem[] {
   return out;
 }
 
+export const CHAVE_ACAO_PRECO_VENDA_PRODUTO = "estoque.cadastro.preco_venda";
+
 export const CHAVES_MENU_LATERAL = todosItensMenuLateral().map((i) => i.chave);
 
 const CHAVES_SET = new Set(CHAVES_MENU_LATERAL);
@@ -295,6 +306,7 @@ export function chaveMenuPorPathname(pathname: string): string | null {
   if (pathname === "/conta/senha" || pathname.startsWith("/conta/senha/")) return null;
   let melhor: { chave: string; len: number } | null = null;
   for (const item of todosItensMenuLateral()) {
+    if (item.somenteAcao || item.rotas.length === 0) continue;
     for (const rota of item.rotas) {
       if (rotaCobre(pathname, rota) && (!melhor || rota.length > melhor.len)) {
         melhor = { chave: item.chave, len: rota.length };

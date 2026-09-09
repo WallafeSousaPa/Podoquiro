@@ -1,6 +1,8 @@
 import { redirect } from "next/navigation";
 import { getSession } from "@/lib/auth/session";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { getNomesSaudacao } from "@/lib/dashboard/saudacao";
+import { CHAVE_ACAO_PRECO_VENDA_PRODUTO, usuarioTemMenu } from "@/lib/dashboard/menus-catalogo";
 import {
   ProdutosCadastroClient,
   type EmpresaListaItem,
@@ -22,6 +24,13 @@ export default async function EstoqueCadastroPage() {
   if (!empresaId) {
     redirect("/login");
   }
+
+  const { menusLiberados } = await getNomesSaudacao(
+    session.sub,
+    session.usuario,
+    session.idEmpresa,
+  );
+  const podeEditarPrecoVenda = usuarioTemMenu(menusLiberados, CHAVE_ACAO_PRECO_VENDA_PRODUTO);
 
   const supabase = createAdminClient();
   let produtos: ProdutoRow[] = [];
@@ -80,6 +89,7 @@ export default async function EstoqueCadastroPage() {
                 empresas={empresas}
                 empresaIdPadrao={empresaId}
                 loadError={loadError}
+                podeEditarPrecoVenda={podeEditarPrecoVenda}
               />
             </div>
           </div>

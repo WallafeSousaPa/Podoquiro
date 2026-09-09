@@ -8,7 +8,7 @@ import {
 
 type MovimentacaoRow = {
   id: number;
-  tipo: "entrada" | "saida";
+  tipo: "entrada" | "saida" | "preco";
   quantidade: number;
   saldo_anterior: number;
   saldo_posterior: number;
@@ -127,7 +127,7 @@ export function ModalHistoricoEstoqueProduto({
         <div className="modal-content">
           <div className="modal-header">
             <h5 className="modal-title" id={titleId}>
-              Histórico de estoque — {nomeProduto}
+              Histórico — {nomeProduto}
             </h5>
             <button type="button" className="close" onClick={onClose}>
               <span aria-hidden="true">&times;</span>
@@ -165,6 +165,7 @@ export function ModalHistoricoEstoqueProduto({
                       <th className="text-right">Saldo ant.</th>
                       <th className="text-right">Saldo</th>
                       <th>Origem</th>
+                      <th>Detalhe</th>
                       <th>Atendimento</th>
                       <th>Usuário</th>
                     </tr>
@@ -176,16 +177,25 @@ export function ModalHistoricoEstoqueProduto({
                         <td>
                           {row.tipo === "entrada" ? (
                             <span className="badge badge-success">Entrada</span>
-                          ) : (
+                          ) : row.tipo === "saida" ? (
                             <span className="badge badge-danger">Saída</span>
+                          ) : (
+                            <span className="badge badge-info">Venda</span>
                           )}
                         </td>
-                        <td className="text-right">{Number(row.quantidade)}</td>
-                        <td className="text-right text-muted">{row.saldo_anterior}</td>
-                        <td className="text-right">{row.saldo_posterior}</td>
+                        <td className="text-right">
+                          {row.tipo === "preco" ? "—" : Number(row.quantidade)}
+                        </td>
+                        <td className="text-right text-muted">
+                          {row.tipo === "preco" ? "—" : row.saldo_anterior}
+                        </td>
+                        <td className="text-right">
+                          {row.tipo === "preco" ? "—" : row.saldo_posterior}
+                        </td>
                         <td className="small">
                           {ROTULO_ORIGEM_MOVIMENTACAO_ESTOQUE[row.origem] ?? row.origem}
                         </td>
+                        <td className="small">{row.observacao || "—"}</td>
                         <td className="small">
                           {row.id_agendamento ? `#${row.id_agendamento}` : "—"}
                         </td>

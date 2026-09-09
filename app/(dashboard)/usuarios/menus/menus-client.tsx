@@ -349,6 +349,9 @@ export function MenusPermissoesClient() {
                           />
                           <label className="custom-control-label" htmlFor={`m-${item.chave}`}>
                             {item.label}
+                            {item.somenteAcao ? (
+                              <span className="text-muted small"> (permissão)</span>
+                            ) : null}
                           </label>
                         </div>
                       ),

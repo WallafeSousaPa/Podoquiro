@@ -1,7 +1,14 @@
 import { NextResponse } from "next/server";
 import { getSession } from "@/lib/auth/session";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { registrarMovimentacaoEstoque } from "@/lib/estoque/registrar-movimentacao-estoque";
+import { registrarMovimentacaoEstoque, registrarHistoricoPrecoVenda } from "@/lib/estoque/registrar-movimentacao-estoque";
+import { usuarioPodeEditarPrecoVendaProduto } from "@/lib/dashboard/menus-permissoes";
+import {
+  parseNumeroNaoNegativo,
+  precoVendaPorPercentual,
+  roundMoney,
+  textoHistoricoPrecoVenda,
+} from "@/lib/estoque/preco-venda-produto";
 
 function parseEmpresaId(idEmpresa: string) {
   const n = Number(idEmpresa);
@@ -53,10 +60,11 @@ export async function PATCH(request: Request, context: RouteContext) {
   }
 
   const supabase = createAdminClient();
+  const podePreco = await usuarioPodeEditarPrecoVendaProduto(supabase, idUsuario ?? 0);
 
   const { data: existe, error: checkErr } = await supabase
     .from("produtos")
-    .select("id, servico, qtd_estoque")
+    .select("id, servico, qtd_estoque, preco, preco_venda, percentual_sobre_custo")
     .eq("id", idParam)
     .eq("id_empresa", empresaId)
     .maybeSingle();
@@ -140,25 +148,51 @@ export async function PATCH(request: Request, context: RouteContext) {
     patch.desconto_padrao = desconto_padrao;
   }
 
-  if (typeof body.preco_venda !== "undefined") {
-    if (body.preco_venda === null || body.preco_venda === "") {
-      patch.preco_venda = null;
+  if (typeof body.percentual_sobre_custo !== "undefined" && podePreco) {
+    if (body.percentual_sobre_custo === null || body.percentual_sobre_custo === "") {
+      patch.percentual_sobre_custo = null;
     } else {
-      const pvRaw = body.preco_venda;
-      const pv =
-        typeof pvRaw === "number"
-          ? pvRaw
-          : typeof pvRaw === "string"
-            ? Number(pvRaw.replace(",", "."))
-            : NaN;
-      if (!Number.isFinite(pv) || pv < 0) {
+      const pct = parseNumeroNaoNegativo(body.percentual_sobre_custo);
+      if (pct === null) {
         return NextResponse.json(
-          { error: "Preço de venda promocional inválido." },
+          { error: "Percentual sobre o custo inválido." },
           { status: 400 },
         );
       }
+      patch.percentual_sobre_custo = pct;
+    }
+  }
+
+  if (typeof body.preco_venda !== "undefined" && podePreco) {
+    if (body.preco_venda === null || body.preco_venda === "") {
+      patch.preco_venda = null;
+    } else {
+      const pv = parseNumeroNaoNegativo(body.preco_venda);
+      if (pv === null) {
+        return NextResponse.json({ error: "Valor de venda inválido." }, { status: 400 });
+      }
       patch.preco_venda = pv;
     }
+  }
+
+  const pctFinal =
+    typeof patch.percentual_sobre_custo !== "undefined"
+      ? (patch.percentual_sobre_custo as number | null)
+      : existe.percentual_sobre_custo != null
+        ? Number(existe.percentual_sobre_custo)
+        : null;
+  const mudouCusto = typeof patch.preco === "number";
+  const mudouPct = typeof patch.percentual_sobre_custo !== "undefined";
+  if (
+    podePreco &&
+    pctFinal != null &&
+    Number.isFinite(pctFinal) &&
+    (mudouCusto || mudouPct)
+  ) {
+    const custo =
+      typeof patch.preco === "number" ? (patch.preco as number) : Number(existe.preco);
+    patch.preco_venda = precoVendaPorPercentual(custo, pctFinal);
+    patch.percentual_sobre_custo = pctFinal;
   }
 
   if (typeof body.ncm !== "undefined") {
@@ -300,6 +334,35 @@ export async function PATCH(request: Request, context: RouteContext) {
         id_usuario: idUsuario,
       });
     }
+  }
+
+  const vendaAntes =
+    existe.preco_venda != null ? Number(existe.preco_venda) : null;
+  const vendaDepois =
+    typeof patch.preco_venda !== "undefined"
+      ? (patch.preco_venda as number | null)
+      : vendaAntes;
+  const pctAntes =
+    existe.percentual_sobre_custo != null ? Number(existe.percentual_sobre_custo) : null;
+  const pctDepois =
+    typeof patch.percentual_sobre_custo !== "undefined"
+      ? (patch.percentual_sobre_custo as number | null)
+      : pctAntes;
+  const mudouVenda =
+    roundMoney(vendaAntes ?? 0) !== roundMoney(vendaDepois ?? 0) ||
+    (pctAntes ?? null) !== (pctDepois ?? null);
+  if (mudouVenda) {
+    await registrarHistoricoPrecoVenda(supabase, {
+      id_empresa: empresaId,
+      id_produto: idParam,
+      saldo: Number(data?.qtd_estoque ?? existe.qtd_estoque),
+      id_usuario: idUsuario,
+      observacao: textoHistoricoPrecoVenda({
+        anterior: vendaAntes,
+        posterior: vendaDepois,
+        percentual: pctDepois,
+      }),
+    });
   }
 
   return NextResponse.json({ data });

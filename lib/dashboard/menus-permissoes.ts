@@ -1,7 +1,9 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import {
+  CHAVE_ACAO_PRECO_VENDA_PRODUTO,
   CHAVES_MENU_LATERAL,
   isChaveMenuLateral,
+  usuarioTemMenu,
 } from "@/lib/dashboard/menus-catalogo";
 
 export async function menusDoGrupo(
@@ -111,4 +113,12 @@ export async function limparPersonalizacaoUsuario(
   if (error) throw new Error(error.message);
 }
 
-export { CHAVES_MENU_LATERAL };
+export { CHAVES_MENU_LATERAL, CHAVE_ACAO_PRECO_VENDA_PRODUTO };
+
+export async function usuarioPodeEditarPrecoVendaProduto(
+  supabase: SupabaseClient,
+  idUsuario: number,
+): Promise<boolean> {
+  const efetivo = await menusEfetivosDoUsuario(supabase, idUsuario);
+  return usuarioTemMenu(efetivo.menus, CHAVE_ACAO_PRECO_VENDA_PRODUTO);
+}

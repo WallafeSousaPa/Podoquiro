@@ -97,6 +97,9 @@ export async function POST(request: Request) {
     const qtd = typeof row.qtd === "number" ? row.qtd : Number.parseInt(String(row.qtd ?? ""), 10);
     const vUn =
       typeof row.v_un === "number" ? row.v_un : Number(String(row.v_un ?? "0").replace(",", "."));
+    const vDescRaw = row.v_desc ?? 0;
+    const vDesc =
+      typeof vDescRaw === "number" ? vDescRaw : Number(String(vDescRaw).replace(",", "."));
     if (!Number.isInteger(qtd) || qtd <= 0) {
       return NextResponse.json(
         { error: "Quantidade deve ser um inteiro maior que zero." },
@@ -106,7 +109,10 @@ export async function POST(request: Request) {
     if (!Number.isFinite(vUn) || vUn < 0) {
       return NextResponse.json({ error: "Valor unitário inválido." }, { status: 400 });
     }
-    itens.push({ id_produto: row.id_produto, qtd, v_un: vUn });
+    if (!Number.isFinite(vDesc) || vDesc < 0) {
+      return NextResponse.json({ error: "Desconto inválido." }, { status: 400 });
+    }
+    itens.push({ id_produto: row.id_produto, qtd, v_un: vUn, v_desc: vDesc });
   }
 
   const observacao =

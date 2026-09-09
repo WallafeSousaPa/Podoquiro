@@ -1,7 +1,13 @@
 import { NextResponse } from "next/server";
 import { getSession } from "@/lib/auth/session";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { registrarMovimentacaoEstoque } from "@/lib/estoque/registrar-movimentacao-estoque";
+import { registrarMovimentacaoEstoque, registrarHistoricoPrecoVenda } from "@/lib/estoque/registrar-movimentacao-estoque";
+import {
+  parseNumeroNaoNegativo,
+  precoVendaPorPercentual,
+  textoHistoricoPrecoVenda,
+} from "@/lib/estoque/preco-venda-produto";
+import { usuarioPodeEditarPrecoVendaProduto } from "@/lib/dashboard/menus-permissoes";
 
 function parseEmpresaId(idEmpresa: string) {
   const n = Number(idEmpresa);
@@ -72,6 +78,10 @@ export async function GET(request: Request) {
       else if (estOp === "lt") query = query.lt("qtd_estoque", vi);
       else if (estOp === "eq") query = query.eq("qtd_estoque", vi);
     }
+  }
+
+  if (searchParams.get("sem_venda") === "1") {
+    query = query.or("preco_venda.is.null,preco_venda.eq.0");
   }
 
   const { data, error } = await query.order("produto", { ascending: true });
@@ -153,21 +163,33 @@ export async function POST(request: Request) {
     );
   }
 
-  let preco_venda: number | null = null;
+  let percentual_sobre_custo: number | null = null;
   if (
+    body.percentual_sobre_custo !== null &&
+    typeof body.percentual_sobre_custo !== "undefined" &&
+    body.percentual_sobre_custo !== ""
+  ) {
+    const pct = parseNumeroNaoNegativo(body.percentual_sobre_custo);
+    if (pct === null) {
+      return NextResponse.json(
+        { error: "Percentual sobre o custo inválido." },
+        { status: 400 },
+      );
+    }
+    percentual_sobre_custo = pct;
+  }
+
+  let preco_venda: number | null = null;
+  if (percentual_sobre_custo !== null) {
+    preco_venda = precoVendaPorPercentual(preco, percentual_sobre_custo);
+  } else if (
     body.preco_venda !== null &&
     typeof body.preco_venda !== "undefined" &&
     body.preco_venda !== ""
   ) {
-    const pvRaw = body.preco_venda;
-    const pv =
-      typeof pvRaw === "number"
-        ? pvRaw
-        : typeof pvRaw === "string"
-          ? Number(pvRaw.replace(",", "."))
-          : NaN;
-    if (!Number.isFinite(pv) || pv < 0) {
-      return NextResponse.json({ error: "Preço de venda promocional inválido." }, { status: 400 });
+    const pv = parseNumeroNaoNegativo(body.preco_venda);
+    if (pv === null) {
+      return NextResponse.json({ error: "Valor de venda inválido." }, { status: 400 });
     }
     preco_venda = pv;
   }
@@ -236,6 +258,12 @@ export async function POST(request: Request) {
   const servico = typeof body.servico === "boolean" ? body.servico : false;
 
   const supabase = createAdminClient();
+  const podePreco = await usuarioPodeEditarPrecoVendaProduto(supabase, idUsuario ?? 0);
+  if (!podePreco) {
+    percentual_sobre_custo = null;
+    preco_venda = null;
+  }
+
   const { data, error } = await supabase
     .from("produtos")
     .insert({
@@ -247,6 +275,7 @@ export async function POST(request: Request) {
       qtd_estoque,
       desconto_padrao,
       preco_venda,
+      percentual_sobre_custo,
       ncm: ncmRaw,
       cest: cestVal,
       origem,
@@ -281,6 +310,20 @@ export async function POST(request: Request) {
       saldo_posterior: qtd_estoque,
       origem: "cadastro",
       id_usuario: idUsuario,
+    });
+  }
+
+  if (preco_venda != null && data?.id) {
+    await registrarHistoricoPrecoVenda(supabase, {
+      id_empresa: empresaId,
+      id_produto: data.id as string,
+      saldo: qtd_estoque,
+      id_usuario: idUsuario,
+      observacao: textoHistoricoPrecoVenda({
+        anterior: null,
+        posterior: preco_venda,
+        percentual: percentual_sobre_custo,
+      }),
     });
   }
 

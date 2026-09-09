@@ -26,6 +26,7 @@ export type ItemPayloadNotaVenda = {
   un_medida: string;
   quantidade: number;
   v_un: number;
+  v_desc?: number;
   v_total: number;
 };
 

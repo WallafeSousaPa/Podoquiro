@@ -19,6 +19,8 @@ type ItemSaida = {
   id_produto: string | null;
   qtd: number;
   v_un: number;
+  v_desc?: number;
+  v_total?: number;
 };
 
 /**
@@ -103,14 +105,35 @@ export async function POST(request: Request, context: RouteContext) {
   const itensRaw = Array.isArray(saida.itens) ? (saida.itens as ItemSaida[]) : [];
   const itens = itensRaw
     .filter((it) => typeof it.id_produto === "string" && it.id_produto)
-    .map((it) => ({
-      id_produto: it.id_produto as string,
-      quantidade: Number(it.qtd),
-      v_un: Number(it.v_un),
-    }));
+    .map((it) => {
+      const qtd = Number(it.qtd);
+      const vUn = Number(it.v_un);
+      const vDesc = Number(it.v_desc ?? 0);
+      const bruto = Math.round(qtd * vUn * 100) / 100;
+      const desc = Math.min(Math.max(0, Math.round(vDesc * 100) / 100), bruto);
+      const vTotal =
+        Number.isFinite(Number(it.v_total)) && Number(it.v_total) >= 0
+          ? Number(it.v_total)
+          : Math.round((bruto - desc) * 100) / 100;
+      return {
+        id_produto: it.id_produto as string,
+        quantidade: qtd,
+        // Valor de venda já descontado — não usa o custo do produto.
+        v_un: qtd > 0 ? vTotal / qtd : 0,
+      };
+    });
   if (itens.length === 0) {
     return NextResponse.json(
       { error: "A saída não tem produtos válidos para a nota." },
+      { status: 400 },
+    );
+  }
+  if (itens.some((it) => it.v_un <= 0)) {
+    return NextResponse.json(
+      {
+        error:
+          "A nota fiscal usa o valor de venda dos produtos. Informe um valor de venda maior que zero.",
+      },
       { status: 400 },
     );
   }

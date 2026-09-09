@@ -53,7 +53,7 @@ export function DashboardSidebarNav({ pathname, menus, onNavigate }: Props) {
           );
         }
 
-        const itens = (g.itens ?? []).filter((i) => menus.has(i.chave));
+        const itens = (g.itens ?? []).filter((i) => menus.has(i.chave) && !i.somenteAcao);
         if (itens.length === 0) return null;
 
         const grupoAtivo = itens.some((i) => itemAtivo(pathname, i));

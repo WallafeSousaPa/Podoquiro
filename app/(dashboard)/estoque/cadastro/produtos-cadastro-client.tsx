@@ -6,9 +6,12 @@ import {
   useCallback,
   useEffect,
   useId,
+  useMemo,
+  useRef,
   useState,
 } from "react";
 import { ModalHistoricoEstoqueProduto } from "./modal-historico-estoque-produto";
+import { precoVendaPorPercentual } from "@/lib/estoque/preco-venda-produto";
 
 export type EmpresaListaItem = {
   id: number;
@@ -27,6 +30,7 @@ export type ProdutoRow = {
   qtd_estoque: number;
   desconto_padrao: number;
   preco_venda: number | null;
+  percentual_sobre_custo?: number | null;
   ncm: string;
   cest: string | null;
   origem: number;
@@ -93,6 +97,8 @@ function defaultForm() {
     qtd_estoque: 0,
     desconto_padrao: 0,
     preco_venda: null as number | null,
+    percentual_sobre_custo: null as number | null,
+    modo_venda: "valor" as "valor" | "percentual",
     ncm: "",
     cest: "",
     origem: 0,
@@ -112,6 +118,7 @@ type Props = {
   empresas: EmpresaListaItem[];
   empresaIdPadrao: number;
   loadError?: string | null;
+  podeEditarPrecoVenda?: boolean;
 };
 
 function nomeEmpresaLabel(empresas: EmpresaListaItem[], id: number) {
@@ -125,6 +132,7 @@ export function ProdutosCadastroClient({
   empresas,
   empresaIdPadrao,
   loadError,
+  podeEditarPrecoVenda = false,
 }: Props) {
   const modalTitleId = useId();
   const confirmTitleId = useId();
@@ -160,7 +168,14 @@ export function ProdutosCadastroClient({
     "",
   );
   const [filtroEstoqueValor, setFiltroEstoqueValor] = useState("");
+  const [filtroSemVenda, setFiltroSemVenda] = useState(false);
   const [filtrosCarregando, setFiltrosCarregando] = useState(false);
+  const skipPrimeiroFiltro = useRef(true);
+  const [idsSel, setIdsSel] = useState<Set<string>>(() => new Set());
+  const [modalLote, setModalLote] = useState(false);
+  const [pctLote, setPctLote] = useState("");
+  const [salvandoLote, setSalvandoLote] = useState(false);
+  const [erroLote, setErroLote] = useState<string | null>(null);
 
   useEffect(() => {
     setFiltroEmpresaId(String(empresaIdPadrao));
@@ -177,6 +192,7 @@ export function ProdutosCadastroClient({
       p.set("estoque_op", filtroEstoqueOp);
       p.set("estoque_val", filtroEstoqueValor.trim());
     }
+    if (filtroSemVenda) p.set("sem_venda", "1");
     return p.toString();
   }, [
     filtroEmpresaId,
@@ -185,6 +201,7 @@ export function ProdutosCadastroClient({
     filtroStatus,
     filtroEstoqueOp,
     filtroEstoqueValor,
+    filtroSemVenda,
   ]);
 
   const refetchLista = useCallback(async () => {
@@ -206,9 +223,16 @@ export function ProdutosCadastroClient({
     }
   }, [montarQueryProdutos]);
 
-  function aplicarFiltros() {
-    void refetchLista();
-  }
+  useEffect(() => {
+    if (skipPrimeiroFiltro.current) {
+      skipPrimeiroFiltro.current = false;
+      return;
+    }
+    const t = window.setTimeout(() => {
+      void refetchLista();
+    }, 300);
+    return () => window.clearTimeout(t);
+  }, [refetchLista]);
 
   function limparFiltros() {
     setFiltroEmpresaId(String(empresaIdPadrao));
@@ -217,27 +241,86 @@ export function ProdutosCadastroClient({
     setFiltroStatus("");
     setFiltroEstoqueOp("");
     setFiltroEstoqueValor("");
-    void (async () => {
-      setFiltrosCarregando(true);
-      setListError(null);
-      try {
-        const p = new URLSearchParams();
-        p.set("id_empresa", String(empresaIdPadrao));
-        const res = await fetch(`/api/produtos?${p.toString()}`, {
-          cache: "no-store",
-        });
-        const json = (await res.json().catch(() => ({}))) as {
-          data?: ProdutoRow[];
-          error?: string;
-        };
-        if (!res.ok) throw new Error(json.error ?? "Erro ao carregar produtos.");
-        setRows(json.data ?? []);
-      } catch (e) {
-        setListError(e instanceof Error ? e.message : "Erro ao carregar produtos.");
-      } finally {
-        setFiltrosCarregando(false);
-      }
-    })();
+    setFiltroSemVenda(false);
+  }
+
+  useEffect(() => {
+    setIdsSel(new Set());
+  }, [filtroEmpresaId]);
+
+  const mercadoriasVisiveis = useMemo(
+    () => rows.filter((r) => !r.servico),
+    [rows],
+  );
+  const idsMercadorias = useMemo(
+    () => mercadoriasVisiveis.map((r) => r.id),
+    [mercadoriasVisiveis],
+  );
+  const todosSel =
+    idsMercadorias.length > 0 && idsMercadorias.every((id) => idsSel.has(id));
+
+  function alternarSelecao(id: string, marcado: boolean) {
+    setIdsSel((prev) => {
+      const next = new Set(prev);
+      if (marcado) next.add(id);
+      else next.delete(id);
+      return next;
+    });
+  }
+
+  function alternarTodos(marcado: boolean) {
+    setIdsSel((prev) => {
+      const next = new Set(prev);
+      if (marcado) idsMercadorias.forEach((id) => next.add(id));
+      else idsMercadorias.forEach((id) => next.delete(id));
+      return next;
+    });
+  }
+
+  async function aplicarVendaLote() {
+    if (!podeEditarPrecoVenda) {
+      setErroLote("Sem permissão para cadastrar ou alterar o valor de venda.");
+      return;
+    }
+    const pct = Number(String(pctLote).replace(",", "."));
+    if (!Number.isFinite(pct) || pct < 0) {
+      setErroLote("Informe um percentual válido (≥ 0).");
+      return;
+    }
+    if (idsSel.size === 0) {
+      setErroLote("Selecione ao menos um produto.");
+      return;
+    }
+    setSalvandoLote(true);
+    setErroLote(null);
+    try {
+      const res = await fetch("/api/produtos/venda-lote", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          id_empresa: Number(filtroEmpresaId),
+          ids: [...idsSel],
+          percentual: pct,
+        }),
+      });
+      const json = (await res.json().catch(() => ({}))) as {
+        error?: string;
+        atualizados?: number;
+      };
+      if (!res.ok) throw new Error(json.error ?? "Não foi possível aplicar o percentual.");
+      setModalLote(false);
+      setPctLote("");
+      setIdsSel(new Set());
+      setFeedback({
+        title: "Venda atualizada",
+        message: `O percentual de ${pct}% sobre o custo foi aplicado em ${json.atualizados ?? 0} produto(s). A alteração entrou no histórico de cada produto.`,
+      });
+      void refetchLista();
+    } catch (e) {
+      setErroLote(e instanceof Error ? e.message : "Não foi possível aplicar o percentual.");
+    } finally {
+      setSalvandoLote(false);
+    }
   }
 
   const mostrarColunaEmpresa = empresas.length > 1;
@@ -270,6 +353,14 @@ export function ProdutosCadastroClient({
         row.preco_venda !== null && typeof row.preco_venda !== "undefined"
           ? row.preco_venda
           : null,
+      percentual_sobre_custo:
+        row.percentual_sobre_custo != null && Number.isFinite(Number(row.percentual_sobre_custo))
+          ? Number(row.percentual_sobre_custo)
+          : null,
+      modo_venda:
+        row.percentual_sobre_custo != null && Number.isFinite(Number(row.percentual_sobre_custo))
+          ? "percentual"
+          : "valor",
       ncm: row.ncm,
       cest: row.cest ?? "",
       origem: row.origem,
@@ -290,14 +381,13 @@ export function ProdutosCadastroClient({
   }
 
   function buildPayload(): Record<string, unknown> {
-    return {
+    const base: Record<string, unknown> = {
       produto: form.produto.trim(),
       descricao: form.descricao.trim() || null,
       un_medida: form.un_medida.trim() || "UN",
       preco: form.preco,
       qtd_estoque: form.qtd_estoque,
       desconto_padrao: form.desconto_padrao,
-      preco_venda: form.preco_venda,
       ncm: form.ncm,
       cest: form.cest.trim() || null,
       origem: form.origem,
@@ -308,6 +398,17 @@ export function ProdutosCadastroClient({
       ativo: form.ativo,
       servico: form.servico,
     };
+    if (podeEditarPrecoVenda) {
+      base.preco_venda =
+        form.modo_venda === "percentual"
+          ? form.percentual_sobre_custo != null
+            ? precoVendaPorPercentual(form.preco, form.percentual_sobre_custo)
+            : null
+          : form.preco_venda;
+      base.percentual_sobre_custo =
+        form.modo_venda === "percentual" ? form.percentual_sobre_custo : null;
+    }
+    return base;
   }
 
   async function submit(e: FormEvent) {
@@ -327,6 +428,22 @@ export function ProdutosCadastroClient({
     ) {
       setFormError("Desconto padrão deve ser entre 0 e 100%.");
       return;
+    }
+    if (podeEditarPrecoVenda) {
+      if (form.modo_venda === "valor" && form.preco_venda != null && form.preco_venda < 0) {
+        setFormError("Valor de venda inválido.");
+        return;
+      }
+      if (form.modo_venda === "percentual") {
+        if (form.percentual_sobre_custo == null || !Number.isFinite(form.percentual_sobre_custo)) {
+          setFormError("Informe o percentual sobre o custo.");
+          return;
+        }
+        if (form.percentual_sobre_custo < 0) {
+          setFormError("O percentual sobre o custo não pode ser negativo.");
+          return;
+        }
+      }
     }
 
     setSaving(true);
@@ -448,12 +565,6 @@ export function ProdutosCadastroClient({
                 placeholder="Buscar por nome"
                 value={filtroProduto}
                 onChange={(e) => setFiltroProduto(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") {
-                    e.preventDefault();
-                    aplicarFiltros();
-                  }
-                }}
               />
             </div>
             <div className="form-group col-md-4 col-lg-2">
@@ -518,15 +629,24 @@ export function ProdutosCadastroClient({
                 onChange={(e) => setFiltroEstoqueValor(e.target.value)}
               />
             </div>
+            <div className="form-group col-md-4 col-lg-3">
+              <div className="custom-control custom-checkbox mt-4">
+                <input
+                  type="checkbox"
+                  className="custom-control-input"
+                  id="filtro-sem-venda"
+                  checked={filtroSemVenda}
+                  onChange={(e) => setFiltroSemVenda(e.target.checked)}
+                />
+                <label className="custom-control-label" htmlFor="filtro-sem-venda">
+                  Somente sem valor de venda
+                </label>
+              </div>
+            </div>
             <div className="form-group col-md-12 col-lg-8 mb-md-0">
-              <button
-                type="button"
-                className="btn btn-primary btn-sm mr-2"
-                disabled={filtrosCarregando}
-                onClick={() => aplicarFiltros()}
-              >
-                {filtrosCarregando ? "Filtrando..." : "Aplicar filtros"}
-              </button>
+              {filtrosCarregando ? (
+                <span className="text-muted small mr-3">Filtrando…</span>
+              ) : null}
               <button
                 type="button"
                 className="btn btn-outline-secondary btn-sm"
@@ -543,14 +663,41 @@ export function ProdutosCadastroClient({
       <div className="card card-outline card-primary">
         <div className="card-header d-flex flex-wrap justify-content-between align-items-center">
           <h3 className="card-title mb-2 mb-sm-0">Produtos</h3>
-          <button type="button" className="btn btn-primary btn-sm" onClick={openCreate}>
-            <i className="fas fa-plus mr-1" aria-hidden /> Novo produto
-          </button>
+          <div>
+            {podeEditarPrecoVenda ? (
+              <button
+                type="button"
+                className="btn btn-outline-primary btn-sm mr-2"
+                disabled={idsSel.size === 0}
+                onClick={() => {
+                  setErroLote(null);
+                  setPctLote("");
+                  setModalLote(true);
+                }}
+              >
+                Definir venda (%) {idsSel.size > 0 ? `(${idsSel.size})` : ""}
+              </button>
+            ) : null}
+            <button type="button" className="btn btn-primary btn-sm" onClick={openCreate}>
+              <i className="fas fa-plus mr-1" aria-hidden /> Novo produto
+            </button>
+          </div>
         </div>
         <div className="card-body table-responsive p-0">
           <table className="table table-hover table-striped mb-0">
             <thead>
               <tr>
+                {podeEditarPrecoVenda ? (
+                  <th style={{ width: "2.2rem" }}>
+                    <input
+                      type="checkbox"
+                      checked={todosSel}
+                      disabled={idsMercadorias.length === 0}
+                      onChange={(e) => alternarTodos(e.target.checked)}
+                      aria-label="Selecionar todos os produtos visíveis"
+                    />
+                  </th>
+                ) : null}
                 {mostrarColunaEmpresa ? (
                   <th style={{ width: "140px" }}>Empresa</th>
                 ) : null}
@@ -558,7 +705,10 @@ export function ProdutosCadastroClient({
                 <th>SKU</th>
                 <th>Produto</th>
                 <th style={{ width: "110px" }} className="text-right">
-                  Preço
+                  Custo
+                </th>
+                <th style={{ width: "110px" }} className="text-right">
+                  Venda
                 </th>
                 <th style={{ width: "90px" }} className="text-right">
                   Estoque
@@ -574,7 +724,9 @@ export function ProdutosCadastroClient({
               {rows.length === 0 ? (
                 <tr>
                   <td
-                    colSpan={mostrarColunaEmpresa ? 9 : 8}
+                    colSpan={
+                      (podeEditarPrecoVenda ? 1 : 0) + (mostrarColunaEmpresa ? 1 : 0) + 9
+                    }
                     className="text-center text-muted py-4"
                   >
                     Nenhum produto cadastrado.
@@ -583,6 +735,20 @@ export function ProdutosCadastroClient({
               ) : (
                 rows.map((row) => (
                   <tr key={row.id}>
+                    {podeEditarPrecoVenda ? (
+                      <td>
+                        {row.servico ? (
+                          <span className="text-muted">—</span>
+                        ) : (
+                          <input
+                            type="checkbox"
+                            checked={idsSel.has(row.id)}
+                            onChange={(e) => alternarSelecao(row.id, e.target.checked)}
+                            aria-label={`Selecionar ${row.produto}`}
+                          />
+                        )}
+                      </td>
+                    ) : null}
                     {mostrarColunaEmpresa ? (
                       <td className="small text-muted">
                         {nomeEmpresaLabel(empresas, row.id_empresa ?? empresaIdPadrao)}
@@ -606,6 +772,9 @@ export function ProdutosCadastroClient({
                       </button>
                     </td>
                     <td className="text-right">{formatBRL(row.preco)}</td>
+                    <td className="text-right">
+                      {row.preco_venda != null ? formatBRL(Number(row.preco_venda)) : "—"}
+                    </td>
                     <td className="text-right">{row.qtd_estoque}</td>
                     <td>
                       <code className="small">{row.ncm}</code>
@@ -737,7 +906,7 @@ export function ProdutosCadastroClient({
                       />
                     </div>
                     <div className="form-group col-md-4">
-                      <label htmlFor="prod-preco">Preço</label>
+                      <label htmlFor="prod-preco">Custo (R$)</label>
                       <input
                         id="prod-preco"
                         type="number"
@@ -745,9 +914,17 @@ export function ProdutosCadastroClient({
                         min={0}
                         step={0.01}
                         value={form.preco}
-                        onChange={(e) =>
-                          setField("preco", Number.parseFloat(e.target.value) || 0)
-                        }
+                        onChange={(e) => {
+                          const preco = Number.parseFloat(e.target.value) || 0;
+                          setForm((f) => ({
+                            ...f,
+                            preco,
+                            preco_venda:
+                              f.modo_venda === "percentual" && f.percentual_sobre_custo != null
+                                ? precoVendaPorPercentual(preco, f.percentual_sobre_custo)
+                                : f.preco_venda,
+                          }));
+                        }}
                       />
                     </div>
                     <div className="form-group col-md-4">
@@ -766,6 +943,137 @@ export function ProdutosCadastroClient({
                     </div>
                   </div>
                   <div className="form-row">
+                    {podeEditarPrecoVenda ? (
+                      <>
+                    <div className="form-group col-md-12">
+                      <span className="d-block mb-2">Valor de venda</span>
+                      <div className="custom-control custom-radio custom-control-inline">
+                        <input
+                          type="radio"
+                          id="prod-venda-valor"
+                          name="prod-modo-venda"
+                          className="custom-control-input"
+                          checked={form.modo_venda === "valor"}
+                          onChange={() =>
+                            setForm((f) => ({
+                              ...f,
+                              modo_venda: "valor",
+                              percentual_sobre_custo: null,
+                            }))
+                          }
+                        />
+                        <label className="custom-control-label" htmlFor="prod-venda-valor">
+                          Valor em reais
+                        </label>
+                      </div>
+                      <div className="custom-control custom-radio custom-control-inline">
+                        <input
+                          type="radio"
+                          id="prod-venda-pct"
+                          name="prod-modo-venda"
+                          className="custom-control-input"
+                          checked={form.modo_venda === "percentual"}
+                          onChange={() =>
+                            setForm((f) => ({
+                              ...f,
+                              modo_venda: "percentual",
+                              percentual_sobre_custo: f.percentual_sobre_custo ?? 0,
+                              preco_venda:
+                                f.percentual_sobre_custo != null
+                                  ? precoVendaPorPercentual(f.preco, f.percentual_sobre_custo)
+                                  : precoVendaPorPercentual(f.preco, 0),
+                            }))
+                          }
+                        />
+                        <label className="custom-control-label" htmlFor="prod-venda-pct">
+                          Percentual sobre o custo
+                        </label>
+                      </div>
+                    </div>
+                    {form.modo_venda === "valor" ? (
+                      <div className="form-group col-md-6">
+                        <label htmlFor="prod-preco-venda">Valor de venda (R$)</label>
+                        <input
+                          id="prod-preco-venda"
+                          type="number"
+                          className="form-control"
+                          min={0}
+                          step={0.01}
+                          placeholder="Opcional"
+                          value={form.preco_venda === null ? "" : form.preco_venda}
+                          onChange={(e) => {
+                            const v = e.target.value;
+                            if (v === "") setField("preco_venda", null);
+                            else setField("preco_venda", Number.parseFloat(v));
+                          }}
+                        />
+                        <small className="form-text text-muted">
+                          Esse valor é o que entra nas saídas e na nota fiscal.
+                        </small>
+                      </div>
+                    ) : (
+                      <div className="form-group col-md-6">
+                        <label htmlFor="prod-pct-custo">Percentual sobre o custo (%)</label>
+                        <input
+                          id="prod-pct-custo"
+                          type="number"
+                          className="form-control"
+                          min={0}
+                          step={0.01}
+                          value={
+                            form.percentual_sobre_custo === null
+                              ? ""
+                              : form.percentual_sobre_custo
+                          }
+                          onChange={(e) => {
+                            const v = e.target.value;
+                            if (v === "") {
+                              setForm((f) => ({
+                                ...f,
+                                percentual_sobre_custo: null,
+                                preco_venda: null,
+                              }));
+                              return;
+                            }
+                            const pct = Number.parseFloat(v);
+                            setForm((f) => ({
+                              ...f,
+                              percentual_sobre_custo: Number.isFinite(pct) ? pct : 0,
+                              preco_venda: Number.isFinite(pct)
+                                ? precoVendaPorPercentual(f.preco, pct)
+                                : f.preco_venda,
+                            }));
+                          }}
+                        />
+                        <small className="form-text text-muted">
+                          Venda calculada:{" "}
+                          {form.percentual_sobre_custo != null
+                            ? formatBRL(
+                                precoVendaPorPercentual(form.preco, form.percentual_sobre_custo),
+                              )
+                            : "—"}{" "}
+                          (custo + percentual). Esse valor entra nas saídas e na nota fiscal.
+                        </small>
+                      </div>
+                    )}
+                      </>
+                    ) : (
+                      <div className="form-group col-md-6">
+                        <label>Valor de venda</label>
+                        <input
+                          className="form-control"
+                          value={
+                            form.preco_venda != null ? formatBRL(form.preco_venda) : "Não cadastrado"
+                          }
+                          disabled
+                          readOnly
+                        />
+                        <small className="form-text text-muted">
+                          Você pode cadastrar o produto, mas o valor de venda só pode ser
+                          definido por quem tiver essa permissão.
+                        </small>
+                      </div>
+                    )}
                     <div className="form-group col-md-6">
                       <label htmlFor="prod-desc-pad">Desconto padrão da loja (%)</label>
                       <input
@@ -783,26 +1091,6 @@ export function ProdutosCadastroClient({
                           )
                         }
                       />
-                    </div>
-                    <div className="form-group col-md-6">
-                      <label htmlFor="prod-preco-venda">Preço promocional fixo</label>
-                      <input
-                        id="prod-preco-venda"
-                        type="number"
-                        className="form-control"
-                        min={0}
-                        step={0.01}
-                        placeholder="Opcional — deixe em branco se não houver"
-                        value={form.preco_venda === null ? "" : form.preco_venda}
-                        onChange={(e) => {
-                          const v = e.target.value;
-                          if (v === "") setField("preco_venda", null);
-                          else setField("preco_venda", Number.parseFloat(v));
-                        }}
-                      />
-                      <small className="form-text text-muted">
-                        Valor fixo de venda em promoção; vazio = sem promoção cadastrada.
-                      </small>
                     </div>
                   </div>
 
@@ -1029,6 +1317,77 @@ export function ProdutosCadastroClient({
               <div className="modal-footer border-0 pt-0">
                 <button type="button" className="btn btn-primary" onClick={() => setFeedback(null)}>
                   OK
+                </button>
+              </div>
+            </div>
+          </div>
+        </ModalBackdrop>
+      ) : null}
+
+      {modalLote ? (
+        <ModalBackdrop
+          onBackdropClick={() => {
+            if (!salvandoLote) setModalLote(false);
+          }}
+        >
+          <div className="modal-dialog" role="document">
+            <div className="modal-content">
+              <div className="modal-header">
+                <h5 className="modal-title">Definir venda por percentual</h5>
+                <button
+                  type="button"
+                  className="close"
+                  disabled={salvandoLote}
+                  onClick={() => setModalLote(false)}
+                >
+                  <span aria-hidden="true">&times;</span>
+                </button>
+              </div>
+              <div className="modal-body">
+                <p>
+                  Aplicar o mesmo percentual sobre o custo em{" "}
+                  <strong>{idsSel.size}</strong> produto(s) selecionado(s). A venda de
+                  cada um será custo + %.
+                </p>
+                <div className="form-group mb-2">
+                  <label htmlFor="pct-lote">Percentual sobre o custo (%)</label>
+                  <input
+                    id="pct-lote"
+                    type="number"
+                    className="form-control"
+                    min={0}
+                    step={0.01}
+                    value={pctLote}
+                    disabled={salvandoLote}
+                    onChange={(e) => setPctLote(e.target.value)}
+                  />
+                </div>
+                {erroLote ? (
+                  <div className="alert alert-danger py-2 small mb-0" role="alert">
+                    {erroLote}
+                  </div>
+                ) : (
+                  <p className="small text-muted mb-0">
+                    A alteração entra no histórico de cada produto.
+                  </p>
+                )}
+              </div>
+              <div className="modal-footer">
+                <button
+                  type="button"
+                  className="btn btn-secondary"
+                  disabled={salvandoLote}
+                  onClick={() => setModalLote(false)}
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="button"
+                  className="btn btn-primary"
+                  disabled={salvandoLote}
+                  onClick={() => void aplicarVendaLote()}
+                >
+                  {salvandoLote ? "Aplicando…" : "Aplicar"}
                 </button>
               </div>
             </div>

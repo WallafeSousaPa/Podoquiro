@@ -11,9 +11,10 @@ export type OrigemMovimentacaoEstoque =
   | "saida_transferencia"
   | "saida_perda"
   | "saida_avulso"
-  | "estorno_saida";
+  | "estorno_saida"
+  | "preco_venda";
 
-export type TipoMovimentacaoEstoque = "entrada" | "saida";
+export type TipoMovimentacaoEstoque = "entrada" | "saida" | "preco";
 
 export const ROTULO_ORIGEM_MOVIMENTACAO_ESTOQUE: Record<OrigemMovimentacaoEstoque, string> = {
   cadastro: "Cadastro inicial",
@@ -27,6 +28,7 @@ export const ROTULO_ORIGEM_MOVIMENTACAO_ESTOQUE: Record<OrigemMovimentacaoEstoqu
   saida_perda: "Saída — perda",
   saida_avulso: "Saída — avulso",
   estorno_saida: "Estorno — saída",
+  preco_venda: "Preço de venda",
 };
 
 export async function registrarMovimentacaoEstoque(
@@ -62,6 +64,34 @@ export async function registrarMovimentacaoEstoque(
 
   if (error) {
     console.error("registrarMovimentacaoEstoque:", error);
+  }
+}
+
+export async function registrarHistoricoPrecoVenda(
+  supabase: SupabaseClient,
+  params: {
+    id_empresa: number;
+    id_produto: string;
+    saldo: number;
+    id_usuario?: number | null;
+    observacao: string;
+  },
+): Promise<void> {
+  const { error } = await supabase.from("produtos_movimentacao_estoque").insert({
+    id_empresa: params.id_empresa,
+    id_produto: params.id_produto,
+    tipo: "preco",
+    quantidade: 0,
+    saldo_anterior: Math.round(params.saldo),
+    saldo_posterior: Math.round(params.saldo),
+    origem: "preco_venda",
+    id_usuario: params.id_usuario ?? null,
+    observacao: params.observacao.trim().slice(0, 500),
+  });
+
+  if (error) {
+    console.error("registrarHistoricoPrecoVenda:", error);
+    throw new Error("Não foi possível gravar o histórico de preço de venda.");
   }
 }
 
