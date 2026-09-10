@@ -4,6 +4,10 @@ import { formatarCnpjCpf } from "@/lib/estoque/parse-nfe-xml";
 import type { ParceiroEstoqueRow } from "@/lib/estoque/parceiro-campos";
 import { gerarDanfeNfePdfUrl } from "@/lib/client/render-danfe-nfe-pdf";
 import {
+  gerarPreOrcamentoSaidaUrl,
+  type PreOrcamentoSaida,
+} from "@/lib/client/render-pre-orcamento-saida";
+import {
   ROTULO_NOTA_VENDA,
   ROTULO_TIPO_SAIDA,
   type NotaVendaStatus,
@@ -81,8 +85,17 @@ type SaidaDetalhe = SaidaListaRow & {
   emit_nome: string | null;
   emit_fantasia: string | null;
   emit_cnpj: string | null;
+  emit_endereco: string | null;
+  emit_numero: string | null;
+  emit_complemento: string | null;
+  emit_bairro: string | null;
+  emit_municipio: string | null;
+  emit_uf: string | null;
+  emit_cep: string | null;
+  dest_ie: string | null;
   dest_endereco: string | null;
   dest_numero: string | null;
+  dest_complemento: string | null;
   dest_bairro: string | null;
   dest_municipio: string | null;
   dest_uf: string | null;
@@ -126,6 +139,45 @@ function precoVendaCadastro(p: ProdutoOpcao): number {
 
 function roundMoney(n: number): number {
   return Math.round(n * 100) / 100;
+}
+
+function saidaParaPreOrcamento(s: SaidaDetalhe): PreOrcamentoSaida {
+  return {
+    id: s.id,
+    data_saida: s.data_saida,
+    emit_nome: s.emit_nome,
+    emit_fantasia: s.emit_fantasia,
+    emit_cnpj: s.emit_cnpj,
+    emit_endereco: s.emit_endereco,
+    emit_numero: s.emit_numero,
+    emit_complemento: s.emit_complemento,
+    emit_bairro: s.emit_bairro,
+    emit_municipio: s.emit_municipio,
+    emit_uf: s.emit_uf,
+    emit_cep: s.emit_cep,
+    dest_nome: s.dest_nome,
+    dest_doc: s.dest_doc,
+    dest_tipo: s.dest_tipo,
+    dest_ie: s.dest_ie,
+    dest_endereco: s.dest_endereco,
+    dest_numero: s.dest_numero,
+    dest_complemento: s.dest_complemento,
+    dest_bairro: s.dest_bairro,
+    dest_municipio: s.dest_municipio,
+    dest_uf: s.dest_uf,
+    dest_cep: s.dest_cep,
+    dest_email: s.dest_email,
+    dest_fone: s.dest_fone,
+    itens: s.itens.map((it) => ({
+      produto: it.produto,
+      sku: it.sku,
+      un_medida: it.un_medida || "UN",
+      qtd: Number(it.qtd) || 0,
+      v_un: Number(it.v_un) || 0,
+      v_desc: Number(it.v_desc ?? 0) || 0,
+      v_total: Number(it.v_total) || 0,
+    })),
+  };
 }
 
 function totalLinhaSaida(l: Pick<LinhaSaida, "qtd" | "v_un" | "v_desc">): number {
@@ -179,6 +231,8 @@ export function SaidasEstoqueClient({
   const [danfeCarregando, setDanfeCarregando] = useState(false);
   const [danfeNfeId, setDanfeNfeId] = useState<string | null>(null);
   const [danfeSaidaId, setDanfeSaidaId] = useState<string | null>(null);
+  const [orcamentoUrl, setOrcamentoUrl] = useState<string | null>(null);
+  const [orcamentoCarregando, setOrcamentoCarregando] = useState(false);
   const [confirmCancelarNota, setConfirmCancelarNota] = useState<{
     idNfe: string;
     idSaida?: string;
@@ -466,6 +520,31 @@ export function SaidasEstoqueClient({
       if (j.data) setDetalhe(j.data);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Não foi possível abrir a saída.");
+    }
+  }
+
+  function fecharOrcamento() {
+    if (orcamentoUrl) URL.revokeObjectURL(orcamentoUrl);
+    setOrcamentoUrl(null);
+  }
+
+  async function abrirPreOrcamento(idSaida: string) {
+    setOrcamentoCarregando(true);
+    setError(null);
+    try {
+      const res = await fetch(`/api/estoque/saidas/${encodeURIComponent(idSaida)}`, {
+        credentials: "include",
+      });
+      const j = (await res.json()) as { data?: SaidaDetalhe; error?: string };
+      if (!res.ok) throw new Error(j.error ?? "Não foi possível gerar a proposta.");
+      if (!j.data) throw new Error("Saída não encontrada.");
+      const url = gerarPreOrcamentoSaidaUrl(saidaParaPreOrcamento(j.data));
+      if (orcamentoUrl) URL.revokeObjectURL(orcamentoUrl);
+      setOrcamentoUrl(url);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Não foi possível gerar a proposta.");
+    } finally {
+      setOrcamentoCarregando(false);
     }
   }
 
@@ -1070,6 +1149,16 @@ export function SaidasEstoqueClient({
                           >
                             Ver
                           </button>
+                          {row.tipo === "venda" && row.status === "confirmada" ? (
+                            <button
+                              type="button"
+                              className="btn btn-outline-secondary btn-sm ml-1"
+                              disabled={orcamentoCarregando}
+                              onClick={() => void abrirPreOrcamento(row.id)}
+                            >
+                              {orcamentoCarregando ? "…" : "Proposta"}
+                            </button>
+                          ) : null}
                           {row.tipo === "venda" &&
                           row.nota_venda_status === "gerada" &&
                           row.id_nfe_emissao ? (
@@ -1204,8 +1293,8 @@ export function SaidasEstoqueClient({
                 </div>
                 <div className="modal-body">
                   <p>
-                    A saída de venda foi registrada. Deseja emitir a NF-e para o
-                    comprador agora?
+                    A saída de venda foi registrada. Você pode enviar a proposta
+                    ao comprador para conferência e, depois, emitir a NF-e.
                   </p>
                   <p className="mb-1">
                     <strong>{perguntarNota.destNome}</strong>
@@ -1223,6 +1312,14 @@ export function SaidasEstoqueClient({
                   ) : null}
                 </div>
                 <div className="modal-footer">
+                  <button
+                    type="button"
+                    className="btn btn-outline-primary"
+                    onClick={() => void abrirPreOrcamento(perguntarNota.id)}
+                    disabled={emitindoNota || orcamentoCarregando}
+                  >
+                    {orcamentoCarregando ? "Gerando…" : "Proposta"}
+                  </button>
                   <button
                     type="button"
                     className="btn btn-secondary"
@@ -1387,6 +1484,16 @@ export function SaidasEstoqueClient({
                       }}
                     >
                       Cancelar saída
+                    </button>
+                  ) : null}
+                  {detalhe.tipo === "venda" && detalhe.status === "confirmada" ? (
+                    <button
+                      type="button"
+                      className="btn btn-outline-primary"
+                      disabled={orcamentoCarregando}
+                      onClick={() => void abrirPreOrcamento(detalhe.id)}
+                    >
+                      {orcamentoCarregando ? "Gerando…" : "Proposta"}
                     </button>
                   ) : null}
                   {detalhe.tipo === "venda" &&
@@ -1629,6 +1736,72 @@ export function SaidasEstoqueClient({
             className="modal-backdrop fade show"
             role="presentation"
             style={{ zIndex: 1055 }}
+          />
+        </>
+      ) : null}
+
+      {orcamentoUrl ? (
+        <>
+          <div
+            className="modal fade show"
+            style={{ display: "block", zIndex: 1070 }}
+            tabIndex={-1}
+            role="dialog"
+            aria-modal="true"
+          >
+            <div className="modal-dialog modal-xl" role="document" style={{ maxWidth: "900px" }}>
+              <div className="modal-content">
+                <div className="modal-header">
+                  <h5 className="modal-title">Proposta</h5>
+                  <button
+                    type="button"
+                    className="close"
+                    aria-label="Fechar"
+                    onClick={fecharOrcamento}
+                  >
+                    <span aria-hidden>×</span>
+                  </button>
+                </div>
+                <div className="modal-body p-0" style={{ height: "75vh" }}>
+                  <iframe
+                    id="pre-orcamento-frame"
+                    title="Proposta da saída"
+                    src={orcamentoUrl}
+                    style={{ width: "100%", height: "100%", border: 0 }}
+                  />
+                </div>
+                <div className="modal-footer">
+                  <a
+                    className="btn btn-outline-primary"
+                    href={orcamentoUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                  >
+                    Abrir em nova aba
+                  </a>
+                  <button
+                    type="button"
+                    className="btn btn-primary"
+                    onClick={() => {
+                      const f = document.getElementById(
+                        "pre-orcamento-frame",
+                      ) as HTMLIFrameElement | null;
+                      f?.contentWindow?.print();
+                    }}
+                  >
+                    Imprimir / PDF
+                  </button>
+                  <button type="button" className="btn btn-secondary" onClick={fecharOrcamento}>
+                    Fechar
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div
+            className="modal-backdrop fade show"
+            role="presentation"
+            style={{ zIndex: 1065 }}
           />
         </>
       ) : null}
