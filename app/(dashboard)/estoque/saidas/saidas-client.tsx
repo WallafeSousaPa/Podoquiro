@@ -397,10 +397,13 @@ export function SaidasEstoqueClient({
     setEmitindoNota(true);
     setError(null);
     try {
-      const res = await fetch(`/api/estoque/saidas/${idSaida}/emitir-nfe`, {
-        method: "POST",
-        credentials: "include",
-      });
+      const res = await fetch(
+        `/api/estoque/saidas/${encodeURIComponent(idSaida)}/emitir-nfe`,
+        {
+          method: "POST",
+          credentials: "include",
+        },
+      );
       const j = (await res.json()) as {
         error?: string;
         xMotivo?: string;
@@ -1185,7 +1188,7 @@ export function SaidasEstoqueClient({
             role="dialog"
             aria-modal="true"
           >
-            <div className="modal-dialog" role="document">
+            <div className="modal-dialog modal-dialog-scrollable" role="document">
               <div className="modal-content">
                 <div className="modal-header">
                   <h5 className="modal-title">Emitir nota fiscal?</h5>
@@ -1248,12 +1251,15 @@ export function SaidasEstoqueClient({
         <>
           <div
             className="modal fade show"
-            style={{ display: "block" }}
+            style={{ display: "block", overflowY: "auto" }}
             tabIndex={-1}
             role="dialog"
             aria-modal="true"
           >
-            <div className="modal-dialog modal-lg" role="document">
+            <div
+              className="modal-dialog modal-lg modal-dialog-scrollable"
+              role="document"
+            >
               <div className="modal-content">
                 <div className="modal-header">
                   <h5 className="modal-title">

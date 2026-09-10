@@ -36,7 +36,8 @@ export async function POST(request: Request, context: RouteContext) {
     return NextResponse.json({ error: "Empresa inválida." }, { status: 400 });
   }
 
-  const { id } = await context.params;
+  const params = await context.params;
+  const id = decodeURIComponent(String(params?.id ?? "")).trim();
   if (!isUuid(id)) {
     return NextResponse.json({ error: "ID inválido." }, { status: 400 });
   }
@@ -46,7 +47,6 @@ export async function POST(request: Request, context: RouteContext) {
     .from("estoque_saidas")
     .select("*, itens:estoque_saida_itens(*)")
     .eq("id", id)
-    .eq("id_empresa", empresaId)
     .maybeSingle();
 
   if (error) {
@@ -162,6 +162,7 @@ export async function POST(request: Request, context: RouteContext) {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
+      id_empresa: Number(saida.id_empresa) || empresaId,
       natureza_operacao: "VENDA DE MERCADORIA",
       destinatario,
       itens,

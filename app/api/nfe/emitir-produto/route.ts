@@ -77,8 +77,8 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Não autorizado." }, { status: 401 });
   }
 
-  const empresaId = parseEmpresaId(session.idEmpresa);
-  if (!empresaId) {
+  const sessionEmpresaId = parseEmpresaId(session.idEmpresa);
+  if (!sessionEmpresaId) {
     return NextResponse.json({ error: "Empresa inválida." }, { status: 400 });
   }
 
@@ -88,6 +88,9 @@ export async function POST(request: Request) {
   } catch {
     return NextResponse.json({ error: "JSON inválido." }, { status: 400 });
   }
+
+  const empresaId =
+    parseEmpresaId(String(body.id_empresa ?? "")) ?? sessionEmpresaId;
 
   const itensRaw = body.itens;
   if (!Array.isArray(itensRaw) || itensRaw.length === 0) {
