@@ -11,6 +11,7 @@ import {
   type OrigemMovimentacaoEstoque,
 } from "@/lib/estoque/registrar-movimentacao-estoque";
 import type { TipoSaidaEstoque } from "@/lib/estoque/tipos-saida";
+import { aplicarPrecoTabelaLoja } from "@/lib/estoque/tabelas-preco";
 import { normalizarUfBr } from "@/lib/estoque/uf-br";
 
 export type ItemSaidaInput = {
@@ -89,7 +90,12 @@ export async function darSaidaEstoque(
 
   if (prodErr) throw new Error(prodErr.message);
 
-  const byId = new Map((produtos ?? []).map((p) => [p.id as string, p as ProdutoSaida]));
+  const produtosComTabela = await aplicarPrecoTabelaLoja(
+    supabase,
+    (produtos ?? []) as ProdutoSaida[],
+    params.id_empresa,
+  );
+  const byId = new Map(produtosComTabela.map((p) => [p.id, p as ProdutoSaida]));
   for (const item of params.itens) {
     const p = byId.get(item.id_produto);
     if (!p) throw new Error("Há produto que não pertence a esta empresa.");

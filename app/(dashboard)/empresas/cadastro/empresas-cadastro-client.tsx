@@ -21,8 +21,15 @@ type EmpresaItem = {
   cidade: string | null;
   estado: string | null;
   id_empresa_grupo: number;
+  tabela_preco_id: string | null;
   ativo: boolean;
   grupo_empresa: string | null;
+};
+
+type TabelaPrecoItem = {
+  id: string;
+  nome: string;
+  ativo: boolean;
 };
 
 function ModalBackdrop({
@@ -55,10 +62,11 @@ function ModalBackdrop({
 type Props = {
   grupos: GrupoItem[];
   empresas: EmpresaItem[];
+  tabelasPreco: TabelaPrecoItem[];
   loadError?: string | null;
 };
 
-export function EmpresasCadastroClient({ grupos, empresas, loadError }: Props) {
+export function EmpresasCadastroClient({ grupos, empresas, tabelasPreco, loadError }: Props) {
   const router = useRouter();
   const modalTitleId = useId();
   const confirmTitleId = useId();
@@ -81,6 +89,7 @@ export function EmpresasCadastroClient({ grupos, empresas, loadError }: Props) {
   const [cidade, setCidade] = useState("");
   const [estado, setEstado] = useState("");
   const [idGrupo, setIdGrupo] = useState("");
+  const [idTabelaPreco, setIdTabelaPreco] = useState("");
   const [saving, setSaving] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
   const [listError, setListError] = useState<string | null>(null);
@@ -106,11 +115,14 @@ export function EmpresasCadastroClient({ grupos, empresas, loadError }: Props) {
     setCidade("");
     setEstado("");
     setIdGrupo("");
+    setIdTabelaPreco("");
     setFormError(null);
   }
 
   function openCreate() {
     resetForm();
+    const padrao = tabelasPreco.find((t) => t.ativo);
+    if (padrao) setIdTabelaPreco(padrao.id);
     setModalOpen(true);
   }
 
@@ -127,6 +139,7 @@ export function EmpresasCadastroClient({ grupos, empresas, loadError }: Props) {
     setCidade(row.cidade ?? "");
     setEstado(row.estado ?? "");
     setIdGrupo(String(row.id_empresa_grupo));
+    setIdTabelaPreco(row.tabela_preco_id ?? "");
     setFormError(null);
     setModalOpen(true);
   }
@@ -173,6 +186,7 @@ export function EmpresasCadastroClient({ grupos, empresas, loadError }: Props) {
         cidade: cidade.trim() || null,
         estado: estado.trim() || null,
         id_empresa_grupo: Number(idGrupo),
+        tabela_preco_id: idTabelaPreco || null,
       };
 
       const url = editing ? `/api/empresas/${editing.id}` : "/api/empresas";
@@ -270,6 +284,7 @@ export function EmpresasCadastroClient({ grupos, empresas, loadError }: Props) {
                 <th>Razão social</th>
                 <th>CPF/CNPJ</th>
                 <th>Grupo</th>
+                <th>Tabela de preço</th>
                 <th style={{ width: "90px" }}>Status</th>
                 <th style={{ width: "260px" }} className="text-right">
                   Ações
@@ -279,7 +294,7 @@ export function EmpresasCadastroClient({ grupos, empresas, loadError }: Props) {
             <tbody>
               {rows.length === 0 ? (
                 <tr>
-                  <td colSpan={7} className="text-center text-muted py-4">
+                  <td colSpan={8} className="text-center text-muted py-4">
                     Nenhuma empresa cadastrada.
                   </td>
                 </tr>
@@ -291,6 +306,9 @@ export function EmpresasCadastroClient({ grupos, empresas, loadError }: Props) {
                     <td>{row.razao_social}</td>
                     <td>{row.cnpj_cpf}</td>
                     <td>{row.grupo_empresa || "-"}</td>
+                    <td>
+                      {tabelasPreco.find((t) => t.id === row.tabela_preco_id)?.nome ?? "—"}
+                    </td>
                     <td>
                       {row.ativo ? (
                         <span className="badge badge-success">Ativo</span>
@@ -402,6 +420,29 @@ export function EmpresasCadastroClient({ grupos, empresas, loadError }: Props) {
                           </option>
                         ))}
                       </select>
+                    </div>
+                    <div className="form-group col-md-4">
+                      <label htmlFor="empresa-tabela-preco">Tabela de preço</label>
+                      <select
+                        id="empresa-tabela-preco"
+                        className="form-control"
+                        value={idTabelaPreco}
+                        onChange={(e) => setIdTabelaPreco(e.target.value)}
+                      >
+                        <option value="">Selecione...</option>
+                        {tabelasPreco
+                          .filter((t) => t.ativo || t.id === idTabelaPreco)
+                          .map((t) => (
+                            <option key={t.id} value={t.id}>
+                              {t.nome}
+                              {!t.ativo ? " (inativa)" : ""}
+                            </option>
+                          ))}
+                      </select>
+                      <small className="form-text text-muted">
+                        Preço usado nas saídas e na nota fiscal desta loja. Cadastre em
+                        Estoque → Tabelas de preço.
+                      </small>
                     </div>
                     <div className="form-group col-md-4">
                       <label htmlFor="empresa-cep">CEP</label>

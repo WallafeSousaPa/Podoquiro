@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { getSession } from "@/lib/auth/session";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { aplicarPrecoTabelaLoja } from "@/lib/estoque/tabelas-preco";
 import {
   assinarNfeXml,
   carregarCertificadoEmpresa,
@@ -267,7 +268,8 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: pErr.message }, { status: 500 });
   }
 
-  const prodMap = new Map((prows ?? []).map((p) => [p.id as string, p]));
+  const prowsComTabela = await aplicarPrecoTabelaLoja(supabase, prows ?? [], empresaId);
+  const prodMap = new Map((prowsComTabela ?? []).map((p) => [p.id as string, p]));
   const linhas: LinhaProdutoNfe[] = [];
   const uniqueIds = [...new Set(ids)];
 

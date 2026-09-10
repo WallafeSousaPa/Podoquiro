@@ -19,6 +19,7 @@ type EmpresaRaw = {
   cidade: string | null;
   estado: string | null;
   id_empresa_grupo: number;
+  tabela_preco_id: string | null;
   ativo: boolean;
   empresa_grupos:
     | { id: number; grupo_empresa: string }
@@ -30,10 +31,15 @@ export default async function EmpresasCadastroPage() {
   const supabase = createAdminClient();
   let grupos: GrupoItem[] = [];
   let empresas: EmpresaRaw[] = [];
+  let tabelasPreco: { id: string; nome: string; ativo: boolean }[] = [];
   let loadError: string | null = null;
 
   try {
-    const [{ data: gruposData, error: gruposError }, { data: empresasData, error: empresasError }] =
+    const [
+      { data: gruposData, error: gruposError },
+      { data: empresasData, error: empresasError },
+      { data: tabelasData, error: tabelasError },
+    ] =
       await Promise.all([
         supabase
           .from("empresa_grupos")
@@ -43,16 +49,38 @@ export default async function EmpresasCadastroPage() {
         supabase
           .from("empresas")
           .select(
-            "id, nome_fantasia, razao_social, cnpj_cpf, cep, endereco, numero, complemento, bairro, cidade, estado, id_empresa_grupo, ativo, empresa_grupos:empresa_grupos!empresas_id_empresa_grupo_fkey(id, grupo_empresa)",
+            "id, nome_fantasia, razao_social, cnpj_cpf, cep, endereco, numero, complemento, bairro, cidade, estado, id_empresa_grupo, tabela_preco_id, ativo, empresa_grupos:empresa_grupos!empresas_id_empresa_grupo_fkey(id, grupo_empresa)",
           )
           .order("nome_fantasia", { ascending: true }),
+        supabase
+          .from("tabelas_preco")
+          .select("id, nome, ativo")
+          .order("nome", { ascending: true }),
       ]);
 
     if (gruposError) throw new Error(gruposError.message);
-    if (empresasError) throw new Error(empresasError.message);
+    if (empresasError) {
+      const retry = await supabase
+        .from("empresas")
+        .select(
+          "id, nome_fantasia, razao_social, cnpj_cpf, cep, endereco, numero, complemento, bairro, cidade, estado, id_empresa_grupo, ativo, empresa_grupos:empresa_grupos!empresas_id_empresa_grupo_fkey(id, grupo_empresa)",
+        )
+        .order("nome_fantasia", { ascending: true });
+      if (retry.error) throw new Error(retry.error.message);
+      empresas = (retry.data ?? []).map((e) => ({
+        ...(e as EmpresaRaw),
+        tabela_preco_id: null,
+      }));
+    } else {
+      empresas = (empresasData ?? []) as EmpresaRaw[];
+    }
+    if (tabelasError) {
+      console.error(tabelasError);
+    } else {
+      tabelasPreco = (tabelasData ?? []) as { id: string; nome: string; ativo: boolean }[];
+    }
 
     grupos = (gruposData ?? []) as GrupoItem[];
-    empresas = (empresasData ?? []) as EmpresaRaw[];
   } catch (e) {
     loadError =
       e instanceof Error ? e.message : "Não foi possível carregar as empresas.";
@@ -71,6 +99,7 @@ export default async function EmpresasCadastroPage() {
     cidade: e.cidade,
     estado: e.estado,
     id_empresa_grupo: e.id_empresa_grupo,
+    tabela_preco_id: e.tabela_preco_id,
     ativo: e.ativo,
     grupo_empresa: Array.isArray(e.empresa_grupos)
       ? (e.empresa_grupos[0]?.grupo_empresa ?? null)
@@ -105,6 +134,7 @@ export default async function EmpresasCadastroPage() {
               <EmpresasCadastroClient
                 grupos={grupos}
                 empresas={empresasView}
+                tabelasPreco={tabelasPreco}
                 loadError={loadError}
               />
             </div>

@@ -17,6 +17,22 @@ import { fmtMoedaBrCampo, mascararMoedaBr } from "@/lib/financeiro/moeda-br-inpu
 export type EmpresaListaItem = {
   id: number;
   nome_fantasia: string | null;
+  tabela_preco_id?: string | null;
+};
+
+export type TabelaPrecoListaItem = {
+  id: string;
+  nome: string;
+  descricao: string | null;
+  ativo: boolean;
+};
+
+export type PrecoPorTabela = {
+  id_tabela_preco: string;
+  nome: string;
+  ativo: boolean;
+  preco_venda: number | null;
+  percentual_sobre_custo: number | null;
 };
 
 export type ProdutoRow = {
@@ -32,6 +48,7 @@ export type ProdutoRow = {
   desconto_padrao: number;
   preco_venda: number | null;
   percentual_sobre_custo?: number | null;
+  precos_por_tabela?: PrecoPorTabela[];
   ncm: string;
   cest: string | null;
   origem: number;
@@ -123,7 +140,36 @@ function ModalBackdrop({
   );
 }
 
-function defaultForm() {
+type PrecoTabelaForm = {
+  modo: "valor" | "percentual";
+  preco_venda: number | null;
+  percentual_sobre_custo: number | null;
+};
+
+function precosTabelasVazios(tabelas: TabelaPrecoListaItem[]): Record<string, PrecoTabelaForm> {
+  const o: Record<string, PrecoTabelaForm> = {};
+  for (const t of tabelas) {
+    o[t.id] = { modo: "valor", preco_venda: null, percentual_sobre_custo: null };
+  }
+  return o;
+}
+
+function precosTabelasDoProduto(
+  tabelas: TabelaPrecoListaItem[],
+  row?: ProdutoRow,
+): Record<string, PrecoTabelaForm> {
+  const o = precosTabelasVazios(tabelas);
+  for (const p of row?.precos_por_tabela ?? []) {
+    o[p.id_tabela_preco] = {
+      modo: p.percentual_sobre_custo != null ? "percentual" : "valor",
+      preco_venda: p.preco_venda,
+      percentual_sobre_custo: p.percentual_sobre_custo,
+    };
+  }
+  return o;
+}
+
+function defaultForm(tabelas: TabelaPrecoListaItem[] = []) {
   return {
     produto: "",
     descricao: "",
@@ -134,6 +180,7 @@ function defaultForm() {
     preco_venda: null as number | null,
     percentual_sobre_custo: null as number | null,
     modo_venda: "valor" as "valor" | "percentual",
+    precosTabelas: precosTabelasVazios(tabelas),
     ncm: "",
     cest: "",
     origem: 0,
@@ -151,6 +198,7 @@ type FormState = ReturnType<typeof defaultForm>;
 type Props = {
   produtos: ProdutoRow[];
   empresas: EmpresaListaItem[];
+  tabelasPreco: TabelaPrecoListaItem[];
   empresaIdPadrao: number;
   loadError?: string | null;
   podeEditarPrecoVenda?: boolean;
@@ -165,6 +213,7 @@ function nomeEmpresaLabel(empresas: EmpresaListaItem[], id: number) {
 export function ProdutosCadastroClient({
   produtos: produtosProp,
   empresas,
+  tabelasPreco,
   empresaIdPadrao,
   loadError,
   podeEditarPrecoVenda = false,
@@ -179,7 +228,7 @@ export function ProdutosCadastroClient({
 
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState<ProdutoRow | null>(null);
-  const [form, setForm] = useState<FormState>(defaultForm);
+  const [form, setForm] = useState<FormState>(() => defaultForm(tabelasPreco));
   const [saving, setSaving] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
   const [listError, setListError] = useState<string | null>(null);
@@ -366,7 +415,7 @@ export function ProdutosCadastroClient({
 
   function resetForm() {
     setEditing(null);
-    setForm(defaultForm());
+    setForm(defaultForm(tabelasPreco));
     setFormError(null);
   }
 
@@ -405,6 +454,7 @@ export function ProdutosCadastroClient({
       cofins_cst: row.cofins_cst ?? "07",
       ativo: row.ativo,
       servico: row.servico ?? false,
+      precosTabelas: precosTabelasDoProduto(tabelasPreco, row),
     });
     setFormError(null);
     setModalOpen(true);
@@ -434,15 +484,28 @@ export function ProdutosCadastroClient({
       servico: form.servico,
     };
     if (podeEditarPrecoVenda) {
-      const venda =
-        form.modo_venda === "percentual"
-          ? form.percentual_sobre_custo != null
-            ? precoVendaPorPercentual(form.preco, form.percentual_sobre_custo)
-            : null
-          : form.preco_venda;
-      base.preco_venda = venda == null ? null : roundMoney(venda);
-      base.percentual_sobre_custo =
-        form.modo_venda === "percentual" ? form.percentual_sobre_custo : null;
+      const precos_tabelas = Object.entries(form.precosTabelas).map(([id, v]) => ({
+        id_tabela_preco: id,
+        preco_venda: v.modo === "valor" ? v.preco_venda : null,
+        percentual_sobre_custo: v.modo === "percentual" ? v.percentual_sobre_custo : null,
+      }));
+      base.precos_tabelas = precos_tabelas;
+      const tabelaLoja =
+        empresas.find((e) => e.id === Number(filtroEmpresaId))?.tabela_preco_id ??
+        empresas.find((e) => e.id === empresaIdPadrao)?.tabela_preco_id ??
+        null;
+      const daLoja = tabelaLoja ? form.precosTabelas[tabelaLoja] : null;
+      if (daLoja) {
+        const venda =
+          daLoja.modo === "percentual"
+            ? daLoja.percentual_sobre_custo != null
+              ? precoVendaPorPercentual(form.preco, daLoja.percentual_sobre_custo)
+              : null
+            : daLoja.preco_venda;
+        base.preco_venda = venda == null ? null : roundMoney(venda);
+        base.percentual_sobre_custo =
+          daLoja.modo === "percentual" ? daLoja.percentual_sobre_custo : null;
+      }
     }
     return base;
   }
@@ -466,18 +529,22 @@ export function ProdutosCadastroClient({
       return;
     }
     if (podeEditarPrecoVenda) {
-      if (form.modo_venda === "valor" && form.preco_venda != null && form.preco_venda < 0) {
-        setFormError("Valor de venda inválido.");
-        return;
-      }
-      if (form.modo_venda === "percentual") {
-        if (form.percentual_sobre_custo == null || !Number.isFinite(form.percentual_sobre_custo)) {
-          setFormError("Informe o percentual sobre o custo.");
+      for (const t of tabelasPreco.filter((t) => t.ativo || form.precosTabelas[t.id])) {
+        const v = form.precosTabelas[t.id];
+        if (!v) continue;
+        if (v.modo === "valor" && v.preco_venda != null && v.preco_venda < 0) {
+          setFormError(`Valor de venda inválido na tabela "${t.nome}".`);
           return;
         }
-        if (form.percentual_sobre_custo < 0) {
-          setFormError("O percentual sobre o custo não pode ser negativo.");
-          return;
+        if (v.modo === "percentual") {
+          if (v.percentual_sobre_custo == null || !Number.isFinite(v.percentual_sobre_custo)) {
+            setFormError(`Informe o percentual sobre o custo na tabela "${t.nome}".`);
+            return;
+          }
+          if (v.percentual_sobre_custo < 0) {
+            setFormError(`O percentual da tabela "${t.nome}" não pode ser negativo.`);
+            return;
+          }
         }
       }
     }
@@ -719,6 +786,11 @@ export function ProdutosCadastroClient({
             </button>
           </div>
         </div>
+        <div className="px-3 pt-2 small text-muted">
+          O valor de venda da lista é o da tabela de preço da loja filtrada. Cadastre tabelas
+          em <a href="/estoque/tabelas-preco">Tabelas de preço</a> e associe cada loja em
+          Empresas → Cadastro.
+        </div>
         <div className="card-body table-responsive p-0">
           <table className="table table-hover table-striped mb-0">
             <thead>
@@ -858,7 +930,7 @@ export function ProdutosCadastroClient({
 
       {modalOpen ? (
         <ModalBackdrop onBackdropClick={closeModal}>
-          <div className="modal-dialog modal-lg modal-usuario-form" role="document">
+          <div className="modal-dialog modal-lg modal-dialog-scrollable modal-usuario-form" role="document">
             <div className="modal-content">
               <form onSubmit={(e) => void submit(e)}>
                 <div className="modal-header">
@@ -948,14 +1020,24 @@ export function ProdutosCadastroClient({
                         value={form.preco}
                         onChange={(n) => {
                           const preco = n ?? 0;
-                          setForm((f) => ({
-                            ...f,
-                            preco,
-                            preco_venda:
-                              f.modo_venda === "percentual" && f.percentual_sobre_custo != null
-                                ? precoVendaPorPercentual(preco, f.percentual_sobre_custo)
-                                : f.preco_venda,
-                          }));
+                          setForm((f) => {
+                            const precosTabelas = { ...f.precosTabelas };
+                            for (const [id, v] of Object.entries(precosTabelas)) {
+                              if (
+                                v.modo === "percentual" &&
+                                v.percentual_sobre_custo != null
+                              ) {
+                                precosTabelas[id] = {
+                                  ...v,
+                                  preco_venda: precoVendaPorPercentual(
+                                    preco,
+                                    v.percentual_sobre_custo,
+                                  ),
+                                };
+                              }
+                            }
+                            return { ...f, preco, precosTabelas };
+                          });
                         }}
                       />
                     </div>
@@ -975,130 +1057,210 @@ export function ProdutosCadastroClient({
                     </div>
                   </div>
                   <div className="form-row">
-                    {podeEditarPrecoVenda ? (
-                      <>
-                    <div className="form-group col-md-12">
-                      <span className="d-block mb-2">Valor de venda</span>
-                      <div className="custom-control custom-radio custom-control-inline">
-                        <input
-                          type="radio"
-                          id="prod-venda-valor"
-                          name="prod-modo-venda"
-                          className="custom-control-input"
-                          checked={form.modo_venda === "valor"}
-                          onChange={() =>
-                            setForm((f) => ({
-                              ...f,
-                              modo_venda: "valor",
-                              percentual_sobre_custo: null,
-                            }))
-                          }
-                        />
-                        <label className="custom-control-label" htmlFor="prod-venda-valor">
-                          Valor em reais
-                        </label>
-                      </div>
-                      <div className="custom-control custom-radio custom-control-inline">
-                        <input
-                          type="radio"
-                          id="prod-venda-pct"
-                          name="prod-modo-venda"
-                          className="custom-control-input"
-                          checked={form.modo_venda === "percentual"}
-                          onChange={() =>
-                            setForm((f) => ({
-                              ...f,
-                              modo_venda: "percentual",
-                              percentual_sobre_custo: f.percentual_sobre_custo ?? 0,
-                              preco_venda:
-                                f.percentual_sobre_custo != null
-                                  ? precoVendaPorPercentual(f.preco, f.percentual_sobre_custo)
-                                  : precoVendaPorPercentual(f.preco, 0),
-                            }))
-                          }
-                        />
-                        <label className="custom-control-label" htmlFor="prod-venda-pct">
-                          Percentual sobre o custo
-                        </label>
-                      </div>
+                    <div className="form-group col-12">
+                      <span className="d-block mb-2">Tabelas de preço</span>
+                      {tabelasPreco.length === 0 ? (
+                        <div className="alert alert-warning py-2 small mb-0">
+                          Nenhuma tabela cadastrada. Crie em{" "}
+                          <a href="/estoque/tabelas-preco">Estoque → Tabelas de preço</a>{" "}
+                          e escolha a tabela da loja em Empresas → Cadastro.
+                        </div>
+                      ) : (
+                        <div className="table-responsive">
+                          <table className="table table-sm table-bordered mb-2">
+                            <thead>
+                              <tr>
+                                <th>Tabela</th>
+                                <th>Modo</th>
+                                <th>Valor</th>
+                                <th>Venda</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {tabelasPreco
+                                .filter(
+                                  (t) =>
+                                    t.ativo ||
+                                    form.precosTabelas[t.id]?.preco_venda != null,
+                                )
+                                .map((t) => {
+                                  const v = form.precosTabelas[t.id] ?? {
+                                    modo: "valor" as const,
+                                    preco_venda: null,
+                                    percentual_sobre_custo: null,
+                                  };
+                                  const tabelaLojaId =
+                                    empresas.find((e) => e.id === Number(filtroEmpresaId))
+                                      ?.tabela_preco_id ??
+                                    empresas.find((e) => e.id === empresaIdPadrao)
+                                      ?.tabela_preco_id ??
+                                    null;
+                                  const vendaCalc =
+                                    v.modo === "percentual" && v.percentual_sobre_custo != null
+                                      ? precoVendaPorPercentual(
+                                          form.preco,
+                                          v.percentual_sobre_custo,
+                                        )
+                                      : v.preco_venda;
+                                  return (
+                                    <tr
+                                      key={t.id}
+                                      className={t.id === tabelaLojaId ? "table-info" : undefined}
+                                    >
+                                      <td>
+                                        {t.nome}
+                                        {t.id === tabelaLojaId ? (
+                                          <span className="badge badge-primary ml-1">
+                                            Desta loja
+                                          </span>
+                                        ) : null}
+                                        {!t.ativo ? (
+                                          <span className="badge badge-secondary ml-1">
+                                            Inativa
+                                          </span>
+                                        ) : null}
+                                      </td>
+                                      <td style={{ minWidth: "9rem" }}>
+                                        {podeEditarPrecoVenda ? (
+                                          <select
+                                            className="form-control form-control-sm"
+                                            value={v.modo}
+                                            onChange={(e) => {
+                                              const modo = e.target.value as "valor" | "percentual";
+                                              setForm((f) => ({
+                                                ...f,
+                                                precosTabelas: {
+                                                  ...f.precosTabelas,
+                                                  [t.id]: {
+                                                    ...v,
+                                                    modo,
+                                                    percentual_sobre_custo:
+                                                      modo === "percentual"
+                                                        ? (v.percentual_sobre_custo ?? 0)
+                                                        : null,
+                                                    preco_venda:
+                                                      modo === "percentual"
+                                                        ? precoVendaPorPercentual(
+                                                            f.preco,
+                                                            v.percentual_sobre_custo ?? 0,
+                                                          )
+                                                        : v.preco_venda,
+                                                  },
+                                                },
+                                              }));
+                                            }}
+                                          >
+                                            <option value="valor">R$</option>
+                                            <option value="percentual">% sobre custo</option>
+                                          </select>
+                                        ) : (
+                                          <span className="small">
+                                            {v.modo === "percentual" ? "% sobre custo" : "R$"}
+                                          </span>
+                                        )}
+                                      </td>
+                                      <td style={{ minWidth: "8rem" }}>
+                                        {podeEditarPrecoVenda ? (
+                                          v.modo === "valor" ? (
+                                            <InputMoedaBr
+                                              id={`prod-venda-${t.id}`}
+                                              value={v.preco_venda}
+                                              allowEmpty
+                                              placeholder="0,00"
+                                              onChange={(n) =>
+                                                setForm((f) => ({
+                                                  ...f,
+                                                  precosTabelas: {
+                                                    ...f.precosTabelas,
+                                                    [t.id]: {
+                                                      ...v,
+                                                      preco_venda: n,
+                                                      percentual_sobre_custo: null,
+                                                    },
+                                                  },
+                                                }))
+                                              }
+                                            />
+                                          ) : (
+                                            <input
+                                              type="number"
+                                              className="form-control form-control-sm"
+                                              min={0}
+                                              step={0.01}
+                                              value={
+                                                v.percentual_sobre_custo === null
+                                                  ? ""
+                                                  : v.percentual_sobre_custo
+                                              }
+                                              onChange={(e) => {
+                                                const raw = e.target.value;
+                                                if (raw === "") {
+                                                  setForm((f) => ({
+                                                    ...f,
+                                                    precosTabelas: {
+                                                      ...f.precosTabelas,
+                                                      [t.id]: {
+                                                        ...v,
+                                                        percentual_sobre_custo: null,
+                                                        preco_venda: null,
+                                                      },
+                                                    },
+                                                  }));
+                                                  return;
+                                                }
+                                                const pct = Number.parseFloat(raw);
+                                                setForm((f) => ({
+                                                  ...f,
+                                                  precosTabelas: {
+                                                    ...f.precosTabelas,
+                                                    [t.id]: {
+                                                      ...v,
+                                                      percentual_sobre_custo: Number.isFinite(pct)
+                                                        ? pct
+                                                        : 0,
+                                                      preco_venda: Number.isFinite(pct)
+                                                        ? precoVendaPorPercentual(f.preco, pct)
+                                                        : v.preco_venda,
+                                                    },
+                                                  },
+                                                }));
+                                              }}
+                                            />
+                                          )
+                                        ) : (
+                                          <span className="small">
+                                            {v.modo === "percentual"
+                                              ? `${v.percentual_sobre_custo ?? 0}%`
+                                              : vendaCalc != null
+                                                ? formatBRL(vendaCalc)
+                                                : "Não cadastrado"}
+                                          </span>
+                                        )}
+                                      </td>
+                                      <td className="text-nowrap">
+                                        {vendaCalc != null && vendaCalc > 0
+                                          ? formatBRL(vendaCalc)
+                                          : "—"}
+                                      </td>
+                                    </tr>
+                                  );
+                                })}
+                            </tbody>
+                          </table>
+                          <small className="form-text text-muted">
+                            A tabela destacada é a da loja filtrada e é a usada nas saídas e
+                            na nota fiscal. Cadastre outras tabelas em{" "}
+                            <a href="/estoque/tabelas-preco">Tabelas de preço</a>.
+                          </small>
+                          {!podeEditarPrecoVenda ? (
+                            <small className="form-text text-muted d-block">
+                              Você pode cadastrar o produto, mas o valor de venda só pode ser
+                              definido por quem tiver essa permissão.
+                            </small>
+                          ) : null}
+                        </div>
+                      )}
                     </div>
-                    {form.modo_venda === "valor" ? (
-                      <div className="form-group col-md-6">
-                        <label htmlFor="prod-preco-venda">Valor de venda (R$)</label>
-                        <InputMoedaBr
-                          id="prod-preco-venda"
-                          value={form.preco_venda}
-                          allowEmpty
-                          placeholder="0,00"
-                          onChange={(n) => setField("preco_venda", n)}
-                        />
-                        <small className="form-text text-muted">
-                          Esse valor é o que entra nas saídas e na nota fiscal.
-                        </small>
-                      </div>
-                    ) : (
-                      <div className="form-group col-md-6">
-                        <label htmlFor="prod-pct-custo">Percentual sobre o custo (%)</label>
-                        <input
-                          id="prod-pct-custo"
-                          type="number"
-                          className="form-control"
-                          min={0}
-                          step={0.01}
-                          value={
-                            form.percentual_sobre_custo === null
-                              ? ""
-                              : form.percentual_sobre_custo
-                          }
-                          onChange={(e) => {
-                            const v = e.target.value;
-                            if (v === "") {
-                              setForm((f) => ({
-                                ...f,
-                                percentual_sobre_custo: null,
-                                preco_venda: null,
-                              }));
-                              return;
-                            }
-                            const pct = Number.parseFloat(v);
-                            setForm((f) => ({
-                              ...f,
-                              percentual_sobre_custo: Number.isFinite(pct) ? pct : 0,
-                              preco_venda: Number.isFinite(pct)
-                                ? precoVendaPorPercentual(f.preco, pct)
-                                : f.preco_venda,
-                            }));
-                          }}
-                        />
-                        <small className="form-text text-muted">
-                          Venda calculada:{" "}
-                          {form.percentual_sobre_custo != null
-                            ? formatBRL(
-                                precoVendaPorPercentual(form.preco, form.percentual_sobre_custo),
-                              )
-                            : "—"}{" "}
-                          (custo + percentual). Esse valor entra nas saídas e na nota fiscal.
-                        </small>
-                      </div>
-                    )}
-                      </>
-                    ) : (
-                      <div className="form-group col-md-6">
-                        <label>Valor de venda</label>
-                        <input
-                          className="form-control"
-                          value={
-                            form.preco_venda != null ? formatBRL(form.preco_venda) : "Não cadastrado"
-                          }
-                          disabled
-                          readOnly
-                        />
-                        <small className="form-text text-muted">
-                          Você pode cadastrar o produto, mas o valor de venda só pode ser
-                          definido por quem tiver essa permissão.
-                        </small>
-                      </div>
-                    )}
                     <div className="form-group col-md-6">
                       <label htmlFor="prod-desc-pad">Desconto padrão da loja (%)</label>
                       <input
@@ -1371,8 +1533,8 @@ export function ProdutosCadastroClient({
               <div className="modal-body">
                 <p>
                   Aplicar o mesmo percentual sobre o custo em{" "}
-                  <strong>{idsSel.size}</strong> produto(s) selecionado(s). A venda de
-                  cada um será custo + %.
+                  <strong>{idsSel.size}</strong> produto(s) selecionado(s), na tabela de
+                  preço da loja filtrada. A venda de cada um será custo + %.
                 </p>
                 <div className="form-group mb-2">
                   <label htmlFor="pct-lote">Percentual sobre o custo (%)</label>

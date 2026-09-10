@@ -10,12 +10,23 @@ export async function GET() {
   }
 
   const supabase = createAdminClient();
-  const { data, error } = await supabase
+  let { data, error } = await supabase
     .from("empresas")
     .select(
-      "id, nome_fantasia, razao_social, cnpj_cpf, cep, endereco, numero, complemento, bairro, cidade, estado, id_empresa_grupo, ativo, empresa_grupos:empresa_grupos!empresas_id_empresa_grupo_fkey(id, grupo_empresa)",
+      "id, nome_fantasia, razao_social, cnpj_cpf, cep, endereco, numero, complemento, bairro, cidade, estado, id_empresa_grupo, tabela_preco_id, ativo, empresa_grupos:empresa_grupos!empresas_id_empresa_grupo_fkey(id, grupo_empresa)",
     )
     .order("nome_fantasia", { ascending: true });
+
+  if (error) {
+    const retry = await supabase
+      .from("empresas")
+      .select(
+        "id, nome_fantasia, razao_social, cnpj_cpf, cep, endereco, numero, complemento, bairro, cidade, estado, id_empresa_grupo, ativo, empresa_grupos:empresa_grupos!empresas_id_empresa_grupo_fkey(id, grupo_empresa)",
+      )
+      .order("nome_fantasia", { ascending: true });
+    data = retry.data;
+    error = retry.error;
+  }
 
   if (error) {
     console.error(error);
@@ -43,6 +54,7 @@ export async function POST(request: Request) {
     cidade?: string | null;
     estado?: string | null;
     id_empresa_grupo?: number;
+    tabela_preco_id?: string | null;
   };
   try {
     body = await request.json();
@@ -98,6 +110,32 @@ export async function POST(request: Request) {
     );
   }
 
+  let tabela_preco_id: string | null = null;
+  if (typeof body.tabela_preco_id === "string" && body.tabela_preco_id.trim()) {
+    tabela_preco_id = body.tabela_preco_id.trim();
+    const { data: tab, error: tabErr } = await supabase
+      .from("tabelas_preco")
+      .select("id")
+      .eq("id", tabela_preco_id)
+      .maybeSingle();
+    if (tabErr) {
+      console.error(tabErr);
+      return NextResponse.json({ error: tabErr.message }, { status: 500 });
+    }
+    if (!tab) {
+      return NextResponse.json({ error: "Tabela de preço inválida." }, { status: 400 });
+    }
+  } else {
+    const { data: padrao } = await supabase
+      .from("tabelas_preco")
+      .select("id")
+      .eq("ativo", true)
+      .order("nome", { ascending: true })
+      .limit(1)
+      .maybeSingle();
+    tabela_preco_id = (padrao?.id as string | undefined) ?? null;
+  }
+
   const { data, error } = await supabase
     .from("empresas")
     .insert({
@@ -112,10 +150,11 @@ export async function POST(request: Request) {
       cidade: body.cidade?.trim() || null,
       estado: normalizarUfBr(body.estado),
       id_empresa_grupo,
+      tabela_preco_id,
       ativo: true,
     })
     .select(
-      "id, nome_fantasia, razao_social, cnpj_cpf, cep, endereco, numero, complemento, bairro, cidade, estado, id_empresa_grupo, ativo",
+      "id, nome_fantasia, razao_social, cnpj_cpf, cep, endereco, numero, complemento, bairro, cidade, estado, id_empresa_grupo, tabela_preco_id, ativo",
     )
     .single();
 

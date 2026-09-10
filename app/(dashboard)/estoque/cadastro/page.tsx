@@ -3,10 +3,12 @@ import { getSession } from "@/lib/auth/session";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getNomesSaudacao } from "@/lib/dashboard/saudacao";
 import { CHAVE_ACAO_PRECO_VENDA_PRODUTO, usuarioTemMenu } from "@/lib/dashboard/menus-catalogo";
+import { aplicarPrecoTabelaLoja } from "@/lib/estoque/tabelas-preco";
 import {
   ProdutosCadastroClient,
   type EmpresaListaItem,
   type ProdutoRow,
+  type TabelaPrecoListaItem,
 } from "./produtos-cadastro-client";
 
 function parseEmpresaId(idEmpresa: string) {
@@ -35,10 +37,11 @@ export default async function EstoqueCadastroPage() {
   const supabase = createAdminClient();
   let produtos: ProdutoRow[] = [];
   let empresas: EmpresaListaItem[] = [];
+  let tabelasPreco: TabelaPrecoListaItem[] = [];
   let loadError: string | null = null;
 
   try {
-    const [resProd, resEmp] = await Promise.all([
+    const [resProd, resEmp, resTab] = await Promise.all([
       supabase
         .from("produtos")
         .select("*")
@@ -46,14 +49,35 @@ export default async function EstoqueCadastroPage() {
         .order("produto", { ascending: true }),
       supabase
         .from("empresas")
-        .select("id, nome_fantasia")
+        .select("id, nome_fantasia, tabela_preco_id")
         .order("nome_fantasia", { ascending: true }),
+      supabase
+        .from("tabelas_preco")
+        .select("id, nome, descricao, ativo")
+        .order("nome", { ascending: true }),
     ]);
 
     if (resProd.error) throw new Error(resProd.error.message);
-    if (resEmp.error) throw new Error(resEmp.error.message);
-    produtos = (resProd.data ?? []) as ProdutoRow[];
-    empresas = (resEmp.data ?? []) as EmpresaListaItem[];
+    if (resEmp.error) {
+      const retry = await supabase
+        .from("empresas")
+        .select("id, nome_fantasia")
+        .order("nome_fantasia", { ascending: true });
+      if (retry.error) throw new Error(retry.error.message);
+      empresas = (retry.data ?? []) as EmpresaListaItem[];
+    } else {
+      empresas = (resEmp.data ?? []) as EmpresaListaItem[];
+    }
+    if (resTab.error) {
+      console.error(resTab.error);
+    } else {
+      tabelasPreco = (resTab.data ?? []) as TabelaPrecoListaItem[];
+    }
+    produtos = await aplicarPrecoTabelaLoja(
+      supabase,
+      (resProd.data ?? []) as ProdutoRow[],
+      empresaId,
+    );
   } catch (e) {
     loadError =
       e instanceof Error ? e.message : "Não foi possível carregar os dados.";
@@ -87,6 +111,7 @@ export default async function EstoqueCadastroPage() {
               <ProdutosCadastroClient
                 produtos={produtos}
                 empresas={empresas}
+                tabelasPreco={tabelasPreco}
                 empresaIdPadrao={empresaId}
                 loadError={loadError}
                 podeEditarPrecoVenda={podeEditarPrecoVenda}

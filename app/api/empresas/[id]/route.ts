@@ -29,6 +29,7 @@ export async function PATCH(request: Request, context: RouteContext) {
     cidade?: string | null;
     estado?: string | null;
     id_empresa_grupo?: number;
+    tabela_preco_id?: string | null;
     ativo?: boolean;
   };
   try {
@@ -87,6 +88,16 @@ export async function PATCH(request: Request, context: RouteContext) {
     patch.id_empresa_grupo = idGrupo;
   }
 
+  if (typeof body.tabela_preco_id !== "undefined") {
+    if (body.tabela_preco_id === null || body.tabela_preco_id === "") {
+      patch.tabela_preco_id = null;
+    } else if (typeof body.tabela_preco_id === "string" && body.tabela_preco_id.trim()) {
+      patch.tabela_preco_id = body.tabela_preco_id.trim();
+    } else {
+      return NextResponse.json({ error: "Tabela de preço inválida." }, { status: 400 });
+    }
+  }
+
   if (Object.keys(patch).length === 0) {
     return NextResponse.json(
       { error: "Nada para atualizar." },
@@ -114,12 +125,27 @@ export async function PATCH(request: Request, context: RouteContext) {
     }
   }
 
+  if (typeof patch.tabela_preco_id === "string") {
+    const { data: tab, error: tabErr } = await supabase
+      .from("tabelas_preco")
+      .select("id")
+      .eq("id", patch.tabela_preco_id)
+      .maybeSingle();
+    if (tabErr) {
+      console.error(tabErr);
+      return NextResponse.json({ error: tabErr.message }, { status: 500 });
+    }
+    if (!tab) {
+      return NextResponse.json({ error: "Tabela de preço inválida." }, { status: 400 });
+    }
+  }
+
   const { data, error } = await supabase
     .from("empresas")
     .update(patch)
     .eq("id", id)
     .select(
-      "id, nome_fantasia, razao_social, cnpj_cpf, cep, endereco, numero, complemento, bairro, cidade, estado, id_empresa_grupo, ativo",
+      "id, nome_fantasia, razao_social, cnpj_cpf, cep, endereco, numero, complemento, bairro, cidade, estado, id_empresa_grupo, tabela_preco_id, ativo",
     )
     .maybeSingle();
 

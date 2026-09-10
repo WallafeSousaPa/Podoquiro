@@ -10,6 +10,7 @@ import {
 } from "@/lib/financeiro/nfce-pagamentos";
 import type { PagamentoDetNfce } from "@/lib/sefaz/nfe/montar-nfce-produto";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { aplicarPrecoTabelaLoja } from "@/lib/estoque/tabelas-preco";
 import {
   assinarNfeXml,
   carregarCertificadoEmpresa,
@@ -330,7 +331,8 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: pErr.message }, { status: 500 });
   }
 
-  const prodMap = new Map((prows ?? []).map((p) => [p.id as string, p]));
+  const prowsComTabela = await aplicarPrecoTabelaLoja(supabase, prows ?? [], empresaId);
+  const prodMap = new Map((prowsComTabela ?? []).map((p) => [p.id as string, p]));
   const linhas: LinhaProdutoNfce[] = [];
   const uniqueIds = [...new Set(ids)];
 

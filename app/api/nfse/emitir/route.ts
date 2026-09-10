@@ -17,6 +17,7 @@ import {
   type NotaasEmitirBody,
 } from "@/lib/notaas";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { precoVendaNaLoja } from "@/lib/estoque/tabelas-preco";
 
 function parseEmpresaId(idEmpresa: string) {
   const n = Number(idEmpresa);
@@ -133,8 +134,13 @@ export async function POST(request: Request) {
     }
     if (!descricao) descricao = String(prod.produto).trim();
     if (!Number.isFinite(valorTotal) || valorTotal <= 0) {
-      const pv = prod.preco_venda != null ? Number(prod.preco_venda) : NaN;
-      valorTotal = Number.isFinite(pv) && pv >= 0 ? pv : Number(prod.preco);
+      const pv = await precoVendaNaLoja(
+        supabase,
+        idProduto,
+        empresaId,
+        prod.preco_venda != null ? Number(prod.preco_venda) : Number(prod.preco),
+      );
+      valorTotal = pv != null && pv > 0 ? pv : Number(prod.preco);
     }
   }
 

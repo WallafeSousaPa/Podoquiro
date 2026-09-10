@@ -9,6 +9,13 @@ import {
   roundMoney,
   textoHistoricoPrecoVenda,
 } from "@/lib/estoque/preco-venda-produto";
+import {
+  aplicarPrecoTabelaLoja,
+  buscarIdTabelaPrecoEmpresa,
+  parsePrecosTabelasBody,
+  recalcularPrecosPercentuaisDoProduto,
+  salvarPrecosTabelasDoProduto,
+} from "@/lib/estoque/tabelas-preco";
 
 function parseEmpresaId(idEmpresa: string) {
   const n = Number(idEmpresa);
@@ -295,7 +302,17 @@ export async function PATCH(request: Request, context: RouteContext) {
     patch.servico = body.servico;
   }
 
-  if (Object.keys(patch).length === 0) {
+  let precosTabelas: ReturnType<typeof parsePrecosTabelasBody> = null;
+  try {
+    precosTabelas = parsePrecosTabelasBody(body.precos_tabelas);
+  } catch (e) {
+    return NextResponse.json(
+      { error: e instanceof Error ? e.message : "precos_tabelas inválido." },
+      { status: 400 },
+    );
+  }
+
+  if (Object.keys(patch).length === 0 && !(podePreco && precosTabelas)) {
     return NextResponse.json({ error: "Nada para atualizar." }, { status: 400 });
   }
 
@@ -303,26 +320,30 @@ export async function PATCH(request: Request, context: RouteContext) {
   const empresaOk =
     Number.isFinite(empresaProduto) && empresaProduto > 0 ? empresaProduto : empresaId;
 
-  const { data, error } = await supabase
-    .from("produtos")
-    .update(patch)
-    .eq("id", idParam)
-    .eq("id_empresa", empresaOk)
-    .select()
-    .maybeSingle();
+  let data = existe as Record<string, unknown>;
+  if (Object.keys(patch).length > 0) {
+    const upd = await supabase
+      .from("produtos")
+      .update(patch)
+      .eq("id", idParam)
+      .eq("id_empresa", empresaOk)
+      .select()
+      .maybeSingle();
 
-  if (error) {
-    console.error(error);
-    if (error.code === "23505") {
-      return NextResponse.json(
-        { error: "Já existe um produto com este SKU nesta empresa." },
-        { status: 409 },
-      );
+    if (upd.error) {
+      console.error(upd.error);
+      if (upd.error.code === "23505") {
+        return NextResponse.json(
+          { error: "Já existe um produto com este SKU nesta empresa." },
+          { status: 409 },
+        );
+      }
+      return NextResponse.json({ error: upd.error.message }, { status: 500 });
     }
-    return NextResponse.json({ error: error.message }, { status: 500 });
-  }
-  if (!data) {
-    return NextResponse.json({ error: "Produto não encontrado." }, { status: 404 });
+    if (!upd.data) {
+      return NextResponse.json({ error: "Produto não encontrado." }, { status: 404 });
+    }
+    data = upd.data as Record<string, unknown>;
   }
 
   if (typeof patch.qtd_estoque === "number" && !existe.servico) {
@@ -343,17 +364,74 @@ export async function PATCH(request: Request, context: RouteContext) {
     }
   }
 
+  const custoFinal =
+    typeof patch.preco === "number" ? (patch.preco as number) : Number(existe.preco);
+  if (podePreco) {
+    try {
+      if (precosTabelas && precosTabelas.length > 0) {
+        await salvarPrecosTabelasDoProduto(supabase, {
+          idProduto: idParam,
+          idEmpresa: empresaOk,
+          custo: custoFinal,
+          itens: precosTabelas,
+        });
+      } else if (
+        typeof patch.preco_venda !== "undefined" ||
+        typeof patch.percentual_sobre_custo !== "undefined"
+      ) {
+        const idTabela = await buscarIdTabelaPrecoEmpresa(supabase, empresaOk);
+        if (idTabela) {
+          await salvarPrecosTabelasDoProduto(supabase, {
+            idProduto: idParam,
+            idEmpresa: empresaOk,
+            custo: custoFinal,
+            itens: [
+              {
+                id_tabela_preco: idTabela,
+                preco_venda:
+                  typeof patch.preco_venda !== "undefined"
+                    ? patch.preco_venda
+                    : existe.preco_venda,
+                percentual_sobre_custo:
+                  typeof patch.percentual_sobre_custo !== "undefined"
+                    ? patch.percentual_sobre_custo
+                    : existe.percentual_sobre_custo,
+              },
+            ],
+          });
+        }
+      } else if (typeof patch.preco === "number") {
+        await recalcularPrecosPercentuaisDoProduto(supabase, idParam, custoFinal, empresaOk);
+      }
+    } catch (tabErr) {
+      console.error(tabErr);
+      return NextResponse.json(
+        {
+          error:
+            tabErr instanceof Error
+              ? tabErr.message
+              : "Não foi possível gravar os preços das tabelas.",
+        },
+        { status: 400 },
+      );
+    }
+  }
+
+  const [enriquecido] = await aplicarPrecoTabelaLoja(
+    supabase,
+    [data as { id: string; preco_venda?: number | null; percentual_sobre_custo?: number | null }],
+    empresaOk,
+  );
+
   const vendaAntes =
     existe.preco_venda != null ? Number(existe.preco_venda) : null;
   const vendaDepois =
-    typeof patch.preco_venda !== "undefined"
-      ? (patch.preco_venda as number | null)
-      : vendaAntes;
+    enriquecido?.preco_venda != null ? Number(enriquecido.preco_venda) : vendaAntes;
   const pctAntes =
     existe.percentual_sobre_custo != null ? Number(existe.percentual_sobre_custo) : null;
   const pctDepois =
-    typeof patch.percentual_sobre_custo !== "undefined"
-      ? (patch.percentual_sobre_custo as number | null)
+    enriquecido?.percentual_sobre_custo != null
+      ? Number(enriquecido.percentual_sobre_custo)
       : pctAntes;
   const mudouVenda =
     roundMoney(vendaAntes ?? 0) !== roundMoney(vendaDepois ?? 0) ||
@@ -376,5 +454,5 @@ export async function PATCH(request: Request, context: RouteContext) {
     }
   }
 
-  return NextResponse.json({ data });
+  return NextResponse.json({ data: enriquecido ?? data });
 }

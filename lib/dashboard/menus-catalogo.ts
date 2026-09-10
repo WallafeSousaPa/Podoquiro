@@ -127,6 +127,12 @@ export const MENUS_LATERAIS: MenuLateralGrupo[] = [
         somenteAcao: true,
       },
       {
+        chave: "estoque.tabelas-preco",
+        label: "Tabelas de preço",
+        href: "/estoque/tabelas-preco",
+        rotas: ["/estoque/tabelas-preco"],
+      },
+      {
         chave: "estoque.importacao",
         label: "Importação",
         href: "/estoque/importacao",

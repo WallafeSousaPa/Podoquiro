@@ -8,6 +8,12 @@ import {
   textoHistoricoPrecoVenda,
 } from "@/lib/estoque/preco-venda-produto";
 import { usuarioPodeEditarPrecoVendaProduto } from "@/lib/dashboard/menus-permissoes";
+import {
+  aplicarPrecoTabelaLoja,
+  buscarIdTabelaPrecoEmpresa,
+  parsePrecosTabelasBody,
+  salvarPrecosTabelasDoProduto,
+} from "@/lib/estoque/tabelas-preco";
 
 function parseEmpresaId(idEmpresa: string) {
   const n = Number(idEmpresa);
@@ -80,9 +86,7 @@ export async function GET(request: Request) {
     }
   }
 
-  if (searchParams.get("sem_venda") === "1") {
-    query = query.or("preco_venda.is.null,preco_venda.eq.0");
-  }
+  const semVenda = searchParams.get("sem_venda") === "1";
 
   const { data, error } = await query.order("produto", { ascending: true });
 
@@ -91,7 +95,14 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 
-  return NextResponse.json({ data: data ?? [] });
+  let rows = await aplicarPrecoTabelaLoja(supabase, data ?? [], empresaFilter);
+  if (semVenda) {
+    rows = rows.filter(
+      (p) => p.preco_venda == null || Number(p.preco_venda) === 0,
+    );
+  }
+
+  return NextResponse.json({ data: rows });
 }
 
 export async function POST(request: Request) {
@@ -327,5 +338,50 @@ export async function POST(request: Request) {
     });
   }
 
-  return NextResponse.json({ data });
+  if (podePreco && data?.id) {
+    try {
+      const itens = parsePrecosTabelasBody(body.precos_tabelas);
+      if (itens && itens.length > 0) {
+        await salvarPrecosTabelasDoProduto(supabase, {
+          idProduto: data.id as string,
+          idEmpresa: empresaId,
+          custo: preco,
+          itens,
+        });
+      } else if (preco_venda != null && preco_venda > 0) {
+        const idTabela = await buscarIdTabelaPrecoEmpresa(supabase, empresaId);
+        if (idTabela) {
+          await salvarPrecosTabelasDoProduto(supabase, {
+            idProduto: data.id as string,
+            idEmpresa: empresaId,
+            custo: preco,
+            itens: [
+              {
+                id_tabela_preco: idTabela,
+                preco_venda,
+                percentual_sobre_custo,
+              },
+            ],
+          });
+        }
+      }
+    } catch (tabErr) {
+      console.error(tabErr);
+      return NextResponse.json(
+        {
+          error:
+            tabErr instanceof Error
+              ? tabErr.message
+              : "Produto cadastrado, mas não foi possível gravar os preços das tabelas.",
+        },
+        { status: 400 },
+      );
+    }
+  }
+
+  const [enriquecido] = data?.id
+    ? await aplicarPrecoTabelaLoja(supabase, [data], empresaId)
+    : [];
+
+  return NextResponse.json({ data: enriquecido ?? data });
 }

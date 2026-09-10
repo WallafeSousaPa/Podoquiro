@@ -5,9 +5,9 @@ import { usuarioPodeEditarPrecoVendaProduto } from "@/lib/dashboard/menus-permis
 import { registrarHistoricoPrecoVenda } from "@/lib/estoque/registrar-movimentacao-estoque";
 import {
   parseNumeroNaoNegativo,
-  precoVendaPorPercentual,
   textoHistoricoPrecoVenda,
 } from "@/lib/estoque/preco-venda-produto";
+import { aplicarPercentualNaTabelaDaLoja } from "@/lib/estoque/tabelas-preco";
 
 function parseEmpresaId(idEmpresa: unknown) {
   const n = Number(idEmpresa);
@@ -89,17 +89,19 @@ export async function POST(request: Request) {
   let atualizados = 0;
   for (const p of encontrados) {
     const custo = Number(p.preco) || 0;
-    const vendaNova = precoVendaPorPercentual(custo, percentual);
-    const vendaAntes = p.preco_venda != null ? Number(p.preco_venda) : null;
-    const { error: upErr } = await supabase
-      .from("produtos")
-      .update({
-        percentual_sobre_custo: percentual,
-        preco_venda: vendaNova,
-      })
-      .eq("id", p.id)
-      .eq("id_empresa", empresaId);
-    if (upErr) {
+    let vendaAntes: number | null =
+      p.preco_venda != null ? Number(p.preco_venda) : null;
+    let vendaNova: number;
+    try {
+      const aplicado = await aplicarPercentualNaTabelaDaLoja(supabase, {
+        idProduto: p.id as string,
+        idEmpresa: empresaId,
+        custo,
+        percentual,
+      });
+      vendaAntes = aplicado.anterior ?? vendaAntes;
+      vendaNova = aplicado.posterior;
+    } catch (upErr) {
       console.error(upErr);
       return NextResponse.json(
         { error: `Não foi possível atualizar "${p.produto}".` },
