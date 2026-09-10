@@ -9,8 +9,20 @@ export function precoVendaPorPercentual(custo: number, percentual: number): numb
 
 export function parseNumeroNaoNegativo(raw: unknown): number | null {
   if (raw === null || typeof raw === "undefined" || raw === "") return null;
-  const n =
-    typeof raw === "number" ? raw : typeof raw === "string" ? Number(raw.replace(",", ".")) : NaN;
+  if (typeof raw === "number") {
+    if (!Number.isFinite(raw) || raw < 0) return null;
+    return raw;
+  }
+  if (typeof raw !== "string") return null;
+  const t = raw.trim().replace(/\s/g, "");
+  if (t === "") return null;
+  const lastComma = t.lastIndexOf(",");
+  const lastDot = t.lastIndexOf(".");
+  const normalized =
+    lastComma !== -1 && lastComma > lastDot
+      ? t.replace(/\./g, "").replace(",", ".")
+      : t.replace(/,/g, "");
+  const n = Number(normalized);
   if (!Number.isFinite(n) || n < 0) return null;
   return n;
 }

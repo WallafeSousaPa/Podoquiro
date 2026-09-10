@@ -24,7 +24,8 @@ export async function GET(_request: Request, context: RouteContext) {
     return NextResponse.json({ error: "Empresa inválida." }, { status: 400 });
   }
 
-  const { id: idParam } = await context.params;
+  const params = await context.params;
+  const idParam = decodeURIComponent(String(params?.id ?? "")).trim();
   if (!isUuid(idParam)) {
     return NextResponse.json({ error: "ID inválido." }, { status: 400 });
   }
@@ -33,9 +34,8 @@ export async function GET(_request: Request, context: RouteContext) {
 
   const { data: produto, error: prodErr } = await supabase
     .from("produtos")
-    .select("id, produto, servico, qtd_estoque")
+    .select("id, id_empresa, produto, servico, qtd_estoque")
     .eq("id", idParam)
-    .eq("id_empresa", empresaId)
     .maybeSingle();
 
   if (prodErr) {
@@ -52,7 +52,7 @@ export async function GET(_request: Request, context: RouteContext) {
       "id, tipo, quantidade, saldo_anterior, saldo_posterior, origem, id_agendamento, observacao, created_at, usuarios ( nome_completo, usuario )",
     )
     .eq("id_produto", idParam)
-    .eq("id_empresa", empresaId)
+    .eq("id_empresa", Number(produto.id_empresa) || empresaId)
     .order("created_at", { ascending: false })
     .limit(300);
 

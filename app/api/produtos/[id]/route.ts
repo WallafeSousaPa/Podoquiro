@@ -47,7 +47,8 @@ export async function PATCH(request: Request, context: RouteContext) {
   const idUsuario =
     Number.isFinite(sessionUserId) && sessionUserId > 0 ? sessionUserId : null;
 
-  const { id: idParam } = await context.params;
+  const params = await context.params;
+  const idParam = decodeURIComponent(String(params?.id ?? "")).trim();
   if (!isUuid(idParam)) {
     return NextResponse.json({ error: "ID inválido." }, { status: 400 });
   }
@@ -64,9 +65,8 @@ export async function PATCH(request: Request, context: RouteContext) {
 
   const { data: existe, error: checkErr } = await supabase
     .from("produtos")
-    .select("id, servico, qtd_estoque, preco, preco_venda, percentual_sobre_custo")
+    .select("id, id_empresa, servico, qtd_estoque, preco, preco_venda, percentual_sobre_custo")
     .eq("id", idParam)
-    .eq("id_empresa", empresaId)
     .maybeSingle();
 
   if (checkErr) {
@@ -299,13 +299,17 @@ export async function PATCH(request: Request, context: RouteContext) {
     return NextResponse.json({ error: "Nada para atualizar." }, { status: 400 });
   }
 
+  const empresaProduto = Number(existe.id_empresa);
+  const empresaOk =
+    Number.isFinite(empresaProduto) && empresaProduto > 0 ? empresaProduto : empresaId;
+
   const { data, error } = await supabase
     .from("produtos")
     .update(patch)
     .eq("id", idParam)
-    .eq("id_empresa", empresaId)
+    .eq("id_empresa", empresaOk)
     .select()
-    .single();
+    .maybeSingle();
 
   if (error) {
     console.error(error);
@@ -317,6 +321,9 @@ export async function PATCH(request: Request, context: RouteContext) {
     }
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
+  if (!data) {
+    return NextResponse.json({ error: "Produto não encontrado." }, { status: 404 });
+  }
 
   if (typeof patch.qtd_estoque === "number" && !existe.servico) {
     const saldoAnterior = Number(existe.qtd_estoque);
@@ -324,7 +331,7 @@ export async function PATCH(request: Request, context: RouteContext) {
     const diff = saldoPosterior - saldoAnterior;
     if (diff !== 0) {
       await registrarMovimentacaoEstoque(supabase, {
-        id_empresa: empresaId,
+        id_empresa: empresaOk,
         id_produto: idParam,
         tipo: diff > 0 ? "entrada" : "saida",
         quantidade: Math.abs(diff),
@@ -352,17 +359,21 @@ export async function PATCH(request: Request, context: RouteContext) {
     roundMoney(vendaAntes ?? 0) !== roundMoney(vendaDepois ?? 0) ||
     (pctAntes ?? null) !== (pctDepois ?? null);
   if (mudouVenda) {
-    await registrarHistoricoPrecoVenda(supabase, {
-      id_empresa: empresaId,
-      id_produto: idParam,
-      saldo: Number(data?.qtd_estoque ?? existe.qtd_estoque),
-      id_usuario: idUsuario,
-      observacao: textoHistoricoPrecoVenda({
-        anterior: vendaAntes,
-        posterior: vendaDepois,
-        percentual: pctDepois,
-      }),
-    });
+    try {
+      await registrarHistoricoPrecoVenda(supabase, {
+        id_empresa: empresaOk,
+        id_produto: idParam,
+        saldo: Number(data?.qtd_estoque ?? existe.qtd_estoque),
+        id_usuario: idUsuario,
+        observacao: textoHistoricoPrecoVenda({
+          anterior: vendaAntes,
+          posterior: vendaDepois,
+          percentual: pctDepois,
+        }),
+      });
+    } catch (histErr) {
+      console.error(histErr);
+    }
   }
 
   return NextResponse.json({ data });

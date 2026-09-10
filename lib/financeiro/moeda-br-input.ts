@@ -22,3 +22,12 @@ export function fmtMoedaBrCampo(n: number): string {
     maximumFractionDigits: 2,
   });
 }
+
+/** Máscara ##,## (centavos): 1 → 0,01; 150 → 1,50; 123456 → 1.234,56. */
+export function mascararMoedaBr(raw: string): { texto: string; valor: number | null } {
+  const digits = raw.replace(/\D/g, "").slice(0, 10);
+  if (!digits) return { texto: "", valor: null };
+  const valor = Number(digits) / 100;
+  if (!Number.isFinite(valor) || valor < 0) return { texto: "", valor: null };
+  return { texto: fmtMoedaBrCampo(valor), valor };
+}

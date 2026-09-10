@@ -11,7 +11,8 @@ import {
   useState,
 } from "react";
 import { ModalHistoricoEstoqueProduto } from "./modal-historico-estoque-produto";
-import { precoVendaPorPercentual } from "@/lib/estoque/preco-venda-produto";
+import { precoVendaPorPercentual, roundMoney } from "@/lib/estoque/preco-venda-produto";
+import { fmtMoedaBrCampo, mascararMoedaBr } from "@/lib/financeiro/moeda-br-input";
 
 export type EmpresaListaItem = {
   id: number;
@@ -59,6 +60,40 @@ const ORIGENS_ICMS: { value: number; label: string }[] = [
 
 function formatBRL(n: number) {
   return n.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+}
+
+function InputMoedaBr({
+  id,
+  value,
+  onChange,
+  allowEmpty,
+  placeholder,
+}: {
+  id: string;
+  value: number | null;
+  onChange: (n: number | null) => void;
+  allowEmpty?: boolean;
+  placeholder?: string;
+}) {
+  return (
+    <input
+      id={id}
+      type="text"
+      inputMode="decimal"
+      autoComplete="off"
+      className="form-control"
+      placeholder={placeholder ?? "0,00"}
+      value={value == null ? "" : fmtMoedaBrCampo(value)}
+      onChange={(e) => {
+        const { valor } = mascararMoedaBr(e.target.value);
+        if (valor == null) {
+          onChange(allowEmpty ? null : 0);
+          return;
+        }
+        onChange(valor);
+      }}
+    />
+  );
 }
 
 function ModalBackdrop({
@@ -399,12 +434,13 @@ export function ProdutosCadastroClient({
       servico: form.servico,
     };
     if (podeEditarPrecoVenda) {
-      base.preco_venda =
+      const venda =
         form.modo_venda === "percentual"
           ? form.percentual_sobre_custo != null
             ? precoVendaPorPercentual(form.preco, form.percentual_sobre_custo)
             : null
           : form.preco_venda;
+      base.preco_venda = venda == null ? null : roundMoney(venda);
       base.percentual_sobre_custo =
         form.modo_venda === "percentual" ? form.percentual_sobre_custo : null;
     }
@@ -450,7 +486,7 @@ export function ProdutosCadastroClient({
     setFormError(null);
     try {
       const payload = buildPayload();
-      const url = editing ? `/api/produtos/${editing.id}` : "/api/produtos";
+      const url = editing ? `/api/produtos/${encodeURIComponent(editing.id)}` : "/api/produtos";
       const method = editing ? "PATCH" : "POST";
       const res = await fetch(url, {
         method,
@@ -907,15 +943,11 @@ export function ProdutosCadastroClient({
                     </div>
                     <div className="form-group col-md-4">
                       <label htmlFor="prod-preco">Custo (R$)</label>
-                      <input
+                      <InputMoedaBr
                         id="prod-preco"
-                        type="number"
-                        className="form-control"
-                        min={0}
-                        step={0.01}
                         value={form.preco}
-                        onChange={(e) => {
-                          const preco = Number.parseFloat(e.target.value) || 0;
+                        onChange={(n) => {
+                          const preco = n ?? 0;
                           setForm((f) => ({
                             ...f,
                             preco,
@@ -993,19 +1025,12 @@ export function ProdutosCadastroClient({
                     {form.modo_venda === "valor" ? (
                       <div className="form-group col-md-6">
                         <label htmlFor="prod-preco-venda">Valor de venda (R$)</label>
-                        <input
+                        <InputMoedaBr
                           id="prod-preco-venda"
-                          type="number"
-                          className="form-control"
-                          min={0}
-                          step={0.01}
-                          placeholder="Opcional"
-                          value={form.preco_venda === null ? "" : form.preco_venda}
-                          onChange={(e) => {
-                            const v = e.target.value;
-                            if (v === "") setField("preco_venda", null);
-                            else setField("preco_venda", Number.parseFloat(v));
-                          }}
+                          value={form.preco_venda}
+                          allowEmpty
+                          placeholder="0,00"
+                          onChange={(n) => setField("preco_venda", n)}
                         />
                         <small className="form-text text-muted">
                           Esse valor é o que entra nas saídas e na nota fiscal.
