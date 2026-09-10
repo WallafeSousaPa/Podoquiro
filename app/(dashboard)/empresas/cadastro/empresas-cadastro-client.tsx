@@ -469,7 +469,9 @@ export function EmpresasCadastroClient({ grupos, empresas, loadError }: Props) {
                         id="empresa-estado"
                         className="form-control"
                         value={estado}
-                        onChange={(e) => setEstado(e.target.value)}
+                        onChange={(e) => setEstado(e.target.value.toUpperCase().slice(0, 2))}
+                        maxLength={2}
+                        placeholder="PA"
                       />
                     </div>
                   </div>

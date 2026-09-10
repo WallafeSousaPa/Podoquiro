@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { getSession } from "@/lib/auth/session";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { normalizarUfBr } from "@/lib/estoque/uf-br";
 
 type RouteContext = { params: Promise<{ id: string }> };
 
@@ -72,7 +73,7 @@ export async function PATCH(request: Request, context: RouteContext) {
   }
   if (typeof body.bairro === "string") patch.bairro = body.bairro.trim() || null;
   if (typeof body.cidade === "string") patch.cidade = body.cidade.trim() || null;
-  if (typeof body.estado === "string") patch.estado = body.estado.trim() || null;
+  if (typeof body.estado === "string") patch.estado = normalizarUfBr(body.estado);
   if (typeof body.ativo === "boolean") patch.ativo = body.ativo;
 
   if (typeof body.id_empresa_grupo !== "undefined") {

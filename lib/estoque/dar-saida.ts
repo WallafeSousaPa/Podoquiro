@@ -11,6 +11,7 @@ import {
   type OrigemMovimentacaoEstoque,
 } from "@/lib/estoque/registrar-movimentacao-estoque";
 import type { TipoSaidaEstoque } from "@/lib/estoque/tipos-saida";
+import { normalizarUfBr } from "@/lib/estoque/uf-br";
 
 export type ItemSaidaInput = {
   id_produto: string;
@@ -202,7 +203,7 @@ export async function darSaidaEstoque(
       emit_cnpj: soDigitos(emit.cnpj_cpf).slice(0, 14) || null,
       emit_nome: emit.razao_social,
       emit_fantasia: emit.nome_fantasia,
-      emit_uf: emit.estado,
+      emit_uf: normalizarUfBr(emit.estado),
       emit_municipio: emit.cidade,
       emit_endereco: emit.endereco,
       emit_numero: emit.numero,
@@ -216,13 +217,13 @@ export async function darSaidaEstoque(
         comprador?.nome ||
         destEmpresaNome,
       dest_ie: comprador?.ie ?? null,
-      dest_uf: comprador?.uf ?? null,
+      dest_uf: normalizarUfBr(comprador?.uf),
       dest_municipio: comprador?.municipio ?? null,
       dest_endereco: comprador?.endereco ?? null,
       dest_numero: comprador?.numero ?? null,
       dest_complemento: comprador?.complemento ?? null,
       dest_bairro: comprador?.bairro ?? null,
-      dest_cep: comprador?.cep ?? null,
+      dest_cep: soDigitos(comprador?.cep).slice(0, 8) || null,
       dest_email: comprador?.email ?? null,
       dest_fone: comprador?.fone ?? null,
       valor_total: valorTotal,

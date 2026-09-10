@@ -1,5 +1,6 @@
 import type { ParceiroEstoqueRow } from "@/lib/estoque/parceiro-campos";
 import type { TipoSaidaEstoque } from "@/lib/estoque/tipos-saida";
+import { normalizarUfBr } from "@/lib/estoque/uf-br";
 
 export type EmpresaSnapshotNfe = {
   id: number;
@@ -91,7 +92,7 @@ export function montarPayloadNotaVenda(params: {
       cnpj: soDigitos(params.empresa.cnpj_cpf).slice(0, 14) || null,
       razao_social: params.empresa.razao_social,
       nome_fantasia: params.empresa.nome_fantasia,
-      uf: params.empresa.estado,
+      uf: normalizarUfBr(params.empresa.estado),
       municipio: params.empresa.cidade,
       logradouro: params.empresa.endereco,
       numero: params.empresa.numero,
@@ -110,8 +111,8 @@ export function montarPayloadNotaVenda(params: {
       x_cpl: params.comprador.complemento,
       x_bairro: params.comprador.bairro,
       x_mun: params.comprador.municipio,
-      uf: params.comprador.uf,
-      cep: params.comprador.cep,
+      uf: normalizarUfBr(params.comprador.uf),
+      cep: soDigitos(params.comprador.cep).slice(0, 8) || null,
       email: params.comprador.email,
       fone: params.comprador.fone,
     },

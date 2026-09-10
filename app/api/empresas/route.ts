@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { getSession } from "@/lib/auth/session";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { normalizarUfBr } from "@/lib/estoque/uf-br";
 
 export async function GET() {
   const session = await getSession();
@@ -109,7 +110,7 @@ export async function POST(request: Request) {
       complemento: body.complemento?.trim() || null,
       bairro: body.bairro?.trim() || null,
       cidade: body.cidade?.trim() || null,
-      estado: body.estado?.trim() || null,
+      estado: normalizarUfBr(body.estado),
       id_empresa_grupo,
       ativo: true,
     })
