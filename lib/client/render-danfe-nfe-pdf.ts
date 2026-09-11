@@ -9,9 +9,9 @@ export type DanfeNfeCompleto = DanfeNfeDados & {
   protocolo: string | null;
 };
 
-const LOGO_PUBLICO = "/PodoquiroLogoHome.jpeg";
-const LOGO_MAX_W = 28;
-const LOGO_MAX_H = 16;
+const LOGO_PUBLICO = "/PeNaEntregaLogo.png";
+const LOGO_MAX_W = 30;
+const LOGO_MAX_H = 32;
 
 /** Padrões Code 128 (larguras bar/espaço), índices 0–106. */
 const C128 = [

@@ -125,8 +125,8 @@ export function montarHtmlPreOrcamento(d: PreOrcamentoSaida): string {
   const numero = numeroPreOrcamento(d.id);
   const logoSrc =
     typeof window !== "undefined"
-      ? `${window.location.origin}/PodoquiroLogoHome.jpeg`
-      : "/PodoquiroLogoHome.jpeg";
+      ? `${window.location.origin}/PeNaEntregaLogo.png`
+      : "/PeNaEntregaLogo.png";
 
   const emitNome =
     d.emit_nome?.trim() || d.emit_fantasia?.trim() || "Podoquiro";
@@ -237,8 +237,8 @@ export function montarHtmlPreOrcamento(d: PreOrcamentoSaida): string {
         }
 
         .logo-container img {
-            max-height: 58px;
-            max-width: 180px;
+            max-height: 118px;
+            max-width: 170px;
             object-fit: contain;
         }
 
@@ -358,7 +358,7 @@ export function montarHtmlPreOrcamento(d: PreOrcamentoSaida): string {
     <table class="header-table">
         <tr>
             <td class="logo-container">
-                <img src="${esc(logoSrc)}" alt="Podoquiro">
+                <img src="${esc(logoSrc)}" alt="Pé na Entrega">
             </td>
             <td class="company-info">
                 <strong>${esc(emitNome)}</strong>${
