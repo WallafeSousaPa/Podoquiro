@@ -37,10 +37,13 @@ export type MetadataCertificadoNfe = {
   atualizadoEm: string;
 };
 
-/**
- * Descriptografa certificado e senha da empresa (uso apenas em servidor ao assinar/enviar SOAP).
- */
-export async function obterMaterialCertificadoNfe(
+function cnpjBase8(cnpj: string | null | undefined): string | null {
+  const d = (cnpj ?? "").replace(/\D/g, "");
+  if (d.length < 8) return null;
+  return d.slice(0, 8);
+}
+
+async function materialDaEmpresaExata(
   supabase: SupabaseClient,
   idEmpresa: number,
 ): Promise<MaterialCertificadoNfe | null> {
@@ -64,6 +67,76 @@ export async function obterMaterialCertificadoNfe(
   }
 }
 
+/**
+ * Lojas com o mesmo CNPJ-base (matriz/filial) ou do mesmo grupo compartilham o A1.
+ * Ex.: certificado cadastrado na Podoquiro vale para Pé na Entrega.
+ */
+async function idEmpresaComCertificadoCompativel(
+  supabase: SupabaseClient,
+  idEmpresa: number,
+): Promise<number | null> {
+  const { data: atual, error: empErr } = await supabase
+    .from("empresas")
+    .select("cnpj_cpf, id_empresa_grupo")
+    .eq("id", idEmpresa)
+    .maybeSingle();
+  if (empErr) throw new Error(empErr.message);
+  if (!atual) return null;
+
+  const base = cnpjBase8(atual.cnpj_cpf as string | null | undefined);
+  const idGrupo = Number(atual.id_empresa_grupo);
+
+  const { data: todas, error: listErr } = await supabase
+    .from("empresas")
+    .select("id, cnpj_cpf, id_empresa_grupo");
+  if (listErr) throw new Error(listErr.message);
+
+  const candidatas = (todas ?? [])
+    .map((e) => ({
+      id: Number(e.id),
+      base: cnpjBase8(e.cnpj_cpf as string | null),
+      grupo: Number(e.id_empresa_grupo),
+    }))
+    .filter((e) => Number.isFinite(e.id) && e.id > 0 && e.id !== idEmpresa)
+    .filter((e) => {
+      if (base && e.base === base) return true;
+      if (Number.isFinite(idGrupo) && idGrupo > 0 && e.grupo === idGrupo) return true;
+      return false;
+    })
+    .map((e) => e.id);
+  if (candidatas.length === 0) return null;
+
+  const { data: certs, error: certErr } = await supabase
+    .from("empresa_nfe_certificados")
+    .select("id_empresa")
+    .in("id_empresa", candidatas);
+  if (certErr) throw new Error(certErr.message);
+
+  const porCnpj = (certs ?? [])
+    .map((c) => Number(c.id_empresa))
+    .filter((id) => {
+      const e = (todas ?? []).find((x) => Number(x.id) === id);
+      return base != null && cnpjBase8(e?.cnpj_cpf as string | null) === base;
+    });
+  const escolhido = porCnpj[0] ?? Number((certs ?? [])[0]?.id_empresa);
+  return Number.isFinite(escolhido) && escolhido > 0 ? escolhido : null;
+}
+
+/**
+ * Descriptografa certificado e senha da empresa (uso apenas em servidor ao assinar/enviar SOAP).
+ * Se a loja não tiver A1 próprio, usa o de outra loja com o mesmo CNPJ ou do mesmo grupo.
+ */
+export async function obterMaterialCertificadoNfe(
+  supabase: SupabaseClient,
+  idEmpresa: number,
+): Promise<MaterialCertificadoNfe | null> {
+  const proprio = await materialDaEmpresaExata(supabase, idEmpresa);
+  if (proprio) return proprio;
+  const idFonte = await idEmpresaComCertificadoCompativel(supabase, idEmpresa);
+  if (!idFonte) return null;
+  return materialDaEmpresaExata(supabase, idFonte);
+}
+
 export async function obterMetadataCertificadoNfe(
   supabase: SupabaseClient,
   idEmpresa: number,
@@ -75,8 +148,18 @@ export async function obterMetadataCertificadoNfe(
     .maybeSingle();
 
   if (error) throw new Error(error.message);
-  if (!data?.updated_at) return null;
-  return { atualizadoEm: data.updated_at as string };
+  if (data?.updated_at) return { atualizadoEm: data.updated_at as string };
+
+  const idFonte = await idEmpresaComCertificadoCompativel(supabase, idEmpresa);
+  if (!idFonte) return null;
+  const { data: compartilhado, error: sharedErr } = await supabase
+    .from("empresa_nfe_certificados")
+    .select("updated_at")
+    .eq("id_empresa", idFonte)
+    .maybeSingle();
+  if (sharedErr) throw new Error(sharedErr.message);
+  if (!compartilhado?.updated_at) return null;
+  return { atualizadoEm: compartilhado.updated_at as string };
 }
 
 export function prepararGravacaoCertificado(pfxPlain: Buffer, senhaPlain: string): {

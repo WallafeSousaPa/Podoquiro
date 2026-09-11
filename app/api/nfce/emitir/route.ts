@@ -277,7 +277,10 @@ export async function POST(request: Request) {
   }
   if (!material) {
     return NextResponse.json(
-      { error: "Certificado não configurado. Cadastre em Parâmetros NF-e." },
+      {
+        error:
+          "Certificado não configurado. Cadastre em Parâmetros NF-e (vale para todas as lojas com o mesmo CNPJ).",
+      },
       { status: 400 },
     );
   }

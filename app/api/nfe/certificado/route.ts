@@ -39,7 +39,8 @@ export async function GET() {
       const material = await obterMaterialCertificadoNfe(supabase, empresaId);
       certificadoLegivel = material != null;
       if (!material) {
-        erroLeitura = "Nenhum certificado cadastrado para esta empresa.";
+        erroLeitura =
+          "Nenhum certificado cadastrado para esta empresa nem para outra loja com o mesmo CNPJ.";
       }
     } catch (e) {
       certificadoLegivel = false;
