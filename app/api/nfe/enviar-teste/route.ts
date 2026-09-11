@@ -5,6 +5,7 @@ import {
   assinarNfeXml,
   carregarCertificadoEmpresa,
   codigoUfParaNfe,
+  cStatDuplicidadeNfe,
   enviarLoteNfeSincrono,
   extrairCnpj14DoPfx,
   extrairRetornoAutorizacaoLote,
@@ -13,6 +14,8 @@ import {
   montarChaveAcessoNfe55,
   montarNfeXmlMinimaHomologacao,
   normalizarIeNfeEmitente,
+  proximoNumeroAposDuplicidade,
+  proximoNumeroNf,
   urlNfeAutorizacaoSvrs,
 } from "@/lib/sefaz/nfe";
 
@@ -160,35 +163,19 @@ export async function POST() {
     );
   }
 
-  const { data: maxRow } = await supabase
-    .from("nfe_emissoes")
-    .select("numero_nf")
-    .eq("id_empresa", empresaId)
-    .eq("serie", serie)
-    .not("numero_nf", "is", null)
-    .order("numero_nf", { ascending: false })
-    .limit(1)
-    .maybeSingle();
-
-  const nNF = (typeof maxRow?.numero_nf === "number" ? maxRow.numero_nf : 0) + 1;
+  let nNF = await proximoNumeroNf(supabase, {
+    idEmpresa: empresaId,
+    cnpj14,
+    modelo: 55,
+    serie,
+    ambiente: cfg.ambiente,
+  });
   if (nNF > 999_999_999) {
     return NextResponse.json({ error: "Número NF excede o limite suportado." }, { status: 400 });
   }
 
   const cUF = codigoUfParaNfe(cfg.ufEmitente);
   const { ano, mes } = anoMesBelem();
-  const cNF = gerarCodigoNumericoNfe8();
-  const chave44 = montarChaveAcessoNfe55({
-    cUF,
-    ano,
-    mes,
-    cnpj14,
-    mod: 55,
-    serie,
-    numeroNf: nNF,
-    tpEmis: 1,
-    codigoNumerico8: cNF,
-  });
 
   const emitente = {
     cnpj14,
@@ -207,62 +194,96 @@ export async function POST() {
     fone: null,
   };
 
-  const xmlSemAssinatura = montarNfeXmlMinimaHomologacao({
-    emitente,
-    chave44,
-    serie,
-    nNF,
-    vNF,
-    dhEmi: dhEmiAmericaBelem(),
-    cpfDest,
-    ncm8,
-  });
-
-  let xmlAssinado: string;
-  try {
-    xmlAssinado = assinarNfeXml(xmlSemAssinatura, material.pfx, material.senha);
-  } catch (e) {
-    const msg = e instanceof Error ? e.message : "Falha ao assinar o XML.";
-    return NextResponse.json({ error: msg }, { status: 500 });
-  }
-
-  const idLote = String(Date.now()).replace(/\D/g, "").slice(-15);
   const url = urlNfeAutorizacaoSvrs(cfg.ambiente);
+  let chave44 = "";
+  let xmlAssinado = "";
+  let httpStatus = 0;
+  let xmlRetorno = "";
+  let envelopeEnviado = "";
+  let idLote = "";
+  let parsed = extrairRetornoAutorizacaoLote("");
 
-  let httpStatus: number;
-  let xmlRetorno: string;
-  let envelopeEnviado: string;
-  try {
-    const r = await enviarLoteNfeSincrono({
-      urlEndpoint: url,
-      versaoLayout: "4.00",
-      idLote,
-      xmlNFeSemDeclaracao: xmlAssinado,
-      pfx: material.pfx,
-      senhaCertificado: material.senha,
-    });
-    httpStatus = r.httpStatus;
-    xmlRetorno = r.xmlRetorno;
-    envelopeEnviado = r.envelopeEnviado;
-  } catch (e) {
-    const msg = e instanceof Error ? e.message : "Falha na comunicação com a SEFAZ.";
-    await supabase.from("nfe_emissoes").insert({
-      id_empresa: empresaId,
-      ambiente: cfg.ambiente,
+  for (let tentativa = 0; tentativa < 8; tentativa++) {
+    if (nNF > 999_999_999) {
+      return NextResponse.json({ error: "Número NF excede o limite suportado." }, { status: 400 });
+    }
+    const cNF = gerarCodigoNumericoNfe8();
+    chave44 = montarChaveAcessoNfe55({
+      cUF,
+      ano,
+      mes,
+      cnpj14,
+      mod: 55,
       serie,
-      numero_nf: nNF,
-      status: "rejeitada",
-      chave_acesso: chave44,
-      c_stat: null,
-      x_motivo: truncar(msg, 2000),
-      xml_enviado: truncar(xmlAssinado, 120_000),
-      escopo_emissao: "teste",
-      payload_rascunho: { tipo: "envio_teste_erro", endpoint: url },
+      numeroNf: nNF,
+      tpEmis: 1,
+      codigoNumerico8: cNF,
     });
-    return NextResponse.json({ error: msg }, { status: 502 });
-  }
 
-  const parsed = extrairRetornoAutorizacaoLote(xmlRetorno);
+    const xmlSemAssinatura = montarNfeXmlMinimaHomologacao({
+      emitente,
+      chave44,
+      serie,
+      nNF,
+      vNF,
+      dhEmi: dhEmiAmericaBelem(),
+      cpfDest,
+      ncm8,
+    });
+
+    try {
+      xmlAssinado = assinarNfeXml(xmlSemAssinatura, material.pfx, material.senha);
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : "Falha ao assinar o XML.";
+      return NextResponse.json({ error: msg }, { status: 500 });
+    }
+
+    idLote = String(Date.now() + tentativa).replace(/\D/g, "").slice(-15);
+    try {
+      const r = await enviarLoteNfeSincrono({
+        urlEndpoint: url,
+        versaoLayout: "4.00",
+        idLote,
+        xmlNFeSemDeclaracao: xmlAssinado,
+        pfx: material.pfx,
+        senhaCertificado: material.senha,
+      });
+      httpStatus = r.httpStatus;
+      xmlRetorno = r.xmlRetorno;
+      envelopeEnviado = r.envelopeEnviado;
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : "Falha na comunicação com a SEFAZ.";
+      await supabase.from("nfe_emissoes").insert({
+        id_empresa: empresaId,
+        ambiente: cfg.ambiente,
+        modelo: 55,
+        serie,
+        numero_nf: nNF,
+        status: "rejeitada",
+        chave_acesso: chave44,
+        c_stat: null,
+        x_motivo: truncar(msg, 2000),
+        xml_enviado: truncar(xmlAssinado, 120_000),
+        escopo_emissao: "teste",
+        payload_rascunho: { tipo: "envio_teste_erro", endpoint: url },
+      });
+      return NextResponse.json({ error: msg }, { status: 502 });
+    }
+
+    parsed = extrairRetornoAutorizacaoLote(xmlRetorno);
+    if (parsed.cStatProt === "100") break;
+
+    const cStatDup = parsed.cStatProt ?? parsed.cStatLote;
+    const xMotivoDup = parsed.xMotivoProt ?? parsed.xMotivoLote ?? "";
+    if (!cStatDuplicidadeNfe(cStatDup) && !/duplicidade de nf/i.test(xMotivoDup)) {
+      break;
+    }
+    nNF = proximoNumeroAposDuplicidade({
+      nNFAtual: nNF,
+      chNFe: parsed.chNFe,
+      xMotivo: xMotivoDup,
+    });
+  }
   const autorizada = parsed.cStatProt === "100";
   const statusLinha = autorizada ? "autorizada" : "rejeitada";
   const cStatFinal = parsed.cStatProt ?? parsed.cStatLote;
@@ -276,6 +297,7 @@ export async function POST() {
     .insert({
       id_empresa: empresaId,
       ambiente: cfg.ambiente,
+      modelo: 55,
       serie,
       numero_nf: nNF,
       status: statusLinha,

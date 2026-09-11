@@ -33,7 +33,14 @@ export {
   extrairRetornoStatusServico,
 } from "./status-servico";
 export { codigoUfParaNfe } from "./cuf-ibge";
-export { montarChaveAcessoNfe55, gerarCodigoNumericoNfe8 } from "./chave-nfe";
+export {
+  montarChaveAcessoNfe55,
+  gerarCodigoNumericoNfe8,
+  numeroNfDaChaveAcesso,
+  chaveAcessoDoMotivoSefaz,
+  cStatDuplicidadeNfe,
+} from "./chave-nfe";
+export { proximoNumeroNf, proximoNumeroAposDuplicidade } from "./proximo-numero-nf";
 export {
   montarNfeXmlMinimaHomologacao,
   normalizarIeNfeEmitente,

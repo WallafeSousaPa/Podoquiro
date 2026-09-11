@@ -58,3 +58,22 @@ export function montarChaveAcessoNfe55(opts: {
   if (base43.length !== 43) throw new Error(`Chave base inválida (${base43.length}).`);
   return base43 + calcularDvChaveNfe43(base43);
 }
+
+/** nNF (posições 26–34) da chave de 44 dígitos. */
+export function numeroNfDaChaveAcesso(chave: string | null | undefined): number | null {
+  const c = (chave ?? "").replace(/\D/g, "");
+  if (c.length !== 44) return null;
+  const n = Number.parseInt(c.slice(25, 34), 10);
+  return Number.isFinite(n) && n > 0 ? n : null;
+}
+
+/** Chave citada em xMotivo (ex.: duplicidade 539). */
+export function chaveAcessoDoMotivoSefaz(motivo: string | null | undefined): string | null {
+  const m = (motivo ?? "").match(/chNFe[:\s]*([0-9]{44})/i);
+  return m?.[1] ?? null;
+}
+
+export function cStatDuplicidadeNfe(cStat: string | null | undefined): boolean {
+  const c = (cStat ?? "").trim();
+  return c === "204" || c === "539";
+}
