@@ -24,13 +24,13 @@ export async function GET() {
         "id, nome_fantasia, razao_social, cnpj_cpf, cep, endereco, numero, complemento, bairro, cidade, estado, id_empresa_grupo, ativo, empresa_grupos:empresa_grupos!empresas_id_empresa_grupo_fkey(id, grupo_empresa)",
       )
       .order("nome_fantasia", { ascending: true });
-    data = retry.data;
-    error = retry.error;
-  }
-
-  if (error) {
-    console.error(error);
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    if (retry.error) {
+      console.error(retry.error);
+      return NextResponse.json({ error: retry.error.message }, { status: 500 });
+    }
+    return NextResponse.json({
+      data: (retry.data ?? []).map((e) => ({ ...e, tabela_preco_id: null })),
+    });
   }
 
   return NextResponse.json({ data: data ?? [] });
