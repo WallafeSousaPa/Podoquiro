@@ -78,10 +78,9 @@ export async function POST(request: Request) {
   const { data: emissao, error } = await supabase
     .from("nfe_emissoes")
     .select(
-      "id, ambiente, modelo, status, chave_acesso, protocolo_autorizacao, payload_rascunho",
+      "id, id_empresa, ambiente, modelo, status, chave_acesso, protocolo_autorizacao, payload_rascunho",
     )
     .eq("id", id)
-    .eq("id_empresa", empresaId)
     .maybeSingle();
 
   if (error) {
@@ -113,7 +112,8 @@ export async function POST(request: Request) {
     );
   }
 
-  const material = await carregarCertificadoEmpresa(supabase, empresaId);
+  const idEmpresaNota = Number(emissao.id_empresa) || empresaId;
+  const material = await carregarCertificadoEmpresa(supabase, idEmpresaNota);
   if (!material) {
     return NextResponse.json(
       { error: "Certificado digital da empresa não encontrado." },

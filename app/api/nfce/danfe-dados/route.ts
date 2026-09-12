@@ -31,10 +31,9 @@ export async function GET(request: Request) {
   const { data: row, error } = await supabase
     .from("nfe_emissoes")
     .select(
-      "id, ambiente, modelo, status, chave_acesso, protocolo_autorizacao, c_stat, xml_enviado, payload_rascunho",
+      "id, id_empresa, ambiente, modelo, status, chave_acesso, protocolo_autorizacao, c_stat, xml_enviado, payload_rascunho",
     )
     .eq("id", id)
-    .eq("id_empresa", empresaId)
     .maybeSingle();
 
   if (error) {
@@ -80,7 +79,7 @@ export async function GET(request: Request) {
     .select(
       "razao_social, nome_fantasia, cnpj_cpf, cep, endereco, numero, complemento, bairro, cidade, estado",
     )
-    .eq("id", empresaId)
+    .eq("id", Number(row.id_empresa) || empresaId)
     .maybeSingle();
 
   if (emp) {

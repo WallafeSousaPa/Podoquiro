@@ -26,10 +26,9 @@ export async function GET(request: Request) {
   const { data: row, error } = await supabase
     .from("nfe_emissoes")
     .select(
-      "id, ambiente, modelo, status, chave_acesso, protocolo_autorizacao, c_stat, xml_enviado",
+      "id, id_empresa, ambiente, modelo, status, chave_acesso, protocolo_autorizacao, c_stat, xml_enviado",
     )
     .eq("id", id)
-    .eq("id_empresa", empresaId)
     .maybeSingle();
 
   if (error) {
