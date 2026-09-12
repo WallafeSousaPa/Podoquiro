@@ -440,32 +440,45 @@ export async function gerarDanfeNfePdfUrl(d: DanfeNfeCompleto): Promise<string> 
   // —— Produtos ——
   titulo("DADOS DOS PRODUTOS / SERVIÇOS", x0, y + 3);
   y += 4;
-  const cols = [
-    { t: "CÓDIGO", w: 16 },
-    { t: "DESCRIÇÃO DOS PRODUTOS / SERVIÇOS", w: 52 },
-    { t: "NCM/SH", w: 16 },
-    { t: "CST", w: 10 },
-    { t: "CFOP", w: 10 },
-    { t: "UN", w: 8 },
-    { t: "QUANT.", w: 14 },
-    { t: "V. UNITÁRIO", w: 18 },
-    { t: "V. TOTAL", w: 16 },
-    { t: "BC ICMS", w: 14 },
-    { t: "V. ICMS", w: 12 },
+  const colDefs = [
+    { t: "CÓDIGO", w: 14 },
+    { t: "DESCRIÇÃO DOS PRODUTOS / SERVIÇOS", w: 48 },
+    { t: "NCM/SH", w: 14 },
+    { t: "CST", w: 8 },
+    { t: "CFOP", w: 8 },
+    { t: "UN", w: 6 },
+    { t: "QUANT.", w: 12 },
+    { t: "V. UNITÁRIO", w: 15 },
+    { t: "V. TOTAL", w: 13 },
+    { t: "BC ICMS", w: 12 },
+    { t: "V. ICMS", w: 11 },
     { t: "V. IPI", w: 10 },
-    { t: "ALIQ.\nICMS", w: 10 },
-    { t: "ALIQ.\nIPI", w: 10 },
+    { t: "ALIQ.\nICMS", w: 13 },
+    { t: "ALIQ.\nIPI", w: 12 },
   ];
+  const somaCols = colDefs.reduce((s, c) => s + c.w, 0);
+  const cols = colDefs.map((c, i) => {
+    if (i === colDefs.length - 1) {
+      const usados = colDefs.slice(0, -1).reduce((s, x) => s + (x.w * w) / somaCols, 0);
+      return { t: c.t, w: w - usados };
+    }
+    return { t: c.t, w: (c.w * w) / somaCols };
+  });
   const hHead = 7;
   let cx = x0;
   doc.setFillColor(245, 245, 245);
   doc.rect(x0, y, w, hHead, "FD");
   doc.setFont("helvetica", "bold");
-  doc.setFontSize(4.6);
+  doc.setFontSize(4.4);
   for (const c of cols) {
     box(cx, y, c.w, hHead);
     const linhasTit = c.t.split("\n");
-    linhasTit.forEach((ln, i) => doc.text(ln, cx + 0.6, y + 2.6 + i * 2.4));
+    linhasTit.forEach((ln, i) => {
+      const tit = doc.splitTextToSize(ln, Math.max(2, c.w - 0.8));
+      doc.text(Array.isArray(tit) ? tit[0]! : tit, cx + c.w / 2, y + 2.5 + i * 2.3, {
+        align: "center",
+      });
+    });
     cx += c.w;
   }
   y += hHead;
@@ -500,8 +513,9 @@ export async function gerarDanfeNfePdfUrl(d: DanfeNfeCompleto): Promise<string> 
     for (let i = 0; i < cols.length; i++) {
       const c = cols[i]!;
       box(cx, y, c.w, hLinha);
-      const txt = doc.splitTextToSize(vals[i] || "", c.w - 1.2);
-      doc.text(Array.isArray(txt) ? txt[0] : txt, cx + 0.5, y + 4);
+      const txt = doc.splitTextToSize(vals[i] || "", Math.max(2, c.w - 1));
+      const linhaTxt = Array.isArray(txt) ? txt[0]! : txt;
+      doc.text(linhaTxt, cx + 0.4, y + 4, { maxWidth: Math.max(1.5, c.w - 0.8) });
       cx += c.w;
     }
     y += hLinha;

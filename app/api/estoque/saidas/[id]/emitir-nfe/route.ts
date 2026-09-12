@@ -149,6 +149,7 @@ export async function POST(request: Request, context: RouteContext) {
     x_mun: String(saida.dest_municipio ?? "").trim() || "NAO INFORMADO",
     uf: String(saida.dest_uf ?? "").trim().toUpperCase().slice(0, 2),
     cep: cep.padStart(8, "0"),
+    ie: String(saida.dest_ie ?? "").trim() || undefined,
   };
 
   if (destinatario.uf.length !== 2 || cep.length !== 8) {

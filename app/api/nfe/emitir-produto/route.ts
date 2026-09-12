@@ -69,6 +69,7 @@ type BodyDest = {
   x_mun: string;
   uf: string;
   cep: string;
+  ie?: string;
 };
 
 /**
@@ -400,6 +401,7 @@ export async function POST(request: Request) {
         xMun,
         UF: uf,
         CEP: cep,
+        ie: dest.ie,
       },
     });
 

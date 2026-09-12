@@ -51,6 +51,8 @@ export type DestinatarioProdutoNfe = {
   xMun: string;
   UF: string;
   CEP: string;
+  /** IE do destinatário (CNPJ contribuinte). Vazio = não contribuinte (`indIEDest=9`). */
+  ie?: string | null;
 };
 
 export type MontarNfeProdutoNacionalOpts = {
@@ -92,6 +94,26 @@ function appendPisCofins(doc: any, imposto: any, pisCst: string, cofinsCst: stri
     el(doc, cofOutr, "vBC", "0.00");
     el(doc, cofOutr, "pCOFINS", "0.00");
     el(doc, cofOutr, "vCOFINS", "0.00");
+  }
+}
+
+function classificarIeDestinatario(
+  ieBruta: string | null | undefined,
+  ehCpf: boolean,
+): { indIEDest: "1" | "2" | "9"; ieXml: string | null } {
+  if (ehCpf) return { indIEDest: "9", ieXml: null };
+  const t = (ieBruta ?? "").trim();
+  if (!t) return { indIEDest: "9", ieXml: null };
+  const compact = t.replace(/\s+/g, "").toUpperCase();
+  if (compact === "ISENTO" || compact === "ISENTA") {
+    return { indIEDest: "2", ieXml: "ISENTO" };
+  }
+  try {
+    const ie = normalizarIeNfeEmitente(t);
+    if (ie === "ISENTO") return { indIEDest: "2", ieXml: "ISENTO" };
+    return { indIEDest: "1", ieXml: ie };
+  } catch {
+    return { indIEDest: "9", ieXml: null };
   }
 }
 
@@ -137,8 +159,11 @@ export function montarNfeXmlProdutoNacional(opts: MontarNfeProdutoNacionalOpts):
   el(doc, ide, "cDV", cDV);
   el(doc, ide, "tpAmb", String(opts.tpAmb));
   el(doc, ide, "finNFe", "1");
-  const consumidorFinal = !opts.dest.cnpj14;
-  el(doc, ide, "indFinal", consumidorFinal ? "1" : "0");
+  const d = opts.dest;
+  const ehCpf = Boolean(d.cpf11) && !d.cnpj14;
+  const ieDest = classificarIeDestinatario(d.ie, ehCpf);
+  // SEFAZ 771: não contribuinte (`indIEDest=9`) exige operação com consumidor final.
+  el(doc, ide, "indFinal", ieDest.indIEDest === "9" ? "1" : "0");
   el(doc, ide, "indPres", "1");
   el(doc, ide, "procEmi", "0");
   el(doc, ide, "verProc", "Podoquiro-Produto-1");
@@ -167,7 +192,6 @@ export function montarNfeXmlProdutoNacional(opts: MontarNfeProdutoNacionalOpts):
   el(doc, emitEl, "CRT", String(emit.crt));
 
   const dest = el(doc, infNFe, "dest");
-  const d = opts.dest;
   const xNomeDest =
     opts.tpAmb === 2 ? XNOME_DEST_HOMOLOGACAO : d.xNome.trim().slice(0, 60);
   if (d.cnpj14) {
@@ -188,7 +212,8 @@ export function montarNfeXmlProdutoNacional(opts: MontarNfeProdutoNacionalOpts):
   el(doc, enderDest, "CEP", d.CEP.replace(/\D/g, "").padStart(8, "0"));
   el(doc, enderDest, "cPais", "1058");
   el(doc, enderDest, "xPais", "BRASIL");
-  el(doc, dest, "indIEDest", "9");
+  el(doc, dest, "indIEDest", ieDest.indIEDest);
+  if (ieDest.ieXml) el(doc, dest, "IE", ieDest.ieXml);
 
   opts.linhas.forEach((linha, idx) => {
     const det = el(doc, infNFe, "det");
