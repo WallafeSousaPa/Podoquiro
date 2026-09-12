@@ -1,6 +1,6 @@
 import { redirect } from "next/navigation";
 import { getSession } from "@/lib/auth/session";
-import { getNomesSaudacao } from "@/lib/dashboard/saudacao";
+import { getUsuarioPodeCancelarSaidaEstoque } from "@/lib/dashboard/menu-grupo";
 import { createAdminClient } from "@/lib/supabase/admin";
 import {
   SaidasEstoqueClient,
@@ -23,13 +23,11 @@ export default async function EstoqueSaidasPage() {
     redirect("/login");
   }
 
-  const { podeExcluirImportacaoEstoque } = await getNomesSaudacao(
-    session.sub,
-    session.usuario,
-    session.idEmpresa,
-  );
-
   const supabase = createAdminClient();
+  const podeCancelar = await getUsuarioPodeCancelarSaidaEstoque(
+    supabase,
+    Number(session.sub),
+  );
   let empresas: EmpresaListaItem[] = [];
   let loadError: string | null = null;
 
@@ -76,7 +74,7 @@ export default async function EstoqueSaidasPage() {
             empresas={empresas}
             empresaIdPadrao={empresaIdPadrao}
             loadError={loadError}
-            podeCancelar={podeExcluirImportacaoEstoque}
+            podeCancelar={podeCancelar}
           />
         </div>
       </section>

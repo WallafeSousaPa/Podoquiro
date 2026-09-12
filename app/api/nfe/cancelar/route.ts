@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { getSession } from "@/lib/auth/session";
+import { getUsuarioPodeCancelarSaidaEstoque } from "@/lib/dashboard/menu-grupo";
 import { empresaIdDaSessao } from "@/lib/estoque/parse-empresa-id";
 import { createAdminClient } from "@/lib/supabase/admin";
 import {
@@ -36,6 +37,18 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Empresa inválida." }, { status: 400 });
   }
 
+  const supabase = createAdminClient();
+  const podeCancelar = await getUsuarioPodeCancelarSaidaEstoque(
+    supabase,
+    Number(session.sub),
+  );
+  if (!podeCancelar) {
+    return NextResponse.json(
+      { error: "Somente Administrador ou Diretoria pode cancelar a nota." },
+      { status: 403 },
+    );
+  }
+
   let body: Body;
   try {
     body = (await request.json()) as Body;
@@ -62,7 +75,6 @@ export async function POST(request: Request) {
     );
   }
 
-  const supabase = createAdminClient();
   const { data: emissao, error } = await supabase
     .from("nfe_emissoes")
     .select(

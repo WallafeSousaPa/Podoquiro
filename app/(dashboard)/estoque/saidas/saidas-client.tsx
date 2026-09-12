@@ -1171,14 +1171,16 @@ export function SaidasEstoqueClient({
                               >
                                 {danfeCarregando ? "PDF…" : "DANFE"}
                               </button>
-                              <button
-                                type="button"
-                                className="btn btn-outline-danger btn-sm ml-1"
-                                disabled={cancelandoNota}
-                                onClick={() => abrirCancelarNota(row.id_nfe_emissao!, row.id)}
-                              >
-                                Cancelar nota
-                              </button>
+                              {podeCancelar ? (
+                                <button
+                                  type="button"
+                                  className="btn btn-outline-danger btn-sm ml-1"
+                                  disabled={cancelandoNota}
+                                  onClick={() => abrirCancelarNota(row.id_nfe_emissao!, row.id)}
+                                >
+                                  Cancelar nota
+                                </button>
+                              ) : null}
                             </>
                           ) : null}
                           {podeCancelar &&
@@ -1520,14 +1522,16 @@ export function SaidasEstoqueClient({
                       >
                         {danfeCarregando ? "Gerando PDF…" : "Ver DANFE"}
                       </button>
-                      <button
-                        type="button"
-                        className="btn btn-outline-danger"
-                        disabled={cancelandoNota}
-                        onClick={() => abrirCancelarNota(detalhe.id_nfe_emissao!, detalhe.id)}
-                      >
-                        Cancelar nota
-                      </button>
+                      {podeCancelar ? (
+                        <button
+                          type="button"
+                          className="btn btn-outline-danger"
+                          disabled={cancelandoNota}
+                          onClick={() => abrirCancelarNota(detalhe.id_nfe_emissao!, detalhe.id)}
+                        >
+                          Cancelar nota
+                        </button>
+                      ) : null}
                     </>
                   ) : null}
                   <button
@@ -1715,7 +1719,7 @@ export function SaidasEstoqueClient({
                   >
                     Abrir em nova aba
                   </a>
-                  {danfeNfeId ? (
+                  {podeCancelar && danfeNfeId ? (
                     <button
                       type="button"
                       className="btn btn-outline-danger"

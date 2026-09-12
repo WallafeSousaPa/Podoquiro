@@ -29,6 +29,20 @@ export function grupoUsuariosAdministrador(
 }
 
 /**
+ * Cancelar saída de estoque / NF-e na tela de Saídas: só Administrador ou Diretoria.
+ * Não inclui o tipo Administrativo.
+ */
+export function grupoUsuariosAdministradorOuDiretoria(
+  nomeGrupo: string | null | undefined,
+): boolean {
+  if (nomeGrupo == null || String(nomeGrupo).trim() === "") return false;
+  const c = normalizarNomeGrupoAgenda(String(nomeGrupo));
+  if (c.includes("administrador") || c === "admin") return true;
+  if (c.includes("diretoria") || c === "diretor") return true;
+  return false;
+}
+
+/**
  * Relatório de caixa (histórico): apenas grupos cujo nome, normalizado, indica
  * **Administrador** ou **Administrativo** (alinhado a outras regras do sistema).
  */
@@ -217,6 +231,33 @@ export async function getUsuarioPodeExcluirImportacaoEstoque(
   idUsuario: number,
 ): Promise<boolean> {
   return getUsuarioGrupoAdministrativo(supabase, idUsuario);
+}
+
+async function nomeGrupoDoUsuario(
+  supabase: SupabaseClient,
+  idUsuario: number,
+): Promise<string | null> {
+  if (!Number.isFinite(idUsuario) || idUsuario <= 0) return null;
+  const { data: u, error: uErr } = await supabase
+    .from("usuarios")
+    .select(
+      "usuarios_grupos:usuarios_grupos!usuarios_id_grupo_usuarios_fkey ( grupo_usuarios )",
+    )
+    .eq("id", idUsuario)
+    .maybeSingle();
+  if (uErr || !u) return null;
+  type G = { grupo_usuarios: string | null };
+  const gRaw = u.usuarios_grupos as G | G[] | null | undefined;
+  const g = Array.isArray(gRaw) ? gRaw[0] : gRaw;
+  return g?.grupo_usuarios ?? null;
+}
+
+/** Resolve se o usuário pode cancelar saída de estoque (Administrador ou Diretoria). */
+export async function getUsuarioPodeCancelarSaidaEstoque(
+  supabase: SupabaseClient,
+  idUsuario: number,
+): Promise<boolean> {
+  return grupoUsuariosAdministradorOuDiretoria(await nomeGrupoDoUsuario(supabase, idUsuario));
 }
 
 /** @deprecated Menu Recepção agora vem do banco (`menu_permissoes_*`). */

@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { getSession } from "@/lib/auth/session";
-import { getUsuarioPodeExcluirImportacaoEstoque } from "@/lib/dashboard/menu-grupo";
+import { getUsuarioPodeCancelarSaidaEstoque } from "@/lib/dashboard/menu-grupo";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { empresaIdDaSessao } from "@/lib/estoque/parse-empresa-id";
 import { reverterSaidaEstoque } from "@/lib/estoque/reverter-saida";
@@ -30,13 +30,13 @@ export async function POST(_request: Request, context: RouteContext) {
   }
 
   const supabase = createAdminClient();
-  const podeCancelar = await getUsuarioPodeExcluirImportacaoEstoque(
+  const podeCancelar = await getUsuarioPodeCancelarSaidaEstoque(
     supabase,
     idUsuario ?? 0,
   );
   if (!podeCancelar) {
     return NextResponse.json(
-      { error: "Somente Administrador ou Administrativo pode cancelar uma saída." },
+      { error: "Somente Administrador ou Diretoria pode cancelar uma saída." },
       { status: 403 },
     );
   }
