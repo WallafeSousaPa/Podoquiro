@@ -4,6 +4,7 @@ import {
   type DadosEmitenteNfeMinimo,
   XNOME_DEST_HOMOLOGACAO,
 } from "./montar-nfe-minima";
+import { calcularIcmsUfDest } from "./operacao-interestadual";
 
 const NS_NFE = "http://www.portalfiscal.inf.br/nfe";
 
@@ -63,8 +64,8 @@ export type MontarNfeProdutoNacionalOpts = {
   dhEmi: string;
   tpAmb: 1 | 2;
   natOp: string;
-  /** 1 = interna (mesma UF), mercadoria nacional no estado do emitente. */
-  idDest: 1;
+  /** 1 = interna (mesma UF), 2 = interestadual (outra UF). */
+  idDest: 1 | 2;
   linhas: LinhaProdutoNfe[];
   dest: DestinatarioProdutoNfe;
 };
@@ -118,8 +119,9 @@ function classificarIeDestinatario(
 }
 
 /**
- * NF-e 55 com **N linhas** de produto (mercadoria), operação **nacional** na UF do emitente (`idDest=1`),
- * Simples Nacional (`ICMSSN` + CSOSN por linha). Sem declaração XML inicial.
+ * NF-e 55 com **N linhas** de produto (mercadoria), operação **nacional**
+ * (`idDest=1` interna ou `idDest=2` interestadual), Simples Nacional (`ICMSSN` + CSOSN).
+ * Sem declaração XML inicial.
  */
 export function montarNfeXmlProdutoNacional(opts: MontarNfeProdutoNacionalOpts): string {
   if (!opts.linhas.length) throw new Error("Informe ao menos um item na nota.");
@@ -167,6 +169,11 @@ export function montarNfeXmlProdutoNacional(opts: MontarNfeProdutoNacionalOpts):
   el(doc, ide, "indPres", "1");
   el(doc, ide, "procEmi", "0");
   el(doc, ide, "verProc", "Podoquiro-Produto-1");
+
+  const incluirIcmsUfDest = opts.idDest === 2 && ieDest.indIEDest !== "1";
+  let totFcpUfDest = 0;
+  let totIcmsUfDest = 0;
+  let totIcmsUfRemet = 0;
 
   const emitEl = el(doc, infNFe, "emit");
   el(doc, emitEl, "CNPJ", cnpj);
@@ -241,6 +248,27 @@ export function montarNfeXmlProdutoNacional(opts: MontarNfeProdutoNacionalOpts):
     el(doc, icmsSn, "orig", String(linha.orig));
     el(doc, icmsSn, "CSOSN", linha.csosn.replace(/\D/g, "").padStart(3, "0").slice(0, 3));
     appendPisCofins(doc, imposto, linha.pisCst, linha.cofinsCst);
+    if (incluirIcmsUfDest) {
+      const difal = calcularIcmsUfDest({
+        vBc: linha.vProd,
+        ufEmitente: emit.uf,
+        ufDest: d.UF,
+        orig: linha.orig,
+      });
+      const icmsUf = el(doc, imposto, "ICMSUFDest");
+      el(doc, icmsUf, "vBCUFDest", fmtDec(difal.vBCUFDest, 2));
+      el(doc, icmsUf, "vBCFCPUFDest", fmtDec(difal.vBCFCPUFDest, 2));
+      el(doc, icmsUf, "pFCPUFDest", fmtDec(difal.pFCPUFDest, 2));
+      el(doc, icmsUf, "pICMSUFDest", fmtDec(difal.pICMSUFDest, 2));
+      el(doc, icmsUf, "pICMSInter", fmtDec(difal.pICMSInter, 2));
+      el(doc, icmsUf, "pICMSInterPart", fmtDec(difal.pICMSInterPart, 2));
+      el(doc, icmsUf, "vFCPUFDest", fmtDec(difal.vFCPUFDest, 2));
+      el(doc, icmsUf, "vICMSUFDest", fmtDec(difal.vICMSUFDest, 2));
+      el(doc, icmsUf, "vICMSUFRemet", fmtDec(difal.vICMSUFRemet, 2));
+      totFcpUfDest = roundMoney(totFcpUfDest + difal.vFCPUFDest);
+      totIcmsUfDest = roundMoney(totIcmsUfDest + difal.vICMSUFDest);
+      totIcmsUfRemet = roundMoney(totIcmsUfRemet + difal.vICMSUFRemet);
+    }
   });
 
   const total = el(doc, infNFe, "total");
@@ -249,9 +277,9 @@ export function montarNfeXmlProdutoNacional(opts: MontarNfeProdutoNacionalOpts):
   el(doc, icmsTot, "vBC", z);
   el(doc, icmsTot, "vICMS", z);
   el(doc, icmsTot, "vICMSDeson", z);
-  el(doc, icmsTot, "vFCPUFDest", z);
-  el(doc, icmsTot, "vICMSUFDest", z);
-  el(doc, icmsTot, "vICMSUFRemet", z);
+  el(doc, icmsTot, "vFCPUFDest", fmtDec(totFcpUfDest, 2));
+  el(doc, icmsTot, "vICMSUFDest", fmtDec(totIcmsUfDest, 2));
+  el(doc, icmsTot, "vICMSUFRemet", fmtDec(totIcmsUfRemet, 2));
   el(doc, icmsTot, "vFCP", z);
   el(doc, icmsTot, "vBCST", z);
   el(doc, icmsTot, "vST", z);

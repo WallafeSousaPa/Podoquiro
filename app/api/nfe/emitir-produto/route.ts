@@ -20,6 +20,7 @@ import {
   type LinhaProdutoNfe,
   urlNfeAutorizacaoSvrs,
 } from "@/lib/sefaz/nfe";
+import { cfopParaIdDest, idDestNacional, ufBrasileira } from "@/lib/sefaz/nfe/operacao-interestadual";
 
 function parseEmpresaId(idEmpresa: string) {
   const n = Number(idEmpresa);
@@ -73,7 +74,7 @@ type BodyDest = {
 };
 
 /**
- * Emite NF-e modelo 55 de **mercadoria** (nacional, mesma UF — `idDest=1`), lote síncrono SVRS.
+ * Emite NF-e modelo 55 de **mercadoria** (nacional: mesma UF ou interestadual), lote síncrono SVRS.
  * Requer certificado, `NFE_EMITENTE_IE`, produtos cadastrados como mercadoria e CPF/CNPJ do destinatário.
  */
 export async function POST(request: Request) {
@@ -344,14 +345,30 @@ export async function POST(request: Request) {
     fone: null,
   };
 
-  if (uf !== emitente.uf) {
+  if (!ufBrasileira(emitente.uf)) {
     return NextResponse.json(
-      {
-        error:
-          "Nesta versão a NF de produto é só **nacional na mesma UF** do emitente. UF do destinatário deve ser igual à da empresa.",
-      },
+      { error: "Informe uma UF brasileira válida da empresa emitente." },
       { status: 400 },
     );
+  }
+
+  // NF-e de produto das saídas: operação interna na UF do emitente (PA).
+  // Endereço de outro estado no cadastro do comprador não muda a UF da nota.
+  let ufDest = uf;
+  let cMunDest = cMun;
+  let xMunDest = xMun;
+  let cepDest = cep;
+  let ieDest = dest.ie;
+  if (ufDest !== emitente.uf) {
+    ufDest = emitente.uf;
+    cMunDest = emitente.cMun;
+    xMunDest = emitente.xMun;
+    cepDest = emitente.cep;
+    ieDest = undefined;
+  }
+  const idDest = idDestNacional(emitente.uf, ufDest);
+  for (const linha of linhas) {
+    linha.cfop = cfopParaIdDest(linha.cfop, idDest);
   }
 
   const url = urlNfeAutorizacaoSvrs(cfg.ambiente);
@@ -388,7 +405,7 @@ export async function POST(request: Request) {
       dhEmi: dhEmiAmericaBelem(),
       tpAmb: cfg.ambiente,
       natOp,
-      idDest: 1,
+      idDest,
       linhas,
       dest: {
         cpf11: cnpj ? undefined : cpf,
@@ -397,11 +414,11 @@ export async function POST(request: Request) {
         xLgr,
         nro,
         xBairro: xBairro,
-        cMun,
-        xMun,
-        UF: uf,
-        CEP: cep,
-        ie: dest.ie,
+        cMun: cMunDest,
+        xMun: xMunDest,
+        UF: ufDest,
+        CEP: cepDest,
+        ie: ieDest,
       },
     });
 
