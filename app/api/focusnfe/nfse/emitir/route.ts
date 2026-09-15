@@ -14,6 +14,7 @@ import {
   obterTokenFocusNfe,
   statusInternoDeFocus,
   validarConfigFocusParaEmissao,
+  cpfValidoParaTomadorNfse,
 } from "@/lib/focusnfe";
 import { ibgeMunicipioTomador } from "@/lib/cep/viacep";
 import { createAdminClient } from "@/lib/supabase/admin";
@@ -164,6 +165,15 @@ export async function POST(request: Request) {
   if (!paciente) {
     return NextResponse.json({ error: "Paciente não encontrado." }, { status: 404 });
   }
+  if (!cpfValidoParaTomadorNfse(paciente.cpf)) {
+    return NextResponse.json(
+      {
+        error:
+          "Cadastre o CPF do paciente para emitir a NFS-e. A prefeitura exige tomador identificado.",
+      },
+      { status: 400 },
+    );
+  }
 
   const procsRaw = ag.agendamento_procedimentos as
     | { procedimentos: { procedimento: string | null } | { procedimento: string | null }[] }[]
@@ -185,24 +195,30 @@ export async function POST(request: Request) {
     );
   }
 
-  let codigoMunicipioTomador: string | undefined;
   const cepPaciente = String(paciente.cep ?? "").replace(/\D/g, "");
-  if (cepPaciente.length === 8) {
-    codigoMunicipioTomador =
-      (await ibgeMunicipioTomador({
-        cep: cepPaciente,
-        cidade: paciente.cidade,
-      })) ?? undefined;
-    if (!codigoMunicipioTomador) {
-      return NextResponse.json(
-        {
-          error:
-            "CEP do paciente não foi encontrado ou não bate com o município. " +
-            "Corrija o CEP/cidade no cadastro (ex.: Altamira = 1500602) e emita novamente.",
-        },
-        { status: 400 },
-      );
-    }
+  if (cepPaciente.length !== 8) {
+    return NextResponse.json(
+      {
+        error:
+          "CEP do paciente inválido para NFS-e (8 dígitos). Corrija o cadastro do paciente.",
+      },
+      { status: 400 },
+    );
+  }
+  const codigoMunicipioTomador =
+    (await ibgeMunicipioTomador({
+      cep: cepPaciente,
+      cidade: paciente.cidade,
+    })) ?? undefined;
+  if (!codigoMunicipioTomador) {
+    return NextResponse.json(
+      {
+        error:
+          "CEP do paciente não foi encontrado ou não bate com o município. " +
+          "Corrija o CEP/cidade no cadastro (ex.: Altamira = 1500602) e emita novamente.",
+      },
+      { status: 400 },
+    );
   }
 
   let payload;

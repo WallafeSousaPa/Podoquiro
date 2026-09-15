@@ -89,12 +89,29 @@ export function montarPayloadFocusNfse(params: {
 }): FocusNfseEmitirBody {
   const { config, paciente, valorServicos, discriminacao } = params;
   const cpf = apenasDigitos(paciente.cpf ?? "");
-  const incluirTomador = cpf.length === 11;
+  if (cpf.length !== 11) {
+    throw new Error(
+      "Cadastre o CPF do paciente para emitir a NFS-e. A prefeitura exige tomador identificado.",
+    );
+  }
   const dataEmissao = dataEmissaoIsoFocusBr();
   const municipio = Number(config.prestadorCodigoMunicipio);
   const issRetido = params.issRetido ?? config.issRetidoPadrao;
   const serieDps = Number(config.serieRps);
   const numeroDps = Date.now();
+
+  const cep = apenasDigitos(paciente.cep ?? "");
+  if (cep.length !== 8) {
+    throw new Error(
+      "CEP do paciente inválido para NFS-e (8 dígitos). Corrija o cadastro do paciente.",
+    );
+  }
+  const ibgeTomador = Number(params.codigoMunicipioTomador);
+  if (!Number.isFinite(ibgeTomador) || ibgeTomador <= 0) {
+    throw new Error(
+      "Não foi possível obter o município IBGE do CEP do paciente. Corrija o CEP no cadastro.",
+    );
+  }
 
   const body: FocusNfseEmitirBody = {
     data_emissao: dataEmissao,
@@ -109,6 +126,13 @@ export function montarPayloadFocusNfse(params: {
     inscricao_municipal_prestador: config.prestadorInscricaoMunicipal,
     codigo_opcao_simples_nacional: config.optanteSimplesNacional ? 3 : 1,
     regime_especial_tributacao: regimeEspecialNacional(config.regimeEspecialTributacao),
+    cpf_tomador: cpf,
+    razao_social_tomador: nomeTomador(paciente),
+    codigo_municipio_tomador: ibgeTomador,
+    cep_tomador: cep,
+    logradouro_tomador: (paciente.logradouro ?? "").trim() || "Não informado",
+    numero_tomador: (paciente.numero ?? "").trim() || "S/N",
+    bairro_tomador: (paciente.bairro ?? "").trim() || "Centro",
     codigo_municipio_prestacao: municipio,
     codigo_tributacao_nacional_iss: config.itemListaServico,
     codigo_tributacao_municipal_iss: config.codigoTributarioMunicipio,
@@ -120,40 +144,19 @@ export function montarPayloadFocusNfse(params: {
     situacao_tributaria_pis_cofins: "00",
     indicador_total_tributacao: "0",
     finalidade_emissao: 0,
-    consumidor_final: 0,
+    consumidor_final: 1,
     indicador_destinatario: 0,
     codigo_indicador_operacao: "030101",
     ibs_cbs_situacao_tributaria: "200",
     ibs_cbs_classificacao_tributaria: "200029",
   };
 
-  if (incluirTomador) {
-    const cep = apenasDigitos(paciente.cep ?? "");
-    if (cep.length !== 8) {
-      throw new Error(
-        "CEP do paciente inválido para NFS-e com tomador (8 dígitos). Corrija o cadastro ou remova o CPF.",
-      );
-    }
-    const ibgeTomador = Number(params.codigoMunicipioTomador);
-    if (!Number.isFinite(ibgeTomador) || ibgeTomador <= 0) {
-      throw new Error(
-        "Não foi possível obter o município IBGE do CEP do paciente. Corrija o CEP no cadastro.",
-      );
-    }
-    body.cpf_tomador = cpf;
-    body.razao_social_tomador = nomeTomador(paciente);
-    body.codigo_municipio_tomador = ibgeTomador;
-    body.cep_tomador = cep;
-    body.logradouro_tomador = (paciente.logradouro ?? "").trim() || "Não informado";
-    body.numero_tomador = (paciente.numero ?? "").trim() || "S/N";
-    body.bairro_tomador = (paciente.bairro ?? "").trim() || "Centro";
-    const complemento = paciente.complemento?.trim();
-    if (complemento) body.complemento_tomador = complemento;
-    const email = paciente.email?.trim();
-    if (email) body.email_tomador = email;
-    const tel = apenasDigitos(paciente.telefone ?? "");
-    if (tel.length >= 10) body.telefone_tomador = tel;
-  }
+  const complemento = paciente.complemento?.trim();
+  if (complemento) body.complemento_tomador = complemento;
+  const email = paciente.email?.trim();
+  if (email) body.email_tomador = email;
+  const tel = apenasDigitos(paciente.telefone ?? "");
+  if (tel.length >= 10) body.telefone_tomador = tel;
 
   return body;
 }

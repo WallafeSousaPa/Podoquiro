@@ -426,6 +426,13 @@ export function ModalEmissaoNfse({ row, onFechar, onEmitido }: Props) {
 
   const emitir = async () => {
     if (!row) return;
+    const cpfPaciente = detalhe?.paciente?.cpf;
+    if (!cpfValidoParaTomadorNfse(cpfPaciente)) {
+      setErro(
+        "Cadastre o CPF do paciente para emitir a NFS-e. A prefeitura exige tomador identificado.",
+      );
+      return;
+    }
     setFase("processando");
     setProcessoMsg("Enviando NFS-e à Focus NFe…");
     setErro(null);
@@ -478,6 +485,7 @@ export function ModalEmissaoNfse({ row, onFechar, onEmitido }: Props) {
 
   const pac = detalhe?.paciente;
   const comTomador = pac ? cpfValidoParaTomadorNfse(pac.cpf) : false;
+  const cepTomadorOk = pac ? String(pac.cep ?? "").replace(/\D/g, "").length === 8 : false;
   const nfExistente = detalhe?.nfse;
   const jaEmitida = nfExistente ? bloqueiaReemissaoFocusNfse(nfExistente.status) : false;
   const podeCancelarExistente =
@@ -631,7 +639,14 @@ export function ModalEmissaoNfse({ row, onFechar, onEmitido }: Props) {
             </h6>
             {pac && !comTomador ? (
               <p className="alert alert-warning small py-2">
-                Sem CPF cadastrado — a NFS-e será emitida <strong>sem tomador</strong>.
+                Sem CPF cadastrado — a prefeitura exige tomador. Cadastre o CPF do paciente
+                (e um CEP válido) para emitir a NFS-e.
+              </p>
+            ) : null}
+            {pac && comTomador && !cepTomadorOk ? (
+              <p className="alert alert-warning small py-2">
+                CEP do paciente inválido ou ausente. Corrija o cadastro (8 dígitos) para emitir a
+                NFS-e.
               </p>
             ) : null}
             {pac ? (
@@ -707,7 +722,13 @@ export function ModalEmissaoNfse({ row, onFechar, onEmitido }: Props) {
             type="button"
             className="btn btn-primary"
             disabled={
-              loading || !detalhe?.paciente || !discriminacao || cancelando || !!confirmCancelId
+              loading ||
+              !detalhe?.paciente ||
+              !discriminacao ||
+              !comTomador ||
+              !cepTomadorOk ||
+              cancelando ||
+              !!confirmCancelId
             }
             onClick={() => void emitir()}
           >
