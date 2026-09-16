@@ -1,10 +1,9 @@
 import { cache } from "react";
 import { createAdminClient } from "@/lib/supabase/admin";
 import {
-  grupoUsuariosAdministrador,
+  grupoUsuariosAdministradorOuDiretoria,
   grupoUsuariosNfseNoCaixa,
   grupoUsuariosPodePersonalizarMensagemWhatsappTaxa,
-  grupoUsuariosRelatorioCaixa,
   grupoUsuariosSomenteMenuInicioCalendario,
 } from "@/lib/dashboard/menu-grupo";
 import { usuarioTemMenu, usuarioTemMenuPrefixo } from "@/lib/dashboard/menus-catalogo";
@@ -27,7 +26,7 @@ export type SaudacaoNomes = {
   menuRecepcao: boolean;
   /** Exibe tela Atendimentos › Atendimento. */
   menuAtendimento: boolean;
-  /** Exceção para agendar em data/hora retroativas (Administrador/Administrativo). */
+  /** Exceção para agendar em data/hora retroativas (Administrador/Diretoria). */
   podeAgendarRetroativo: boolean;
   /** Relatórios / caixa movimento (derivado dos menus liberados). */
   podeVerRelatorioCaixa: boolean;
@@ -39,7 +38,7 @@ export type SaudacaoNomes = {
   podeEmitirNfseNoCaixa: boolean;
   /** Editar mensagem WhatsApp da taxa de agendamento. */
   podePersonalizarMensagemWhatsappTaxa: boolean;
-  /** Excluir importação de NF-e e reverter estoque (Administrador / Administrativo). */
+  /** Excluir importação de NF-e e reverter estoque (Administrador / Diretoria). */
   podeExcluirImportacaoEstoque: boolean;
 };
 
@@ -85,13 +84,13 @@ export const getNomesSaudacao = cache(
       const g = Array.isArray(gRaw) ? gRaw[0] : gRaw;
       const nomeGrupo = g?.grupo_usuarios;
       const isPodologo = grupoUsuariosSomenteMenuInicioCalendario(nomeGrupo);
-      const isAdministrador = grupoUsuariosAdministrador(nomeGrupo);
       somenteMenuInicio = isPodologo;
-      podeAgendarRetroativo = isAdministrador;
+      podeAgendarRetroativo = grupoUsuariosAdministradorOuDiretoria(nomeGrupo);
       podeEmitirNfseNoCaixa = grupoUsuariosNfseNoCaixa(nomeGrupo);
       podePersonalizarMensagemWhatsappTaxa =
         grupoUsuariosPodePersonalizarMensagemWhatsappTaxa(nomeGrupo);
-      podeExcluirImportacaoEstoque = grupoUsuariosRelatorioCaixa(nomeGrupo);
+      podeExcluirImportacaoEstoque =
+        grupoUsuariosAdministradorOuDiretoria(nomeGrupo);
 
       try {
         const efetivo = await menusEfetivosDoUsuario(supabase, userId);

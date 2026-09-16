@@ -1,6 +1,7 @@
 "use client";
 
 import type { UsuarioGrupo } from "@/lib/data/usuarios-grupos";
+import { grupoUsuariosAdministradorOuDiretoria } from "@/lib/dashboard/menu-grupo";
 import { useRouter } from "next/navigation";
 import {
   type FormEvent,
@@ -10,16 +11,6 @@ import {
   useId,
   useState,
 } from "react";
-
-function grupoEhAdministrador(nome: string | null | undefined): boolean {
-  if (nome == null || String(nome).trim() === "") return false;
-  const c = String(nome)
-    .normalize("NFD")
-    .replace(/\p{M}/gu, "")
-    .toLowerCase()
-    .replace(/[^a-z0-9]/g, "");
-  return c.includes("admin");
-}
 
 function formatarData(iso: string) {
   try {
@@ -142,11 +133,11 @@ export function UsuariosGruposClient({
     }
     if (
       !sessaoEhAdministrador &&
-      (grupoEhAdministrador(trimmed) ||
-        grupoEhAdministrador(editing?.grupo_usuarios))
+      (grupoUsuariosAdministradorOuDiretoria(trimmed) ||
+        grupoUsuariosAdministradorOuDiretoria(editing?.grupo_usuarios))
     ) {
       setFormError(
-        "Somente outro administrador pode definir ou alterar o tipo Administrador / Administrativo.",
+        "Somente Administrador ou Diretoria pode definir ou alterar o tipo Administrador / Diretoria.",
       );
       return;
     }
@@ -326,7 +317,9 @@ export function UsuariosGruposClient({
                     </td>
                     <td className="text-right text-nowrap">
                       {(() => {
-                        const grupoAdmin = grupoEhAdministrador(row.grupo_usuarios);
+                        const grupoAdmin = grupoUsuariosAdministradorOuDiretoria(
+                          row.grupo_usuarios,
+                        );
                         const bloquearAdmin = grupoAdmin && !sessaoEhAdministrador;
                         return (
                           <>
@@ -337,7 +330,7 @@ export function UsuariosGruposClient({
                         disabled={!row.ativo || bloquearAdmin}
                         title={
                           bloquearAdmin
-                            ? "Somente outro administrador pode alterar este tipo"
+                            ? "Somente Administrador ou Diretoria pode alterar este tipo"
                             : row.ativo
                               ? "Editar"
                               : "Ative o grupo para editar o nome"
@@ -355,7 +348,7 @@ export function UsuariosGruposClient({
                           disabled={bloquearAdmin}
                           title={
                             bloquearAdmin
-                              ? "Somente outro administrador pode alterar este tipo"
+                              ? "Somente Administrador ou Diretoria pode alterar este tipo"
                               : "Inativar"
                           }
                         >
@@ -371,7 +364,7 @@ export function UsuariosGruposClient({
                           disabled={bloquearAdmin}
                           title={
                             bloquearAdmin
-                              ? "Somente outro administrador pode alterar este tipo"
+                              ? "Somente Administrador ou Diretoria pode alterar este tipo"
                               : "Ativar novamente"
                           }
                         >

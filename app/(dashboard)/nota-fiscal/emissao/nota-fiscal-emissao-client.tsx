@@ -39,7 +39,7 @@ function fmtDataRef(ymd: string) {
 }
 
 type Props = {
-  /** Parâmetros Focus NFe — somente Administrador / Administrativo. */
+  /** Parâmetros Focus NFe — somente Administrador / Diretoria. */
   exibirParametros?: boolean;
 };
 

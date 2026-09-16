@@ -1018,7 +1018,7 @@ export async function executarImportacaoAgendamentos(
         numeroLinha: l.numeroLinha,
         ok: false,
         error:
-          "A importação com procedimentos exige perfil Administrador ou Administrativo.",
+          "A importação com procedimentos exige perfil Administrador ou Diretoria.",
       })),
     };
   }

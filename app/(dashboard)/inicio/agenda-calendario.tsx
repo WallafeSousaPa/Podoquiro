@@ -688,7 +688,7 @@ type Props = {
   nomeEmpresa: string;
   /** Perfil Podólogo: oculta Agendar + e Parametrização na toolbar. */
   somenteMenuInicio?: boolean;
-  /** Exceção para agendar horários retroativos (Administrador/Administrativo). */
+  /** Exceção para agendar horários retroativos (Administrador/Diretoria). */
   podeAgendarRetroativo?: boolean;
 };
 

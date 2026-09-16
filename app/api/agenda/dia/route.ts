@@ -382,7 +382,7 @@ export async function GET(request: Request) {
     agendaGruposConfigurados: configuradoNaEmpresa,
     /** Grupo podoquiro / flag: ocultar pagamentos no modal de agendamento. */
     ocultarSecaoPagamentosAgenda: somentePropriaColuna,
-    /** Administrador / Administrativo: incluir procedimentos no modal da agenda. */
+    /** Administrador / Diretoria: incluir procedimentos no modal da agenda. */
     perfil_admin_agenda,
     usuarios,
     agendamentos,

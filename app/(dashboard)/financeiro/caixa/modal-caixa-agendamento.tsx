@@ -92,7 +92,7 @@ type AgDetail = {
   permite_editar_procedimentos_e_pagamentos: boolean;
   pagamentos_nao_carregados_por_perfil: boolean;
   /**
-   * Administrador / Administrativo: editar lista de procedimentos, produtos e desconto %
+   * Administrador / Diretoria: editar lista de procedimentos, produtos e desconto %
    * no modal — mesmo critério do PATCH em `/api/agendamentos/[id]` para `procedimentos`.
    */
   mostrar_desconto_produtos_modal_caixa?: boolean;
@@ -1566,7 +1566,7 @@ export function ModalCaixaAgendamento({
                               <strong>Leitura:</strong> procedimentos e mercadorias só
                               podem ser alterados por perfil{" "}
                               <strong>Administrador</strong> ou{" "}
-                              <strong>Administrativo</strong>. Com seu perfil você pode
+                              <strong>Diretoria</strong>. Com seu perfil você pode
                               registrar ou ajustar apenas os{" "}
                               <strong>pagamentos</strong> quando o status for{" "}
                               <strong>Realizado</strong>.

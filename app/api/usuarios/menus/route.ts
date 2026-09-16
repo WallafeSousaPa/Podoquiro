@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { getSession } from "@/lib/auth/session";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { grupoUsuariosAdministradorOuDiretoria } from "@/lib/dashboard/menu-grupo";
 import { isChaveMenuLateral, usuarioTemMenu } from "@/lib/dashboard/menus-catalogo";
 import {
   limparPersonalizacaoUsuario,
@@ -29,8 +30,7 @@ async function podeGerenciarMenus(
   type G = { grupo_usuarios: string | null };
   const gRaw = u?.usuarios_grupos as G | G[] | null | undefined;
   const g = Array.isArray(gRaw) ? gRaw[0] : gRaw;
-  const nome = (g?.grupo_usuarios ?? "").toLowerCase();
-  return nome.includes("admin");
+  return grupoUsuariosAdministradorOuDiretoria(g?.grupo_usuarios);
 }
 
 export async function GET(request: Request) {

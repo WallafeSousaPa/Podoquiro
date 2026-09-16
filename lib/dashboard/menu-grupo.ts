@@ -1,6 +1,8 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import {
   grupoNomeContemRecepcao,
+  grupoNomeEhAdministrador,
+  grupoNomeEhAdministradorOuDiretoria,
   grupoNomePermiteProdutosModalCaixaRecepcao,
   normalizarNomeGrupoAgenda,
 } from "@/lib/agenda/permissoes-calendario";
@@ -19,44 +21,35 @@ export function grupoUsuariosSomenteMenuInicioCalendario(
   return c === "podogolo" || c.includes("podolog");
 }
 
-/** Grupo com permissões administrativas (nome contém "admin"). */
+/** Tipo Administrador (não inclui Administrativo). */
 export function grupoUsuariosAdministrador(
   nomeGrupo: string | null | undefined,
 ): boolean {
-  if (nomeGrupo == null || String(nomeGrupo).trim() === "") return false;
-  const c = normalizarNomeGrupoAgenda(String(nomeGrupo));
-  return c.includes("admin");
+  return grupoNomeEhAdministrador(nomeGrupo);
 }
 
 /**
- * Cancelar saída de estoque / NF-e na tela de Saídas: só Administrador ou Diretoria.
- * Não inclui o tipo Administrativo.
+ * Cancelar saída de estoque / NF-e na tela de Saídas e demais ações privilegiadas:
+ * só Administrador ou Diretoria. Não inclui o tipo Administrativo.
  */
 export function grupoUsuariosAdministradorOuDiretoria(
   nomeGrupo: string | null | undefined,
 ): boolean {
-  if (nomeGrupo == null || String(nomeGrupo).trim() === "") return false;
-  const c = normalizarNomeGrupoAgenda(String(nomeGrupo));
-  if (c.includes("administrador") || c === "admin") return true;
-  if (c.includes("diretoria") || c === "diretor") return true;
-  return false;
+  return grupoNomeEhAdministradorOuDiretoria(nomeGrupo);
 }
 
 /**
- * Relatório de caixa (histórico): apenas grupos cujo nome, normalizado, indica
- * **Administrador** ou **Administrativo** (alinhado a outras regras do sistema).
+ * Ações privilegiadas no código: **Administrador** ou **Diretoria**.
  */
 export function grupoUsuariosRelatorioCaixa(
   nomeGrupo: string | null | undefined,
 ): boolean {
-  if (nomeGrupo == null || String(nomeGrupo).trim() === "") return false;
-  const c = normalizarNomeGrupoAgenda(String(nomeGrupo));
-  return c.includes("administrador") || c.includes("administrativo");
+  return grupoUsuariosAdministradorOuDiretoria(nomeGrupo);
 }
 
 /**
  * @deprecated Menu Nota Fiscal agora vem do banco (`menu_permissoes_*`).
- * Ainda usado só para ações de NFS-e no Caixa (tipo Administrativo).
+ * Ainda usado só para ações de NFS-e no Caixa (Administrador ou Diretoria).
  */
 export function grupoUsuariosMenuNotaFiscal(
   nomeGrupo: string | null | undefined,
@@ -72,7 +65,7 @@ export function grupoUsuariosMenuPonto(
 }
 
 /**
- * Emissão/cancelamento de NFS-e pelo Caixa: Administrador, Administrativo ou Recepção.
+ * Emissão/cancelamento de NFS-e pelo Caixa: Administrador, Diretoria ou Recepção.
  */
 export function grupoUsuariosNfseNoCaixa(
   nomeGrupo: string | null | undefined,
@@ -158,7 +151,7 @@ export async function getUsuarioPodeMenuPonto(
 }
 
 export const MSG_SO_OUTRO_ADMINISTRADOR_TIPO =
-  "Somente outro administrador pode definir ou alterar o tipo Administrador / Administrativo.";
+  "Somente Administrador ou Diretoria pode definir ou alterar o tipo Administrador / Diretoria.";
 
 /**
  * Impede que quem não é administrador atribua ou altere o tipo admin,
@@ -171,8 +164,8 @@ export async function recusarAlteracaoTipoAdministrador(opts: {
   nomeGrupoAtual?: string | null;
   idUsuarioAlvo?: number | null;
 }): Promise<{ error: string } | null> {
-  const novoAdmin = grupoUsuariosAdministrador(opts.nomeGrupoNovo);
-  const atualAdmin = grupoUsuariosAdministrador(opts.nomeGrupoAtual);
+  const novoAdmin = grupoUsuariosAdministradorOuDiretoria(opts.nomeGrupoNovo);
+  const atualAdmin = grupoUsuariosAdministradorOuDiretoria(opts.nomeGrupoAtual);
   if (!novoAdmin && !atualAdmin) return null;
 
   const sessaoAdmin = await getUsuarioGrupoAdministrativo(
@@ -198,7 +191,7 @@ export async function recusarAlteracaoTipoAdministrador(opts: {
   return null;
 }
 
-/** Ação administrativa (excluir avaliação, parametrizar anamnese): por tipo, não por menu. */
+/** Ação privilegiada (excluir avaliação, parametrizar anamnese): Administrador ou Diretoria. */
 export async function getUsuarioGrupoAdministrativo(
   supabase: SupabaseClient,
   idUsuario: number,
@@ -218,7 +211,7 @@ export async function getUsuarioGrupoAdministrativo(
   return grupoUsuariosRelatorioCaixa(g?.grupo_usuarios);
 }
 
-/** Excluir importação de NF-e e reverter estoque: Administrador ou Administrativo. */
+/** Excluir importação de NF-e e reverter estoque: Administrador ou Diretoria. */
 export function grupoUsuariosPodeExcluirImportacaoEstoque(
   nomeGrupo: string | null | undefined,
 ): boolean {
@@ -278,7 +271,7 @@ export function grupoUsuariosMenuRestritoBalcao(
 }
 
 /**
- * Personalizar mensagem WhatsApp da taxa de agendamento: Recepção, Administrativo ou Administrador.
+ * Personalizar mensagem WhatsApp da taxa de agendamento: Recepção, Diretoria ou Administrador.
  */
 export function grupoUsuariosPodePersonalizarMensagemWhatsappTaxa(
   nomeGrupo: string | null | undefined,

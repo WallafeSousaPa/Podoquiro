@@ -99,7 +99,7 @@ export async function DELETE(_request: Request, context: RouteContext) {
   );
   if (!podeExcluir) {
     return NextResponse.json(
-      { error: "Somente Administrador ou Administrativo podem excluir a importação." },
+      { error: "Somente Administrador ou Diretoria podem excluir a importação." },
       { status: 403 },
     );
   }

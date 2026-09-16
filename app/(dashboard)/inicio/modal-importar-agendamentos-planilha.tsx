@@ -500,7 +500,7 @@ export function ModalImportarAgendamentosPlanilha({ open, onClose, onImported }:
                 servidor. Na importação, <strong>não</strong> bloqueamos o mesmo profissional com
                 vários atendimentos no mesmo horário (conforme a planilha). A importação com
                 procedimentos exige perfil <strong>Administrador</strong> ou{" "}
-                <strong>Administrativo</strong>. Nomes de procedimento ausentes no cadastro são
+                <strong>Diretoria</strong>. Nomes de procedimento ausentes no cadastro são
                 criados automaticamente como <strong>inativos</strong> para concluir a importação.
               </p>
               <div className="form-group">

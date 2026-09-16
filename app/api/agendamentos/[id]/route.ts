@@ -760,7 +760,7 @@ export async function PATCH(request: Request, context: RouteContext) {
       return NextResponse.json(
         {
           error:
-            "Sem permissão para alterar a lista de procedimentos. Use um usuário Administrador ou Administrativo.",
+            "Sem permissão para alterar a lista de procedimentos. Use um usuário Administrador ou Diretoria.",
         },
         { status: 403 },
       );
@@ -935,7 +935,7 @@ export async function PATCH(request: Request, context: RouteContext) {
       return NextResponse.json(
         {
           error:
-            "Sem permissão para alterar apenas mercadorias. Use o perfil Recepção ou envie procedimentos (Administrador/Administrativo).",
+            "Sem permissão para alterar apenas mercadorias. Use o perfil Recepção ou envie procedimentos (Administrador/Diretoria).",
         },
         { status: 403 },
       );

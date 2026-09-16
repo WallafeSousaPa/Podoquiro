@@ -60,7 +60,7 @@ export async function DELETE(_request: Request, context: RouteContext) {
   const podeExcluir = await getUsuarioGrupoAdministrativo(supabase, idUsuarioSessao);
   if (!podeExcluir) {
     return NextResponse.json(
-      { error: "Somente usuários dos grupos Administrador ou Administrativo podem excluir avaliações." },
+      { error: "Somente usuários dos grupos Administrador ou Diretoria podem excluir avaliações." },
       { status: 403 },
     );
   }

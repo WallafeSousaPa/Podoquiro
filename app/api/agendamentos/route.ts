@@ -192,7 +192,7 @@ export async function POST(request: Request) {
       return NextResponse.json(
         {
           error:
-            "Sem permissão para incluir procedimentos no agendamento. Use um usuário Administrador ou Administrativo.",
+            "Sem permissão para incluir procedimentos no agendamento. Use um usuário Administrador ou Diretoria.",
         },
         { status: 403 },
       );

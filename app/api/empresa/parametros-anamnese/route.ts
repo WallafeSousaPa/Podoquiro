@@ -68,7 +68,7 @@ export async function PATCH(request: Request) {
   const podeEditar = await getUsuarioGrupoAdministrativo(supabase, idUsuario);
   if (!podeEditar) {
     return NextResponse.json(
-      { error: "Somente usuários dos grupos Administrador ou Administrativo podem alterar este parâmetro." },
+      { error: "Somente usuários dos grupos Administrador ou Diretoria podem alterar este parâmetro." },
       { status: 403 },
     );
   }

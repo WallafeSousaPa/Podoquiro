@@ -3,6 +3,7 @@
 import { useRouter } from "next/navigation";
 import { type FormEvent, type ReactNode, useEffect, useId, useMemo, useState } from "react";
 import { isCpfLengthOk, normalizeCpfDigits } from "@/lib/pacientes";
+import { grupoUsuariosAdministradorOuDiretoria } from "@/lib/dashboard/menu-grupo";
 
 type GrupoItem = {
   id: number;
@@ -47,16 +48,6 @@ const EXPEDIENTE_VAZIO: ExpedienteForm = {
   horario_inicio_bloqueado: "",
   horario_fim_bloqueado: "",
 };
-
-function grupoEhAdministrador(nome: string | null | undefined): boolean {
-  if (nome == null || String(nome).trim() === "") return false;
-  const c = String(nome)
-    .normalize("NFD")
-    .replace(/\p{M}/gu, "")
-    .toLowerCase()
-    .replace(/[^a-z0-9]/g, "");
-  return c.includes("admin");
-}
 
 function formatCpfExibicao(digits: string | null | undefined): string {
   if (digits == null || digits === "") return "-";
@@ -150,7 +141,9 @@ export function UsuariosCadastroClient({
   const [expedienteError, setExpedienteError] = useState<string | null>(null);
   const cardCorPickerValue = isHexCorValida(cardCor) ? cardCor : "#2563EB";
 
-  const grupoAtualEhAdmin = editing ? grupoEhAdministrador(editing.grupo_usuarios) : false;
+  const grupoAtualEhAdmin = editing
+    ? grupoUsuariosAdministradorOuDiretoria(editing.grupo_usuarios)
+    : false;
   const editandoASiemesmo = editing != null && editing.id === idUsuarioSessao;
   const grupoSelectBloqueado =
     (!sessaoEhAdministrador && grupoAtualEhAdmin) ||
@@ -158,7 +151,7 @@ export function UsuariosCadastroClient({
 
   const gruposNoSelect = useMemo(() => {
     return grupos.filter((g) => {
-      if (!grupoEhAdministrador(g.grupo_usuarios)) return true;
+      if (!grupoUsuariosAdministradorOuDiretoria(g.grupo_usuarios)) return true;
       if (sessaoEhAdministrador && !editandoASiemesmo) return true;
       if (editing && editing.id_grupo_usuarios === g.id) return true;
       return false;
@@ -226,16 +219,18 @@ export function UsuariosCadastroClient({
       return;
     }
     const grupoEscolhido = grupos.find((g) => String(g.id) === idGrupo);
-    const novoEhAdmin = grupoEhAdministrador(grupoEscolhido?.grupo_usuarios);
+    const novoEhAdmin = grupoUsuariosAdministradorOuDiretoria(
+      grupoEscolhido?.grupo_usuarios,
+    );
     if (novoEhAdmin && (!sessaoEhAdministrador || editandoASiemesmo)) {
       setFormError(
-        "Somente outro administrador pode definir ou alterar o tipo Administrador / Administrativo.",
+        "Somente Administrador ou Diretoria pode definir ou alterar o tipo Administrador / Diretoria.",
       );
       return;
     }
     if (grupoAtualEhAdmin && !sessaoEhAdministrador && Number(idGrupo) !== editing?.id_grupo_usuarios) {
       setFormError(
-        "Somente outro administrador pode definir ou alterar o tipo Administrador / Administrativo.",
+        "Somente Administrador ou Diretoria pode definir ou alterar o tipo Administrador / Diretoria.",
       );
       return;
     }
@@ -624,11 +619,12 @@ export function UsuariosCadastroClient({
                     </select>
                     {grupoSelectBloqueado ? (
                       <small className="form-text text-muted">
-                        Somente outro administrador pode alterar este tipo de usuário.
+                        Somente outro administrador ou diretoria pode alterar este tipo de usuário.
                       </small>
                     ) : !sessaoEhAdministrador ? (
                       <small className="form-text text-muted">
-                        O tipo Administrativo só pode ser atribuído por um administrador.
+                        Os tipos Administrador e Diretoria só podem ser atribuídos por
+                        Administrador ou Diretoria.
                       </small>
                     ) : null}
                   </div>

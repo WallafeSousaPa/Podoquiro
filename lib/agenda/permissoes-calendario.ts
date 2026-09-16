@@ -27,8 +27,28 @@ export function grupoNomeContemRecepcao(nome: string | null | undefined): boolea
   return c.includes("recepcao");
 }
 
+/** Tipo Administrador (não inclui Administrativo). */
+export function grupoNomeEhAdministrador(nome: string | null | undefined): boolean {
+  if (nome == null || String(nome).trim() === "") return false;
+  const c = normalizarNomeGrupoAgenda(String(nome));
+  return c.includes("administrador") || c === "admin";
+}
+
+/** Tipo Diretoria. */
+export function grupoNomeEhDiretoria(nome: string | null | undefined): boolean {
+  if (nome == null || String(nome).trim() === "") return false;
+  const c = normalizarNomeGrupoAgenda(String(nome));
+  return c.includes("diretoria") || c === "diretor";
+}
+
+export function grupoNomeEhAdministradorOuDiretoria(
+  nome: string | null | undefined,
+): boolean {
+  return grupoNomeEhAdministrador(nome) || grupoNomeEhDiretoria(nome);
+}
+
 /**
- * Perfis que podem lançar mercadorias no modal do caixa sem ser Administrador/Administrativo.
+ * Perfis que podem lançar mercadorias no modal do caixa sem ser Administrador/Diretoria.
  * Inclui grafias comuns ("Receção" → rececao) e papéis de balcão ("Secretaria").
  */
 export function grupoNomePermiteProdutosModalCaixaRecepcao(
@@ -43,7 +63,7 @@ export function grupoNomePermiteProdutosModalCaixaRecepcao(
 }
 
 /**
- * Recepção, Administrador e Administrativo: ao mudar só o status do agendamento
+ * Recepção, Administrador e Diretoria: ao mudar só o status do agendamento
  * (sem alterar horário ou profissional), não aplica validação de conflito/retroativo.
  */
 export function grupoNomeIgnoraValidacaoHorarioAoMudarStatus(
@@ -53,17 +73,15 @@ export function grupoNomeIgnoraValidacaoHorarioAoMudarStatus(
   return grupoNomeVisualizaDescontoProdutoModalCaixa(nome);
 }
 
-/** Grupos administrativos (Administrador, Administrativo, Diretoria) podem retroagir agenda. */
+/** Administrador ou Diretoria podem retroagir agenda. */
 export function grupoNomePermiteAgendarRetroativo(
   nome: string | null | undefined,
 ): boolean {
-  if (nome == null || String(nome).trim() === "") return false;
-  const c = normalizarNomeGrupoAgenda(String(nome));
-  return c.includes("admin") || c.includes("diretoria") || c === "diretor";
+  return grupoNomeEhAdministradorOuDiretoria(nome);
 }
 
 /**
- * Grupos Administrador, Administrativo e Diretoria:
+ * Grupos Administrador e Diretoria:
  * - coluna de desconto (R$) em produtos e resumo de desconto % na área de pagamentos
  *   no modal do caixa;
  * - botão de incluir novo procedimento no modal do caixa e na agenda;
@@ -72,16 +90,10 @@ export function grupoNomePermiteAgendarRetroativo(
 export function grupoNomeVisualizaDescontoProdutoModalCaixa(
   nome: string | null | undefined,
 ): boolean {
+  if (grupoNomeEhAdministradorOuDiretoria(nome)) return true;
   if (nome == null || String(nome).trim() === "") return false;
   const c = normalizarNomeGrupoAgenda(String(nome));
-  return (
-    c.includes("administrador") ||
-    c.includes("administrativo") ||
-    c.includes("administracao") ||
-    c === "admin" ||
-    c.includes("diretoria") ||
-    c === "diretor"
-  );
+  return c.includes("administracao");
 }
 
 type GrupoAgendaEmbed = {
@@ -187,7 +199,7 @@ export async function getNomeGrupoUsuariosDoUsuario(
 /**
  * Prontuário do atendimento (API GET/POST — chamar só com agendamento Em andamento):
  * - perfil podólogo: agenda “apenas coluna própria” e o usuário é o profissional do agendamento;
- * - Administrador / Administrativo / Diretoria: vê agenda ampla (`calendario`) ou é o profissional do agendamento.
+ * - Administrador / Diretoria: vê agenda ampla (`calendario`) ou é o profissional do agendamento.
  */
 export async function getUsuarioPodeAcessarProntuarioAtendimento(
   supabase: SupabaseClient,

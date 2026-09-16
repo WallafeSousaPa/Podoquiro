@@ -82,9 +82,9 @@ type Props = {
   lesoesMecanicas: OptionItem[];
   formatosDedos: OptionItem[];
   formatosPe: OptionItem[];
-  /** Administrador / Administrativo: permite definir dias mínimos entre anamneses na clínica. */
+  /** Administrador / Diretoria: permite definir dias mínimos entre anamneses na clínica. */
   podeParametrizarAnamnese?: boolean;
-  /** Administrador / Administrativo: excluir avaliação permanentemente (substitui inativar na lista). */
+  /** Administrador / Diretoria: excluir avaliação permanentemente (substitui inativar na lista). */
   podeExcluirEvolucaoPacientes?: boolean;
   diasEntreAnamnesesInicial?: number | null;
 };
@@ -1212,7 +1212,7 @@ export function AvaliacoesClient(props: Props) {
                     disabled={paramAnamSaving}
                     onChange={(e) => setParamAnamDias(e.target.value)}
                   />
-                  <small className="form-text text-muted">Somente usuários Administrador ou Administrativo veem esta tela.</small>
+                  <small className="form-text text-muted">Somente usuários Administrador ou Diretoria veem esta tela.</small>
                 </div>
               </div>
               <div className="modal-footer">

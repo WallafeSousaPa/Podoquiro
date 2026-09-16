@@ -108,7 +108,7 @@ type Props = {
   onPacienteClick?: (row: CaixaAgendamentoRow) => void;
   /** Recarrega a lista do dia (ex.: botão Atualizar). */
   onAtualizar?: () => void;
-  /** Exibe coluna NFS-e / DANFE (Administrador, Administrativo ou Recepção). */
+  /** Exibe coluna NFS-e / DANFE (Administrador, Diretoria ou Recepção). */
   exibirColunaNfse?: boolean;
   /** Abre emissão de NFS-e para o agendamento quitado. */
   onNfseClick?: (row: CaixaAgendamentoRow) => void;
