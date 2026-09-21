@@ -10,7 +10,7 @@ function isUuid(s: unknown): s is string {
 }
 
 const LISTA_SELECT =
-  "id, id_empresa, tipo, status, data_saida, dest_nome, dest_doc, dest_tipo, valor_total, nota_venda_status, observacao, created_at, id_comprador, id_empresa_destino, id_nfe_emissao";
+  "id, id_empresa, tipo, status, data_saida, dest_nome, dest_doc, dest_tipo, valor_total, nota_venda_status, observacao, created_at, id_comprador, id_empresa_destino, id_nfe_emissao, emit_nome, emit_fantasia, recebida_em";
 
 export async function GET(request: Request) {
   const session = await getSession();
@@ -40,7 +40,7 @@ export async function GET(request: Request) {
   }
 
   const status = searchParams.get("status");
-  if (status === "confirmada" || status === "cancelada") {
+  if (status === "confirmada" || status === "cancelada" || status === "em_transito") {
     query = query.eq("status", status);
   }
 
@@ -50,7 +50,53 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 
-  return NextResponse.json({ data: data ?? [] });
+  const porId = new Map<string, Record<string, unknown>>();
+  for (const row of data ?? []) {
+    const r = row as { id: string };
+    porId.set(r.id, row as Record<string, unknown>);
+  }
+
+  let aReceber: unknown[] = [];
+  if (!tipo || tipo === "transferencia") {
+    const rec = await supabase
+      .from("estoque_saidas")
+      .select(LISTA_SELECT)
+      .eq("id_empresa_destino", empresaId)
+      .eq("tipo", "transferencia")
+      .eq("status", "em_transito")
+      .order("created_at", { ascending: false })
+      .limit(200);
+    if (rec.error) {
+      console.error(rec.error);
+      return NextResponse.json({ error: rec.error.message }, { status: 500 });
+    }
+    aReceber = rec.data ?? [];
+
+    const recebidas = await supabase
+      .from("estoque_saidas")
+      .select(LISTA_SELECT)
+      .eq("id_empresa_destino", empresaId)
+      .eq("tipo", "transferencia")
+      .in("status", ["confirmada", "cancelada"])
+      .order("created_at", { ascending: false })
+      .limit(200);
+    if (recebidas.error) {
+      console.error(recebidas.error);
+      return NextResponse.json({ error: recebidas.error.message }, { status: 500 });
+    }
+    for (const row of recebidas.data ?? []) {
+      const r = row as { id: string };
+      porId.set(r.id, row as Record<string, unknown>);
+    }
+  }
+
+  const lista = [...porId.values()].sort((a, b) => {
+    const da = String(a.created_at ?? "");
+    const db = String(b.created_at ?? "");
+    return db.localeCompare(da);
+  });
+
+  return NextResponse.json({ data: lista, a_receber: aReceber });
 }
 
 export async function POST(request: Request) {

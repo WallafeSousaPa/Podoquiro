@@ -10,6 +10,8 @@ import {
 import {
   ROTULO_NOTA_VENDA,
   ROTULO_TIPO_SAIDA,
+  rotuloStatusSaida,
+  saidaPodeCancelarEstoque,
   type NotaVendaStatus,
   type StatusSaidaEstoque,
   type TipoSaidaEstoque,
@@ -62,6 +64,10 @@ type SaidaListaRow = {
   observacao: string | null;
   created_at: string;
   id_nfe_emissao: string | null;
+  id_empresa_destino: number | null;
+  emit_nome: string | null;
+  emit_fantasia: string | null;
+  recebida_em: string | null;
 };
 
 type SaidaItemDetalhe = {
@@ -129,6 +135,13 @@ function nomeEmpresaLabel(empresas: EmpresaListaItem[], id: number) {
   const e = empresas.find((x) => x.id === id);
   const n = e?.nome_fantasia?.trim();
   return n || `Empresa #${id}`;
+}
+
+function badgeStatusSaida(status: StatusSaidaEstoque, tipo: TipoSaidaEstoque) {
+  const texto = rotuloStatusSaida(status, tipo);
+  if (status === "cancelada") return { texto, cls: "badge badge-secondary" };
+  if (status === "em_transito") return { texto, cls: "badge badge-warning" };
+  return { texto, cls: "badge badge-success" };
 }
 
 function precoVendaCadastro(p: ProdutoOpcao): number {
@@ -211,6 +224,7 @@ export function SaidasEstoqueClient({
   const [produtos, setProdutos] = useState<ProdutoOpcao[]>([]);
   const [compradores, setCompradores] = useState<ParceiroEstoqueRow[]>([]);
   const [lista, setLista] = useState<SaidaListaRow[]>([]);
+  const [aReceber, setAReceber] = useState<SaidaListaRow[]>([]);
   const [filtroTipo, setFiltroTipo] = useState<"" | TipoSaidaEstoque>("");
   const [loadingLista, setLoadingLista] = useState(true);
   const [enviando, setEnviando] = useState(false);
@@ -226,6 +240,8 @@ export function SaidasEstoqueClient({
   } | null>(null);
   const [detalhe, setDetalhe] = useState<SaidaDetalhe | null>(null);
   const [confirmCancelar, setConfirmCancelar] = useState<SaidaListaRow | null>(null);
+  const [confirmReceber, setConfirmReceber] = useState<SaidaListaRow | null>(null);
+  const [recebendo, setRecebendo] = useState(false);
   const [emitindoNota, setEmitindoNota] = useState(false);
   const [danfeUrl, setDanfeUrl] = useState<string | null>(null);
   const [danfeCarregando, setDanfeCarregando] = useState(false);
@@ -275,9 +291,14 @@ export function SaidasEstoqueClient({
       const qs = new URLSearchParams({ id_empresa: empresaId });
       if (filtroTipo) qs.set("tipo", filtroTipo);
       const res = await fetch(`/api/estoque/saidas?${qs}`, { credentials: "include" });
-      const j = (await res.json()) as { data?: SaidaListaRow[]; error?: string };
+      const j = (await res.json()) as {
+        data?: SaidaListaRow[];
+        a_receber?: SaidaListaRow[];
+        error?: string;
+      };
       if (!res.ok) throw new Error(j.error ?? "Não foi possível carregar as saídas.");
       setLista(j.data ?? []);
+      setAReceber(j.a_receber ?? []);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Não foi possível carregar as saídas.");
     } finally {
@@ -437,6 +458,10 @@ export function SaidasEstoqueClient({
           destTipo: j.data.dest_tipo === "CNPJ" ? "CNPJ" : "CPF",
         });
         setSucesso("Saída registrada. Informe se deseja emitir a nota fiscal.");
+      } else if (tipo === "transferencia") {
+        setSucesso(
+          "Transferência registrada. O estoque saiu desta loja e ficou em trânsito até a loja destino confirmar o recebimento.",
+        );
       } else {
         setSucesso("Saída registrada e estoque baixado.");
       }
@@ -566,6 +591,29 @@ export function SaidasEstoqueClient({
       setError(e instanceof Error ? e.message : "Não foi possível cancelar.");
     } finally {
       setEnviando(false);
+    }
+  }
+
+  async function confirmarRecebimento(row: SaidaListaRow) {
+    setRecebendo(true);
+    setError(null);
+    try {
+      const res = await fetch(`/api/estoque/saidas/${row.id}/receber`, {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id_empresa: Number(empresaId) }),
+      });
+      const j = (await res.json()) as { error?: string };
+      if (!res.ok) throw new Error(j.error ?? "Não foi possível confirmar o recebimento.");
+      setConfirmReceber(null);
+      setDetalhe(null);
+      setSucesso("Recebimento confirmado. A mercadoria entrou no estoque desta loja.");
+      await Promise.all([carregarLista(), carregarProdutos()]);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Não foi possível confirmar o recebimento.");
+    } finally {
+      setRecebendo(false);
     }
   }
 
@@ -1066,6 +1114,60 @@ export function SaidasEstoqueClient({
             </div>
           </div>
 
+          {aReceber.length > 0 ? (
+            <div className="card card-outline card-warning">
+              <div className="card-header">
+                <h3 className="card-title mb-0">
+                  Transferências a receber — {nomeEmpresaSelecionada}
+                </h3>
+              </div>
+              <div className="card-body table-responsive p-0">
+                <table className="table table-hover table-sm mb-0">
+                  <thead>
+                    <tr>
+                      <th>Data</th>
+                      <th>Origem</th>
+                      <th className="text-right">Valor</th>
+                      <th>Status</th>
+                      <th />
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {aReceber.map((row) => (
+                      <tr key={row.id}>
+                        <td className="small">{formatDataHora(row.data_saida)}</td>
+                        <td>{row.emit_fantasia || row.emit_nome || "—"}</td>
+                        <td className="text-right">{formatBRL(Number(row.valor_total))}</td>
+                        <td>
+                          <span className={badgeStatusSaida(row.status, row.tipo).cls}>
+                            {badgeStatusSaida(row.status, row.tipo).texto}
+                          </span>
+                        </td>
+                        <td className="text-right text-nowrap">
+                          <button
+                            type="button"
+                            className="btn btn-outline-primary btn-sm"
+                            onClick={() => void abrirDetalhe(row.id)}
+                          >
+                            Ver
+                          </button>
+                          <button
+                            type="button"
+                            className="btn btn-success btn-sm ml-1"
+                            disabled={recebendo}
+                            onClick={() => setConfirmReceber(row)}
+                          >
+                            Confirmar recebimento
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          ) : null}
+
           <div className="card card-outline card-secondary">
             <div className="card-header d-flex flex-wrap justify-content-between align-items-center">
               <h3 className="card-title mb-2 mb-sm-0">
@@ -1092,7 +1194,7 @@ export function SaidasEstoqueClient({
                   <tr>
                     <th>Data</th>
                     <th>Tipo</th>
-                    <th>Destino</th>
+                    <th>Origem / destino</th>
                     <th className="text-right">Valor</th>
                     <th>Nota</th>
                     <th>Status</th>
@@ -1121,12 +1223,20 @@ export function SaidasEstoqueClient({
                         <td className="small">{formatDataHora(row.data_saida)}</td>
                         <td>{ROTULO_TIPO_SAIDA[row.tipo]}</td>
                         <td>
-                          <div>{row.dest_nome || "—"}</div>
-                          {row.dest_doc ? (
-                            <div className="small text-muted">
-                              {formatarCnpjCpf(row.dest_doc, row.dest_tipo)}
+                          {Number(row.id_empresa) === Number(empresaId) ? (
+                            <>
+                              <div>{row.dest_nome || "—"}</div>
+                              {row.dest_doc ? (
+                                <div className="small text-muted">
+                                  {formatarCnpjCpf(row.dest_doc, row.dest_tipo)}
+                                </div>
+                              ) : null}
+                            </>
+                          ) : (
+                            <div>
+                              De {row.emit_fantasia || row.emit_nome || "outra loja"}
                             </div>
-                          ) : null}
+                          )}
                         </td>
                         <td className="text-right">{formatBRL(Number(row.valor_total))}</td>
                         <td className="small">
@@ -1135,11 +1245,9 @@ export function SaidasEstoqueClient({
                             : "—"}
                         </td>
                         <td>
-                          {row.status === "cancelada" ? (
-                            <span className="badge badge-secondary">Cancelada</span>
-                          ) : (
-                            <span className="badge badge-success">Confirmada</span>
-                          )}
+                          <span className={badgeStatusSaida(row.status, row.tipo).cls}>
+                            {badgeStatusSaida(row.status, row.tipo).texto}
+                          </span>
                         </td>
                         <td className="text-right text-nowrap">
                           <button
@@ -1184,8 +1292,10 @@ export function SaidasEstoqueClient({
                             </>
                           ) : null}
                           {podeCancelar &&
-                          row.status === "confirmada" &&
-                          row.nota_venda_status !== "gerada" ? (
+                          saidaPodeCancelarEstoque(
+                            row.status,
+                            row.nota_venda_status,
+                          ) ? (
                             <button
                               type="button"
                               className="btn btn-outline-danger btn-sm ml-1"
@@ -1242,6 +1352,11 @@ export function SaidasEstoqueClient({
                     <p className="mb-0 text-muted small">
                       Depois de confirmar, você poderá emitir a nota fiscal para o CPF ou
                       CNPJ do comprador.
+                    </p>
+                  ) : tipo === "transferencia" ? (
+                    <p className="mb-0 text-muted small">
+                      O estoque sai desta loja agora e fica <strong>em trânsito</strong> até
+                      alguém da loja destino confirmar o recebimento.
                     </p>
                   ) : null}
                 </div>
@@ -1381,7 +1496,13 @@ export function SaidasEstoqueClient({
                   ) : null}
                   <p className="small text-muted mb-2">
                     {formatDataHora(detalhe.data_saida)}
-                    {detalhe.status === "cancelada" ? " · Cancelada" : ""}
+                    {detalhe.status === "cancelada"
+                      ? " · Cancelada"
+                      : detalhe.status === "em_transito"
+                        ? " · Em trânsito"
+                        : detalhe.tipo === "transferencia"
+                          ? " · Recebida"
+                          : ""}
                   </p>
                   <p className="mb-1">
                     Origem: <strong>{detalhe.emit_fantasia || detalhe.emit_nome || "—"}</strong>
@@ -1475,8 +1596,10 @@ export function SaidasEstoqueClient({
                 </div>
                 <div className="modal-footer">
                   {podeCancelar &&
-                  detalhe.status === "confirmada" &&
-                  detalhe.nota_venda_status !== "gerada" ? (
+                  saidaPodeCancelarEstoque(
+                    detalhe.status,
+                    detalhe.nota_venda_status,
+                  ) ? (
                     <button
                       type="button"
                       className="btn btn-outline-danger mr-auto"
@@ -1486,6 +1609,21 @@ export function SaidasEstoqueClient({
                       }}
                     >
                       Cancelar saída
+                    </button>
+                  ) : null}
+                  {detalhe.tipo === "transferencia" &&
+                  detalhe.status === "em_transito" &&
+                  Number(detalhe.id_empresa_destino) === Number(empresaId) ? (
+                    <button
+                      type="button"
+                      className="btn btn-success"
+                      disabled={recebendo}
+                      onClick={() => {
+                        setConfirmReceber(detalhe);
+                        setDetalhe(null);
+                      }}
+                    >
+                      Confirmar recebimento
                     </button>
                   ) : null}
                   {detalhe.tipo === "venda" && detalhe.status === "confirmada" ? (
@@ -1593,6 +1731,68 @@ export function SaidasEstoqueClient({
                     disabled={enviando}
                   >
                     {enviando ? "Cancelando…" : "Cancelar e devolver"}
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div className="modal-backdrop fade show" role="presentation" />
+        </>
+      ) : null}
+
+      {confirmReceber ? (
+        <>
+          <div
+            className="modal fade show"
+            style={{ display: "block" }}
+            tabIndex={-1}
+            role="dialog"
+            aria-modal="true"
+          >
+            <div className="modal-dialog" role="document">
+              <div className="modal-content">
+                <div className="modal-header">
+                  <h5 className="modal-title">Confirmar recebimento</h5>
+                  <button
+                    type="button"
+                    className="close"
+                    aria-label="Fechar"
+                    onClick={() => setConfirmReceber(null)}
+                    disabled={recebendo}
+                  >
+                    <span aria-hidden>×</span>
+                  </button>
+                </div>
+                <div className="modal-body">
+                  <p className="mb-2">
+                    Confirmar o recebimento da transferência de{" "}
+                    <strong>
+                      {confirmReceber.emit_fantasia || confirmReceber.emit_nome || "loja origem"}
+                    </strong>{" "}
+                    e entrar a mercadoria no estoque de{" "}
+                    <strong>{nomeEmpresaSelecionada}</strong>?
+                  </p>
+                  <p className="mb-0 text-muted small">
+                    Produtos que ainda não existirem nesta loja serão cadastrados
+                    automaticamente.
+                  </p>
+                </div>
+                <div className="modal-footer">
+                  <button
+                    type="button"
+                    className="btn btn-secondary"
+                    onClick={() => setConfirmReceber(null)}
+                    disabled={recebendo}
+                  >
+                    Voltar
+                  </button>
+                  <button
+                    type="button"
+                    className="btn btn-success"
+                    onClick={() => void confirmarRecebimento(confirmReceber)}
+                    disabled={recebendo}
+                  >
+                    {recebendo ? "Confirmando…" : "Confirmar e entrar no estoque"}
                   </button>
                 </div>
               </div>

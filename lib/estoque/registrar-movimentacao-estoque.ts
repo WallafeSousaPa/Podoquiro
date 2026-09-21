@@ -12,7 +12,9 @@ export type OrigemMovimentacaoEstoque =
   | "saida_perda"
   | "saida_avulso"
   | "estorno_saida"
-  | "preco_venda";
+  | "preco_venda"
+  | "entrada_transferencia"
+  | "estorno_entrada_transferencia";
 
 export type TipoMovimentacaoEstoque = "entrada" | "saida" | "preco";
 
@@ -29,6 +31,8 @@ export const ROTULO_ORIGEM_MOVIMENTACAO_ESTOQUE: Record<OrigemMovimentacaoEstoqu
   saida_avulso: "Saída — avulso",
   estorno_saida: "Estorno — saída",
   preco_venda: "Preço de venda",
+  entrada_transferencia: "Entrada — transferência",
+  estorno_entrada_transferencia: "Estorno — entrada transferência",
 };
 
 export async function registrarMovimentacaoEstoque(

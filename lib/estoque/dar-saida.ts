@@ -201,7 +201,7 @@ export async function darSaidaEstoque(
     .insert({
       id_empresa: params.id_empresa,
       tipo: params.tipo,
-      status: "confirmada",
+      status: params.tipo === "transferencia" ? "em_transito" : "confirmada",
       data_saida: new Date().toISOString(),
       id_comprador: comprador?.id ?? null,
       id_empresa_destino: params.tipo === "transferencia" ? params.id_empresa_destino : null,

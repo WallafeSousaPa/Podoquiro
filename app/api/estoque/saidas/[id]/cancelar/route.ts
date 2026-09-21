@@ -43,7 +43,7 @@ export async function POST(_request: Request, context: RouteContext) {
 
   const { data: saida, error: saidaErr } = await supabase
     .from("estoque_saidas")
-    .select("id, id_empresa, status, tipo, id_nfe_emissao")
+    .select("id, id_empresa, status, tipo, id_nfe_emissao, id_empresa_destino")
     .eq("id", id)
     .maybeSingle();
 
@@ -55,6 +55,9 @@ export async function POST(_request: Request, context: RouteContext) {
   }
   if (saida.status === "cancelada") {
     return NextResponse.json({ error: "Esta saída já está cancelada." }, { status: 400 });
+  }
+  if (saida.status !== "confirmada" && saida.status !== "em_transito") {
+    return NextResponse.json({ error: "Esta saída não pode ser cancelada." }, { status: 400 });
   }
 
   if (saida.id_nfe_emissao) {
@@ -76,7 +79,7 @@ export async function POST(_request: Request, context: RouteContext) {
 
   const { data: itens, error: itensErr } = await supabase
     .from("estoque_saida_itens")
-    .select("id, id_produto, produto, qtd")
+    .select("id, id_produto, id_produto_destino, produto, qtd")
     .eq("id_saida", id)
     .order("n_item", { ascending: true });
 
@@ -91,6 +94,11 @@ export async function POST(_request: Request, context: RouteContext) {
       itens: itens ?? [],
       id_usuario: idUsuario,
       observacao: `Estorno da saída ${saida.tipo}`,
+      statusAtual: saida.status,
+      tipo: saida.tipo,
+      id_empresa_destino: saida.id_empresa_destino
+        ? Number(saida.id_empresa_destino)
+        : null,
     });
   } catch (e) {
     const msg = e instanceof Error ? e.message : "Não foi possível cancelar a saída.";
