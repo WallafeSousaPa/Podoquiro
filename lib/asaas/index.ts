@@ -8,6 +8,7 @@ export {
 export {
   criarCobrancaAsaas,
   consultarPagamentoAsaasPorId,
+  cancelarCobrancaAsaasSePendente,
   type AsaasCobrancaCriada,
   type AsaasCriarCobrancaInput,
 } from "./cobranca";

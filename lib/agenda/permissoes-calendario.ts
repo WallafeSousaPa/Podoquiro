@@ -24,7 +24,7 @@ export function grupoNomeLegadoSomentePropriaColunaAgenda(
 export function grupoNomeContemRecepcao(nome: string | null | undefined): boolean {
   if (nome == null || String(nome).trim() === "") return false;
   const c = normalizarNomeGrupoAgenda(String(nome));
-  return c.includes("recepcao");
+  return c.includes("recep");
 }
 
 /** Tipo Administrador (não inclui Administrativo). */
@@ -49,7 +49,7 @@ export function grupoNomeEhAdministradorOuDiretoria(
 
 /**
  * Perfis que podem lançar mercadorias no modal do caixa sem ser Administrador/Diretoria.
- * Inclui grafias comuns ("Receção" → rececao) e papéis de balcão ("Secretaria").
+ * Inclui grafias comuns ("Receção" → rececao) e papéis de balcão.
  */
 export function grupoNomePermiteProdutosModalCaixaRecepcao(
   nome: string | null | undefined,
@@ -59,6 +59,9 @@ export function grupoNomePermiteProdutosModalCaixaRecepcao(
   const c = normalizarNomeGrupoAgenda(String(nome));
   if (c.includes("rececao")) return true;
   if (c.includes("secretaria") || c.includes("secretario")) return true;
+  if (c.includes("administrativo")) return true;
+  if (c.includes("balcao")) return true;
+  if (c.includes("atendente")) return true;
   return false;
 }
 
@@ -81,19 +84,15 @@ export function grupoNomePermiteAgendarRetroativo(
 }
 
 /**
- * Grupos Administrador e Diretoria:
- * - coluna de desconto (R$) em produtos e resumo de desconto % na área de pagamentos
- *   no modal do caixa;
- * - botão de incluir novo procedimento no modal do caixa e na agenda;
- * - inclusão de procedimentos via POST/PATCH de agendamentos (demais perfis não).
+ * Somente Administrador e Diretoria:
+ * - desconto (R$ na linha de produto e % no agendamento) no modal do caixa;
+ * - botão de incluir procedimento no modal do caixa e na agenda;
+ * - inclusão de procedimentos via POST/PATCH de agendamentos.
  */
 export function grupoNomeVisualizaDescontoProdutoModalCaixa(
   nome: string | null | undefined,
 ): boolean {
-  if (grupoNomeEhAdministradorOuDiretoria(nome)) return true;
-  if (nome == null || String(nome).trim() === "") return false;
-  const c = normalizarNomeGrupoAgenda(String(nome));
-  return c.includes("administracao");
+  return grupoNomeEhAdministradorOuDiretoria(nome);
 }
 
 type GrupoAgendaEmbed = {

@@ -10,7 +10,7 @@ export default async function NotaFiscalEmissaoPage() {
     redirect("/login");
   }
 
-  const { menusLiberados } = await getNomesSaudacao(
+  const { menusLiberados, podeEmitirNfseAdn } = await getNomesSaudacao(
     session.sub,
     session.usuario,
     session.idEmpresa,
@@ -44,7 +44,10 @@ export default async function NotaFiscalEmissaoPage() {
         <div className="container-fluid">
           <div className="row">
             <div className="col-12">
-              <NotaFiscalEmissaoClient exibirParametros />
+              <NotaFiscalEmissaoClient
+                exibirParametros
+                podeEmitirNfseAdn={podeEmitirNfseAdn}
+              />
             </div>
           </div>
         </div>

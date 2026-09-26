@@ -128,6 +128,18 @@ export async function POST(request: Request) {
 
   const supabase = createAdminClient();
   const nomeGrupoPost = await getNomeGrupoUsuariosDoUsuario(supabase, sessionUserId);
+  if (
+    desconto !== 0 &&
+    !grupoNomeVisualizaDescontoProdutoModalCaixa(nomeGrupoPost)
+  ) {
+    return NextResponse.json(
+      {
+        error:
+          "Sem permissão para aplicar desconto. Use um usuário Administrador ou Diretoria.",
+      },
+      { status: 403 },
+    );
+  }
   const ignoraValidacaoHorario =
     statusAgendamentoIgnoraValidacaoHorario(statusStr) ||
     (statusStr === STATUS_RETORNO_AGENDAMENTO &&

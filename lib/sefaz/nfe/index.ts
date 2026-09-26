@@ -83,7 +83,7 @@ export {
   type DanfeNfeDados,
   type DanfeNfeItem,
 } from "./parse-nfe-danfe";
-export { assinarNfeXml, assinarEventoNfeXml } from "./assinar-nfe-xml";
+export { assinarNfeXml, assinarEventoNfeXml, assinarDpsXml, assinarLoteDsfXml } from "./assinar-nfe-xml";
 export { enviarLoteNfeSincrono, extrairRetornoAutorizacaoLote } from "./autorizacao-lote";
 export {
   enviarCancelamentoNfe,

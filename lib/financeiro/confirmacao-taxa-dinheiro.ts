@@ -1,5 +1,10 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { obterConfigAsaas } from "@/lib/asaas";
 import { registrarCaixaMovimentoTaxaSePago } from "@/lib/financeiro/caixa-movimento";
+import {
+  cancelarTaxasPendentesAgendamento,
+  efetivarTaxaPagaMesmoSeCancelada,
+} from "@/lib/financeiro/confirmar-agendamento-por-taxa";
 
 /** Forma de pagamento dinheiro (global) para registrar taxa no caixa. */
 export async function resolverFormaPagamentoDinheiro(
@@ -66,11 +71,16 @@ export async function confirmarAgendamentoComTaxaDinheiro(
 
   const agora = new Date().toISOString();
 
-  await supabase
-    .from("agendamento_taxa_rede")
-    .update({ status: "cancelado" })
-    .eq("id_agendamento", args.idAgendamento)
-    .eq("status", "pendente");
+  const subst = await cancelarTaxasPendentesAgendamento(supabase, args.idAgendamento, {
+    asaasConfig: obterConfigAsaas(),
+  });
+  if (subst.jaPagoRemotoIdTaxa != null) {
+    await efetivarTaxaPagaMesmoSeCancelada(supabase, {
+      idTaxa: subst.jaPagoRemotoIdTaxa,
+      idAgendamento: args.idAgendamento,
+    });
+    throw new Error("O link de pagamento já foi pago. O agendamento foi confirmado.");
+  }
 
   const { data: taxaIns, error: taxaErr } = await supabase
     .from("agendamento_taxa_rede")

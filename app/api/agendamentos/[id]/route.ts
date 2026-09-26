@@ -11,10 +11,10 @@ import {
   getUsuarioAgendaSomentePropriaColuna,
   getNomeGrupoUsuariosDoUsuario,
   grupoNomeIgnoraValidacaoHorarioAoMudarStatus,
-  grupoNomePermiteProdutosModalCaixaRecepcao,
   grupoNomeVisualizaDescontoProdutoModalCaixa,
   profissionalPodeNaAgenda,
 } from "@/lib/agenda/permissoes-calendario";
+import { getUsuarioPodeIncluirProdutoModalCaixa } from "@/lib/dashboard/menu-grupo";
 import { validarProcedimentosDoColaborador } from "@/lib/colaborador-procedimentos";
 import {
   MSG_HORARIO_RETROATIVO,
@@ -40,6 +40,7 @@ import {
 } from "@/lib/financeiro/caixa-movimento";
 import { obterSituacaoCaixaDia } from "@/lib/financeiro/caixa-situacao-dia";
 import { parsePagamentosAgendamentoBody } from "@/lib/financeiro/parse-pagamentos-agendamento";
+import { agendamentoTemTaxaPaga } from "@/lib/financeiro/confirmar-agendamento-por-taxa";
 import {
   somarTaxaAgendamentoPaga,
   totalAReceberCaixaComTaxa,
@@ -99,9 +100,10 @@ export async function GET(request: Request, context: RouteContext) {
   }
 
   const supabase = createAdminClient();
-  const [podeVerTodosGet, somentePropriaColunaGet] = await Promise.all([
+  const [podeVerTodosGet, somentePropriaColunaGet, podeMenuCaixa] = await Promise.all([
     getPodeVerTodosAgendamentos(supabase, sessionUserId),
     getUsuarioAgendaSomentePropriaColuna(supabase, sessionUserId),
+    getUsuarioPodeIncluirProdutoModalCaixa(supabase, sessionUserId),
   ]);
   const { data: row, error } = await supabase
     .from("agendamentos")
@@ -130,6 +132,7 @@ export async function GET(request: Request, context: RouteContext) {
     return NextResponse.json({ error: "Agendamento não encontrado." }, { status: 404 });
   }
   if (
+    !podeMenuCaixa &&
     (!podeVerTodosGet || somentePropriaColunaGet) &&
     (row.id_usuario as number) !== sessionUserId
   ) {
@@ -157,9 +160,13 @@ export async function GET(request: Request, context: RouteContext) {
   const nomeGrupoSessao = await getNomeGrupoUsuariosDoUsuario(supabase, sessionUserId);
   const mostrar_desconto_produtos_modal_caixa =
     grupoNomeVisualizaDescontoProdutoModalCaixa(nomeGrupoSessao);
-  const permite_editar_produtos_modal_caixa =
-    mostrar_desconto_produtos_modal_caixa ||
-    grupoNomePermiteProdutosModalCaixaRecepcao(nomeGrupoSessao);
+
+  const idUsuarioAg = row.id_usuario as number;
+  const podeEditarProcPag =
+    !somentePropriaColunaGet &&
+    (podeVerTodosGet || idUsuarioAg === sessionUserId);
+
+  const permite_editar_produtos_modal_caixa = podeMenuCaixa;
 
   const pagamentos_nao_carregados_por_perfil =
     somentePropriaColunaGet && !permite_editar_produtos_modal_caixa;
@@ -190,18 +197,13 @@ export async function GET(request: Request, context: RouteContext) {
     }));
   }
 
-  const idUsuarioAg = row.id_usuario as number;
-  const podeEditarProcPag =
-    !somentePropriaColunaGet &&
-    (podeVerTodosGet || idUsuarioAg === sessionUserId);
-
+  const valorTotalAg = Number(row.valor_total);
   let taxaAgendamentoPaga = 0;
   try {
     taxaAgendamentoPaga = await somarTaxaAgendamentoPaga(supabase, id);
   } catch (e) {
     console.error(e);
   }
-  const valorTotalAg = Number(row.valor_total);
   const valorTotalAReceber = totalAReceberCaixaComTaxa(valorTotalAg, taxaAgendamentoPaga);
 
   return NextResponse.json({
@@ -292,27 +294,41 @@ export async function PATCH(request: Request, context: RouteContext) {
     return NextResponse.json({ error: "Agendamento não encontrado." }, { status: 404 });
   }
 
-  const [podeVerTodos, somentePropriaColuna] = await Promise.all([
-    getPodeVerTodosAgendamentos(supabase, sessionUserId),
-    getUsuarioAgendaSomentePropriaColuna(supabase, sessionUserId),
-  ]);
-  if (
-    (!podeVerTodos || somentePropriaColuna) &&
-    (existente.id_usuario as number) !== sessionUserId
-  ) {
+  const [podeVerTodos, somentePropriaColuna, podeMenuCaixa, nomeGrupoUsuarioPatch] =
+    await Promise.all([
+      getPodeVerTodosAgendamentos(supabase, sessionUserId),
+      getUsuarioAgendaSomentePropriaColuna(supabase, sessionUserId),
+      getUsuarioPodeIncluirProdutoModalCaixa(supabase, sessionUserId),
+      getNomeGrupoUsuariosDoUsuario(supabase, sessionUserId),
+    ]);
+  const acessoAgendaCompleto =
+    (podeVerTodos && !somentePropriaColuna) ||
+    (existente.id_usuario as number) === sessionUserId;
+  if (!acessoAgendaCompleto && !podeMenuCaixa) {
     return NextResponse.json(
       { error: "Sem permissão para alterar este agendamento." },
       { status: 403 },
     );
   }
+  if (!acessoAgendaCompleto && podeMenuCaixa) {
+    const chavesCaixa = Object.keys(body);
+    const soOperacaoCaixa =
+      chavesCaixa.length > 0 &&
+      chavesCaixa.every(
+        (k) => k === "produtos" || k === "pagamentos" || k === "id_retorno",
+      );
+    if (!soOperacaoCaixa) {
+      return NextResponse.json(
+        {
+          error:
+            "Com o menu Caixa, neste agendamento só é possível incluir mercadorias e pagamentos.",
+        },
+        { status: 403 },
+      );
+    }
+  }
 
-  const nomeGrupoUsuarioPatch = await getNomeGrupoUsuariosDoUsuario(
-    supabase,
-    sessionUserId,
-  );
-  const usuarioFluxoCaixaProdutosOuAdmin =
-    grupoNomeVisualizaDescontoProdutoModalCaixa(nomeGrupoUsuarioPatch) ||
-    grupoNomePermiteProdutosModalCaixaRecepcao(nomeGrupoUsuarioPatch);
+  const usuarioFluxoCaixaProdutosOuAdmin = podeMenuCaixa;
 
   if (somentePropriaColuna) {
     const chaves = Object.keys(body);
@@ -657,6 +673,23 @@ export async function PATCH(request: Request, context: RouteContext) {
         );
       }
     }
+    if (body.status === "pendente" && String(existente.status) !== "pendente") {
+      let temTaxaPaga = false;
+      try {
+        temTaxaPaga = await agendamentoTemTaxaPaga(supabase, id);
+      } catch (e) {
+        console.error(e);
+      }
+      if (temTaxaPaga) {
+        return NextResponse.json(
+          {
+            error:
+              "Este agendamento tem taxa paga e não pode voltar para Pendente.",
+          },
+          { status: 400 },
+        );
+      }
+    }
     patch.status = body.status;
     if (body.status === "curativo_agendado") {
       patch.foi_curativo_agendado = true;
@@ -819,7 +852,10 @@ export async function PATCH(request: Request, context: RouteContext) {
       empresaId,
       id,
       body.produtos,
-      { forcarValorDescontoZero: false },
+      {
+        forcarValorDescontoZero:
+          !grupoNomeVisualizaDescontoProdutoModalCaixa(nomeGrupoUsuarioPatch),
+      },
     );
     if (!montadosProc.ok) {
       if (montadosProc.status >= 500) {
@@ -923,19 +959,19 @@ export async function PATCH(request: Request, context: RouteContext) {
   }
 
   if (trocaProdutosRecepcao) {
-    const nomeGR = await getNomeGrupoUsuariosDoUsuario(supabase, sessionUserId);
-    if (!grupoNomePermiteProdutosModalCaixaRecepcao(nomeGR)) {
+    const podeProdutos = podeMenuCaixa;
+    if (!podeProdutos) {
       await tentarLogErroApi(request, supabase, session, {
         origem: `api:agendamentos:PATCH:${id}:produtos_sem_procedimento`,
         status: 403,
         mensagem: "Sem permissão para alterar apenas mercadorias.",
-        detalhe: { grupo: nomeGR },
+        detalhe: { grupo: nomeGrupoUsuarioPatch },
         idPaciente: existente.id_paciente as number,
       });
       return NextResponse.json(
         {
           error:
-            "Sem permissão para alterar apenas mercadorias. Use o perfil Recepção ou envie procedimentos (Administrador/Diretoria).",
+            "Sem permissão para incluir mercadorias neste agendamento.",
         },
         { status: 403 },
       );

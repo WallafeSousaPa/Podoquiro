@@ -111,6 +111,14 @@ export async function getUsuarioPodeMenuChave(
   }
 }
 
+/** Incluir mercadoria no modal do Caixa: basta o menu `financeiro.caixa`. */
+export async function getUsuarioPodeIncluirProdutoModalCaixa(
+  supabase: SupabaseClient,
+  idUsuario: number,
+): Promise<boolean> {
+  return getUsuarioPodeMenuChave(supabase, idUsuario, "financeiro.caixa");
+}
+
 /** Resolve se o usuário pode acessar o menu e telas de Nota Fiscal (API e página). */
 export async function getUsuarioPodeMenuNotaFiscal(
   supabase: SupabaseClient,
@@ -243,6 +251,14 @@ async function nomeGrupoDoUsuario(
   const gRaw = u.usuarios_grupos as G | G[] | null | undefined;
   const g = Array.isArray(gRaw) ? gRaw[0] : gRaw;
   return g?.grupo_usuarios ?? null;
+}
+
+/** Resolve se o usuário é do tipo Administrador (não inclui Administrativo nem Diretoria). */
+export async function getUsuarioGrupoAdministrador(
+  supabase: SupabaseClient,
+  idUsuario: number,
+): Promise<boolean> {
+  return grupoUsuariosAdministrador(await nomeGrupoDoUsuario(supabase, idUsuario));
 }
 
 /** Resolve se o usuário pode cancelar saída de estoque (Administrador ou Diretoria). */

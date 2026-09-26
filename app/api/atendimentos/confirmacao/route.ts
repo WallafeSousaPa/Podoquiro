@@ -5,6 +5,7 @@ import {
 } from "@/lib/agenda/permissoes-calendario";
 import { obterConfigAsaas } from "@/lib/asaas";
 import { sincronizarTaxaComPaymentLinkAsaas } from "@/lib/asaas/sincronizar-taxa";
+import { confirmarAgendamentoPendentePorTaxaPaga } from "@/lib/financeiro/confirmar-agendamento-por-taxa";
 import { getSession } from "@/lib/auth/session";
 import { createAdminClient } from "@/lib/supabase/admin";
 
@@ -137,7 +138,8 @@ export async function GET(request: Request) {
         const taxas = Array.isArray(taxasRaw) ? taxasRaw : taxasRaw ? [taxasRaw] : [];
         return taxas.filter(
           (t) =>
-            t.status === "pendente" && (t.asaas_payment_id || t.asaas_payment_link_id),
+            (t.status === "pendente" || t.status === "cancelado") &&
+            (t.asaas_payment_id || t.asaas_payment_link_id),
         );
       })
       .slice(0, 15);
@@ -163,6 +165,15 @@ export async function GET(request: Request) {
         data = refreshed.data;
       }
     }
+  }
+
+  for (const row of data ?? []) {
+    if (String(row.status) !== "pendente") continue;
+    const taxasRaw = row.agendamento_taxa_rede as TaxaRow | TaxaRow[] | null;
+    const taxas = Array.isArray(taxasRaw) ? taxasRaw : taxasRaw ? [taxasRaw] : [];
+    if (!taxas.some((t) => t.status === "pago")) continue;
+    await confirmarAgendamentoPendentePorTaxaPaga(supabase, row.id as number);
+    row.status = "confirmado";
   }
 
   const rows = (data ?? []).map((row) => {

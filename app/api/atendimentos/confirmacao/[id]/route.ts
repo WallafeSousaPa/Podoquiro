@@ -7,6 +7,12 @@ import { expiraEmFromEndDate, obterConfigAsaas } from "@/lib/asaas";
 import { criarCobrancaAsaas } from "@/lib/asaas/cobranca";
 import { obterOuCriarClienteAvulsoAsaas } from "@/lib/asaas/cliente-avulso";
 import { confirmarAgendamentoComTaxaDinheiro } from "@/lib/financeiro/confirmacao-taxa-dinheiro";
+import {
+  agendamentoTemTaxaPaga,
+  cancelarTaxasPendentesAgendamento,
+  confirmarAgendamentoPendentePorTaxaPaga,
+  efetivarTaxaPagaMesmoSeCancelada,
+} from "@/lib/financeiro/confirmar-agendamento-por-taxa";
 import { getSession } from "@/lib/auth/session";
 import { urlPublicaPagamentoTaxa } from "@/lib/rede/url-pagamento";
 import { createAdminClient } from "@/lib/supabase/admin";
@@ -217,6 +223,42 @@ export async function PUT(request: Request, context: RouteContext) {
     );
   }
 
+  if (await agendamentoTemTaxaPaga(supabase, idAgendamento)) {
+    await confirmarAgendamentoPendentePorTaxaPaga(supabase, idAgendamento);
+    return NextResponse.json(
+      {
+        error:
+          "Já existe taxa paga para este agendamento. Não é necessário gerar outro link.",
+      },
+      { status: 400 },
+    );
+  }
+
+  try {
+    const subst = await cancelarTaxasPendentesAgendamento(supabase, idAgendamento, {
+      asaasConfig,
+    });
+    if (subst.jaPagoRemotoIdTaxa != null) {
+      await efetivarTaxaPagaMesmoSeCancelada(supabase, {
+        idTaxa: subst.jaPagoRemotoIdTaxa,
+        idAgendamento,
+      });
+      return NextResponse.json(
+        {
+          error:
+            "O link anterior já foi pago. O agendamento foi confirmado.",
+        },
+        { status: 400 },
+      );
+    }
+  } catch (e) {
+    console.error(e);
+    return NextResponse.json(
+      { error: e instanceof Error ? e.message : "Erro ao substituir o link anterior." },
+      { status: 500 },
+    );
+  }
+
   const descricao = `Taxa de agendamento #${idAgendamento}`;
 
   let cobrancaResult;
@@ -240,12 +282,6 @@ export async function PUT(request: Request, context: RouteContext) {
   const expiraEm =
     expiraEmFromEndDate(cobrancaResult.dueDate) ??
     new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
-
-  await supabase
-    .from("agendamento_taxa_rede")
-    .update({ status: "cancelado" })
-    .eq("id_agendamento", idAgendamento)
-    .eq("status", "pendente");
 
   const { data: ins, error: insErr } = await supabase
     .from("agendamento_taxa_rede")

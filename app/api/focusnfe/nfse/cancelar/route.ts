@@ -39,16 +39,6 @@ export async function POST(request: Request) {
   }
 
   const supabase = createAdminClient();
-  const config = await obterConfigFocusNfe(supabase, empresaId);
-  if (!config) {
-    return NextResponse.json({ error: "Focus NFe não configurado." }, { status: 400 });
-  }
-
-  const token = await obterTokenFocusNfe(supabase, empresaId);
-  if (!token) {
-    return NextResponse.json({ error: "Token Focus NFe não configurado." }, { status: 400 });
-  }
-
   const { data: emissao, error } = await supabase
     .from("nfse_focus_emissoes")
     .select("id, focus_ref, status")
@@ -63,6 +53,17 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Emissão não encontrada." }, { status: 404 });
   }
 
+  const ref = emissao.focus_ref as string;
+  if (String(ref).startsWith("adn-")) {
+    return NextResponse.json(
+      {
+        error:
+          "Esta NFS-e foi emitida direto na prefeitura. O cancelamento por esta tela ainda não está disponível.",
+      },
+      { status: 400 },
+    );
+  }
+
   const statusAtual = String(emissao.status ?? "");
   if (statusAtual.toLowerCase() === "cancelado") {
     return NextResponse.json({ error: "NFS-e já cancelada." }, { status: 409 });
@@ -74,7 +75,15 @@ export async function POST(request: Request) {
     );
   }
 
-  const ref = emissao.focus_ref as string;
+  const config = await obterConfigFocusNfe(supabase, empresaId);
+  if (!config) {
+    return NextResponse.json({ error: "Focus NFe não configurado." }, { status: 400 });
+  }
+
+  const token = await obterTokenFocusNfe(supabase, empresaId);
+  if (!token) {
+    return NextResponse.json({ error: "Token Focus NFe não configurado." }, { status: 400 });
+  }
 
   let cancelamento;
   try {

@@ -4,6 +4,11 @@ import { consultarPagamentoAsaasPorId } from "./cobranca";
 import { consultarPagamentoDoLinkAsaas, statusInternoTaxaFromAsaas } from "./payment-link";
 import { labelFormaPagamentoFromAsaasBillingType } from "@/lib/financeiro/taxa-forma-pagamento";
 import { registrarCaixaMovimentoTaxaSePago } from "@/lib/financeiro/caixa-movimento";
+import {
+  cancelarTaxasPendentesAgendamento,
+  confirmarAgendamentoPendentePorTaxaPaga,
+  efetivarTaxaPagaMesmoSeCancelada,
+} from "@/lib/financeiro/confirmar-agendamento-por-taxa";
 
 type TaxaRow = {
   id: number;
@@ -53,14 +58,13 @@ export async function sincronizarTaxaComAsaas(
   config: AsaasConfig,
   taxa: TaxaRow,
 ): Promise<{ atualizado: boolean; status: string; statusAsaas: string | null }> {
-  if (taxa.status === "pago" || taxa.status === "cancelado" || taxa.status === "expirado") {
-    if (taxa.status === "pago") {
-      try {
-        await registrarCaixaMovimentoTaxaSePago(supabase, taxa.id);
-      } catch (e) {
-        console.error("caixa_movimento taxa asaas sync:", e);
-      }
+  if (taxa.status === "pago") {
+    try {
+      await registrarCaixaMovimentoTaxaSePago(supabase, taxa.id);
+    } catch (e) {
+      console.error("caixa_movimento taxa asaas sync:", e);
     }
+    await confirmarAgendamentoPendentePorTaxaPaga(supabase, taxa.id_agendamento);
     return { atualizado: false, status: taxa.status, statusAsaas: null };
   }
 
@@ -72,6 +76,46 @@ export async function sincronizarTaxaComAsaas(
   const map = statusInternoTaxaFromAsaas(detalhe.statusPagamento);
   if (!map.status) {
     return { atualizado: false, status: taxa.status, statusAsaas: detalhe.statusPagamento };
+  }
+
+  if (
+    (taxa.status === "cancelado" || taxa.status === "expirado") &&
+    !map.confirmarAgendamento
+  ) {
+    return { atualizado: false, status: taxa.status, statusAsaas: detalhe.statusPagamento };
+  }
+
+  if (
+    (taxa.status === "cancelado" || taxa.status === "expirado") &&
+    map.confirmarAgendamento
+  ) {
+    await efetivarTaxaPagaMesmoSeCancelada(supabase, {
+      idTaxa: taxa.id,
+      idAgendamento: taxa.id_agendamento,
+      asaasPaymentId: detalhe.paymentId,
+      respostaBruta:
+        detalhe.respostaBruta && typeof detalhe.respostaBruta === "object"
+          ? (detalhe.respostaBruta as object)
+          : undefined,
+    });
+    const forma =
+      labelFormaPagamentoFromAsaasBillingType(detalhe.billingType) ?? undefined;
+    try {
+      await registrarCaixaMovimentoTaxaSePago(supabase, taxa.id, {
+        formaPagamento: forma,
+      });
+    } catch (e) {
+      console.error("caixa_movimento taxa asaas sync:", e);
+    }
+    try {
+      await cancelarTaxasPendentesAgendamento(supabase, taxa.id_agendamento, {
+        asaasConfig: config,
+        excetoIdTaxa: taxa.id,
+      });
+    } catch (e) {
+      console.error("cancelar taxas irmãs após link antigo pago:", e);
+    }
+    return { atualizado: true, status: "pago", statusAsaas: detalhe.statusPagamento };
   }
 
   const patch: Record<string, unknown> = {
@@ -101,11 +145,15 @@ export async function sincronizarTaxaComAsaas(
   }
 
   if (map.confirmarAgendamento) {
-    await supabase
-      .from("agendamentos")
-      .update({ status: "confirmado" })
-      .eq("id", taxa.id_agendamento)
-      .eq("status", "pendente");
+    await confirmarAgendamentoPendentePorTaxaPaga(supabase, taxa.id_agendamento);
+    try {
+      await cancelarTaxasPendentesAgendamento(supabase, taxa.id_agendamento, {
+        asaasConfig: config,
+        excetoIdTaxa: taxa.id,
+      });
+    } catch (e) {
+      console.error("cancelar taxas irmãs após pagamento:", e);
+    }
   }
 
   return {

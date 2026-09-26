@@ -10,7 +10,7 @@ function assinarPorTagLocal(
   xml: string,
   pfx: Buffer,
   senhaCertificado: string,
-  tagLocal: "infNFe" | "infEvento",
+  tagLocal: "infNFe" | "infEvento" | "infDPS" | "Lote",
 ): string {
   const { cert, key } = pfxBufferParaCertKeyPem(pfx, senhaCertificado);
   const c14nNfe = "http://www.w3.org/TR/2001/REC-xml-c14n-20010315";
@@ -46,4 +46,22 @@ export function assinarEventoNfeXml(
   senhaCertificado: string,
 ): string {
   return assinarPorTagLocal(xmlEvento, pfx, senhaCertificado, "infEvento");
+}
+
+/** Assina o elemento `Lote` (Id) no XML DSF ReqEnvioLoteRPS. */
+export function assinarLoteDsfXml(
+  xmlLote: string,
+  pfx: Buffer,
+  senhaCertificado: string,
+): string {
+  return assinarPorTagLocal(xmlLote, pfx, senhaCertificado, "Lote");
+}
+
+/** Assina `infDPS` (NFS-e nacional) no XML `<DPS>...</DPS>`. */
+export function assinarDpsXml(
+  xmlDps: string,
+  pfx: Buffer,
+  senhaCertificado: string,
+): string {
+  return assinarPorTagLocal(xmlDps, pfx, senhaCertificado, "infDPS");
 }

@@ -20,6 +20,7 @@ export {
   obterConfigFocusNfe,
   obterTokenFocusNfe,
   validarConfigFocusParaEmissao,
+  validarConfigPrestadorNfseNacional,
   type ConfigFocusNfeEmpresa,
 } from "./config";
 export {

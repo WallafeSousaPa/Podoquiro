@@ -2,6 +2,11 @@ import { NextResponse } from "next/server";
 import { obterConfigAsaas } from "@/lib/asaas";
 import { statusInternoTaxaFromAsaas } from "@/lib/asaas/payment-link";
 import { registrarCaixaMovimentoTaxaSePago } from "@/lib/financeiro/caixa-movimento";
+import {
+  cancelarTaxasPendentesAgendamento,
+  confirmarAgendamentoPendentePorTaxaPaga,
+  efetivarTaxaPagaMesmoSeCancelada,
+} from "@/lib/financeiro/confirmar-agendamento-por-taxa";
 import { labelFormaPagamentoFromAsaasBillingType } from "@/lib/financeiro/taxa-forma-pagamento";
 import { createAdminClient } from "@/lib/supabase/admin";
 
@@ -95,20 +100,56 @@ export async function POST(request: Request) {
     return NextResponse.json({ ok: true, ignorado: true });
   }
 
-  if (taxa.status === "pago" || taxa.status === "cancelado" || taxa.status === "expirado") {
-    if (taxa.status === "pago") {
+  if (taxa.status === "pago") {
+    try {
+      await registrarCaixaMovimentoTaxaSePago(supabase, taxa.id as number, {
+        formaPagamento:
+          labelFormaPagamentoFromAsaasBillingType(
+            typeof payment.billingType === "string" ? payment.billingType : null,
+          ) ?? undefined,
+      });
+    } catch (e) {
+      console.error("caixa_movimento taxa asaas:", e);
+    }
+    await confirmarAgendamentoPendentePorTaxaPaga(supabase, taxa.id_agendamento);
+    return NextResponse.json({ ok: true, atualizado: false });
+  }
+
+  if (
+    (taxa.status === "cancelado" || taxa.status === "expirado") &&
+    !map.confirmarAgendamento
+  ) {
+    return NextResponse.json({ ok: true, atualizado: false });
+  }
+
+  if (taxa.status === "cancelado" || taxa.status === "expirado") {
+    try {
+      await efetivarTaxaPagaMesmoSeCancelada(supabase, {
+        idTaxa: taxa.id,
+        idAgendamento: taxa.id_agendamento,
+        asaasPaymentId: paymentId,
+        respostaBruta: body as object,
+      });
+      const billingType =
+        typeof payment.billingType === "string" ? payment.billingType : null;
+      const forma =
+        labelFormaPagamentoFromAsaasBillingType(billingType) ?? undefined;
       try {
         await registrarCaixaMovimentoTaxaSePago(supabase, taxa.id as number, {
-          formaPagamento:
-            labelFormaPagamentoFromAsaasBillingType(
-              typeof payment.billingType === "string" ? payment.billingType : null,
-            ) ?? undefined,
+          formaPagamento: forma,
         });
       } catch (e) {
         console.error("caixa_movimento taxa asaas:", e);
       }
+      await cancelarTaxasPendentesAgendamento(supabase, taxa.id_agendamento, {
+        asaasConfig: config,
+        excetoIdTaxa: taxa.id,
+      });
+    } catch (e) {
+      console.error("efetivar taxa cancelada paga:", e);
+      return NextResponse.json({ error: "Erro ao confirmar taxa antiga." }, { status: 500 });
     }
-    return NextResponse.json({ ok: true, atualizado: false });
+    return NextResponse.json({ ok: true, atualizado: true, link_antigo: true });
   }
 
   const patch: Record<string, unknown> = {
@@ -135,11 +176,15 @@ export async function POST(request: Request) {
   }
 
   if (map.confirmarAgendamento) {
-    await supabase
-      .from("agendamentos")
-      .update({ status: "confirmado" })
-      .eq("id", taxa.id_agendamento)
-      .eq("status", "pendente");
+    await confirmarAgendamentoPendentePorTaxaPaga(supabase, taxa.id_agendamento);
+    try {
+      await cancelarTaxasPendentesAgendamento(supabase, taxa.id_agendamento, {
+        asaasConfig: config,
+        excetoIdTaxa: taxa.id,
+      });
+    } catch (e) {
+      console.error("cancelar taxas irmãs após pagamento:", e);
+    }
   }
 
   return NextResponse.json({ ok: true, atualizado: true });

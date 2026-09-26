@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { obterConfigAsaas } from "@/lib/asaas";
 import { sincronizarTaxaComPaymentLinkAsaas } from "@/lib/asaas/sincronizar-taxa";
 import { registrarCaixaMovimentoTaxaSePago } from "@/lib/financeiro/caixa-movimento";
+import { confirmarAgendamentoPendentePorTaxaPaga } from "@/lib/financeiro/confirmar-agendamento-por-taxa";
 import { createAdminClient } from "@/lib/supabase/admin";
 
 type RouteContext = { params: Promise<{ token: string }> };
@@ -55,7 +56,9 @@ export async function GET(_request: Request, context: RouteContext) {
 
   if (
     asaasConfig &&
-    row.status === "pendente" &&
+    (row.status === "pendente" ||
+      row.status === "cancelado" ||
+      row.status === "expirado") &&
     (row.asaas_payment_id || row.asaas_payment_link_id)
   ) {
     try {
@@ -85,6 +88,7 @@ export async function GET(_request: Request, context: RouteContext) {
     } catch (e) {
       console.error("caixa_movimento taxa token:", e);
     }
+    await confirmarAgendamentoPendentePorTaxaPaga(supabase, row.id_agendamento as number);
   }
 
   if (row.status === "pendente" && row.expira_em) {

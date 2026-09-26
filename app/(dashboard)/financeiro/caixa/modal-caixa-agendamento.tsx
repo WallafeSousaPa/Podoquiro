@@ -32,13 +32,26 @@ type ProdLinha = {
   desconto_texto: string;
 };
 
+type ProdutoCatCaixa = {
+  id: string;
+  produto: string;
+  preco_venda: number | null;
+  un_medida: string;
+  qtd_estoque: number;
+};
+
+function precoVendaUnitarioCat(p: { preco_venda: number | null } | undefined): number {
+  const v = p?.preco_venda != null ? Number(p.preco_venda) : NaN;
+  return Number.isFinite(v) && v > 0 ? v : 0;
+}
+
 function subtotalProdutosAgendamento(
   linhas: ProdLinha[],
-  cat: { id: string; preco: number }[],
+  cat: ProdutoCatCaixa[],
 ): number {
   let s = 0;
   for (const l of linhas) {
-    const pu = cat.find((x) => x.id === l.id_produto)?.preco ?? 0;
+    const pu = precoVendaUnitarioCat(cat.find((x) => x.id === l.id_produto));
     const bruto = Math.round(l.qtd * pu * 100) / 100;
     s += Math.max(0, Math.round((bruto - l.valor_desconto) * 100) / 100);
   }
@@ -176,9 +189,7 @@ export function ModalCaixaAgendamento({
 
   const [procedimentos, setProcedimentos] = useState<ProcLinha[]>([]);
   const [produtosLinhas, setProdutosLinhas] = useState<ProdLinha[]>([]);
-  const [produtosCat, setProdutosCat] = useState<
-    { id: string; produto: string; preco: number; un_medida: string; qtd_estoque: number }[]
-  >([]);
+  const [produtosCat, setProdutosCat] = useState<ProdutoCatCaixa[]>([]);
   const [pagamentos, setPagamentos] = useState<PagLinha[]>([]);
   /** Desconto % do agendamento (editável no caixa para perfil admin). */
   const [descontoAgendamentoTexto, setDescontoAgendamentoTexto] = useState("");
@@ -234,7 +245,8 @@ export function ModalCaixaAgendamento({
         data?: {
           id: string;
           produto: string;
-          preco: number;
+          preco?: number;
+          preco_venda?: number | null;
           un_medida: string;
           qtd_estoque?: number;
         }[];
@@ -242,13 +254,16 @@ export function ModalCaixaAgendamento({
       };
       if (!prodMercRes.ok) throw new Error(prodMercJ.error ?? "Erro ao carregar produtos.");
       setProdutosCat(
-        (prodMercJ.data ?? []).map((p) => ({
-          id: String(p.id),
-          produto: p.produto,
-          preco: Number(p.preco),
-          un_medida: p.un_medida || "UN",
-          qtd_estoque: Number(p.qtd_estoque ?? 0),
-        })),
+        (prodMercJ.data ?? []).map((p) => {
+          const venda = p.preco_venda != null ? Number(p.preco_venda) : NaN;
+          return {
+            id: String(p.id),
+            produto: p.produto,
+            preco_venda: Number.isFinite(venda) && venda > 0 ? venda : null,
+            un_medida: p.un_medida || "UN",
+            qtd_estoque: Number(p.qtd_estoque ?? 0),
+          };
+        }),
       );
 
       const fpJ = (await fpRes.json()) as {
@@ -445,8 +460,19 @@ export function ModalCaixaAgendamento({
     return produtosCat.find((x) => x.id === idProd)?.un_medida ?? "UN";
   }
 
+  function nomesProdutosSemPrecoVenda(): string[] {
+    const nomes: string[] = [];
+    for (const l of produtosLinhas) {
+      const cat = produtosCat.find((x) => x.id === l.id_produto);
+      if (cat && precoVendaUnitarioCat(cat) <= 0) nomes.push(cat.produto);
+    }
+    return nomes;
+  }
+
   function valorFinalProdLinha(l: ProdLinha) {
-    const pu = produtosCat.find((x) => x.id === l.id_produto)?.preco ?? 0;
+    const pu = precoVendaUnitarioCat(
+      produtosCat.find((x) => x.id === l.id_produto),
+    );
     const bruto = Math.round(l.qtd * pu * 100) / 100;
     return Math.max(0, Math.round((bruto - l.valor_desconto) * 100) / 100);
   }
@@ -644,7 +670,13 @@ export function ModalCaixaAgendamento({
           return;
         }
       }
-
+      const semVendaAdmin = nomesProdutosSemPrecoVenda();
+      if (semVendaAdmin.length > 0) {
+        setErro(
+          `Cadastre o valor de venda de: ${semVendaAdmin.join(", ")} (Estoque → Cadastro).`,
+        );
+        return;
+      }
       const vbProc =
         Math.round(procedimentos.reduce((s, p) => s + p.valor_aplicado, 0) * 100) /
         100;
@@ -752,7 +784,13 @@ export function ModalCaixaAgendamento({
           return;
         }
       }
-
+      const semVendaRec = nomesProdutosSemPrecoVenda();
+      if (semVendaRec.length > 0) {
+        setErro(
+          `Cadastre o valor de venda de: ${semVendaRec.join(", ")} (Estoque → Cadastro).`,
+        );
+        return;
+      }
       const vbProc =
         Math.round(procedimentos.reduce((s, p) => s + p.valor_aplicado, 0) * 100) /
         100;
@@ -1443,7 +1481,10 @@ export function ModalCaixaAgendamento({
                                   ) : null}
                                   {produtosCat.map((p) => (
                                     <option key={p.id} value={p.id}>
-                                      {p.produto} — {fmtBrl(p.preco)}/{p.un_medida}
+                                      {p.produto} —{" "}
+                                      {p.preco_venda != null
+                                        ? `${fmtBrl(p.preco_venda)}/${p.un_medida}`
+                                        : "sem venda"}
                                     </option>
                                   ))}
                                 </select>
@@ -1563,13 +1604,11 @@ export function ModalCaixaAgendamento({
                               className="alert alert-light border small mb-3"
                               role="status"
                             >
-                              <strong>Leitura:</strong> procedimentos e mercadorias só
-                              podem ser alterados por perfil{" "}
-                              <strong>Administrador</strong> ou{" "}
-                              <strong>Diretoria</strong>. Com seu perfil você pode
-                              registrar ou ajustar apenas os{" "}
-                              <strong>pagamentos</strong> quando o status for{" "}
-                              <strong>Realizado</strong>.
+                              <strong>Leitura:</strong> seu perfil não inclui mercadorias
+                              neste agendamento. Quem tem o menu <strong>Caixa</strong>{" "}
+                              liberado pode incluir produtos. Com seu perfil você pode
+                              registrar ou ajustar apenas os <strong>pagamentos</strong>{" "}
+                              quando o status for <strong>Realizado</strong>.
                             </div>
                             <strong className="d-block mb-2">Procedimentos</strong>
                             <ul className="small mb-3">

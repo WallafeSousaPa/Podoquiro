@@ -801,8 +801,12 @@ export function ConfirmarAtendimentoClient({
                         <button
                           type="button"
                           className="btn btn-sm btn-outline-primary mr-1"
-                          disabled={busy}
-                          title="Gera link de pagamento (página do app)"
+                          disabled={busy || ag.taxa_pagamento?.status === "pago"}
+                          title={
+                            ag.taxa_pagamento?.status === "pago"
+                              ? "Já existe taxa paga neste agendamento"
+                              : "Gera link de pagamento (página do app). Um novo link cancela o anterior no Asaas."
+                          }
                           onClick={() => void gerarLinkPagamento(ag.id, taxaPadrao || undefined)}
                         >
                           Link pagamento

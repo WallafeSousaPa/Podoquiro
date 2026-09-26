@@ -1,6 +1,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { RedeConfig } from "./config";
 import { registrarCaixaMovimentoTaxaSePago } from "@/lib/financeiro/caixa-movimento";
+import { confirmarAgendamentoPendentePorTaxaPaga } from "@/lib/financeiro/confirmar-agendamento-por-taxa";
 import {
   consultarLinkPagamentoRede,
   expiraEmFromPaymentLink,
@@ -32,6 +33,7 @@ export async function sincronizarTaxaComPaymentLinkRede(
       } catch (e) {
         console.error("caixa_movimento taxa rede sync:", e);
       }
+      await confirmarAgendamentoPendentePorTaxaPaga(supabase, taxa.id_agendamento);
     }
     return { atualizado: false, status: taxa.status, statusRede: null };
   }
@@ -68,11 +70,7 @@ export async function sincronizarTaxaComPaymentLinkRede(
   }
 
   if (map.confirmarAgendamento) {
-    await supabase
-      .from("agendamentos")
-      .update({ status: "confirmado" })
-      .eq("id", taxa.id_agendamento)
-      .eq("status", "pendente");
+    await confirmarAgendamentoPendentePorTaxaPaga(supabase, taxa.id_agendamento);
   }
 
   return {

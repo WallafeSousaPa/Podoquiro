@@ -748,6 +748,8 @@ export function AgendaCalendario({
   /** Somente hora (HH:mm); a data do término segue a do início. */
   const [horaFimLocal, setHoraFimLocal] = useState("");
   const [statusAg, setStatusAg] = useState<string>("pendente");
+  const [statusAgInicial, setStatusAgInicial] = useState<string>("pendente");
+  const [taxaAgendamentoPagaModal, setTaxaAgendamentoPagaModal] = useState(false);
   const [desconto, setDesconto] = useState("0");
   const [observacoes, setObservacoes] = useState("");
   const [saving, setSaving] = useState(false);
@@ -1113,6 +1115,8 @@ export function AgendaCalendario({
     setFormError(null);
     setErroModal(null);
     setStatusAg("pendente");
+    setStatusAgInicial("pendente");
+    setTaxaAgendamentoPagaModal(false);
     setDesconto("0");
     setObservacoes("");
     setModalProcLinhas([]);
@@ -1194,6 +1198,7 @@ export function AgendaCalendario({
           status: string;
           desconto: number;
           observacoes: string | null;
+          taxa_agendamento_paga?: number;
           procedimentos: {
             id_procedimento: number;
             valor_aplicado: number;
@@ -1241,6 +1246,8 @@ export function AgendaCalendario({
       setInicioLocal(loc(a));
       setHoraFimLocal(formatHoraLocal(b));
       setStatusAg(d.status);
+      setStatusAgInicial(d.status);
+      setTaxaAgendamentoPagaModal(Number(d.taxa_agendamento_paga ?? 0) > 0);
       setDesconto(String(d.desconto));
       setObservacoes(d.observacoes ?? "");
 
@@ -1386,9 +1393,11 @@ export function AgendaCalendario({
         id_sala: isl,
         data_hora_inicio: inicioIso,
         data_hora_fim: fimIso,
-        status: statusAg,
         observacoes: observacoes.trim() || null,
       };
+      if (!editingId || statusAg !== statusAgInicial) {
+        body.status = statusAg;
+      }
       /** Só envia desconto quando o perfil pode alterá-lo (alinhado ao PATCH em `/api/agendamentos/[id]`). Recepção e demais perfis não enviam o campo — evita 403 ao mudar status. */
       if (perfilAdminAgenda) {
         body.desconto = Number(desconto.replace(",", ".")) || 0;
@@ -3341,8 +3350,12 @@ export function AgendaCalendario({
                         value={statusAg}
                         onChange={(e) => setStatusAg(e.target.value)}
                       >
-                        <option value="pendente">Pendente</option>
-                        {!agendamentosConfirmacao || statusAg === "confirmado" ? (
+                        {!taxaAgendamentoPagaModal || statusAg === "pendente" ? (
+                          <option value="pendente">Pendente</option>
+                        ) : null}
+                        {!agendamentosConfirmacao ||
+                        statusAg === "confirmado" ||
+                        taxaAgendamentoPagaModal ? (
                           <option value="confirmado">Confirmado</option>
                         ) : null}
                         <option value="em_andamento">Em andamento</option>

@@ -1,4 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { aplicarPrecoTabelaLoja, vendaEfetivaTabela } from "@/lib/estoque/tabelas-preco";
 
 export type RowAgProdInsert = {
   id_agendamento: number;
@@ -11,7 +12,8 @@ export type RowAgProdInsert = {
 
 /**
  * Monta linhas para `agendamento_produtos` a partir do body do PATCH (mercadorias).
- * `forcarValorDescontoZero`: perfil Recepção não envia desconto em R$ por linha.
+ * `forcarValorDescontoZero`: quem não é Administrador/Diretoria não aplica desconto em R$ por linha.
+ * Unitário = preço de venda da loja (não o custo `preco`).
  */
 export async function montarLinhasProdutosAgendamentoDoBody(
   supabase: SupabaseClient,
@@ -69,18 +71,30 @@ export async function montarLinhasProdutosAgendamentoDoBody(
     const pids = [...new Set(produtosInsert.map((r) => r.id_produto))];
     const { data: prodRows, error: prodErr } = await supabase
       .from("produtos")
-      .select("id, id_empresa, servico, preco")
+      .select("id, id_empresa, servico, produto, preco_venda")
       .in("id", pids);
     if (prodErr) {
       return { ok: false, status: 500, error: prodErr.message };
     }
+    const comTabela = await aplicarPrecoTabelaLoja(
+      supabase,
+      (prodRows ?? []) as {
+        id: string;
+        id_empresa: number;
+        servico: boolean;
+        produto: string;
+        preco_venda: number | null;
+      }[],
+      empresaId,
+    );
     const prodMap = new Map(
-      (prodRows ?? []).map((r) => [
+      comTabela.map((r) => [
         String(r.id),
         {
-          id_empresa: r.id_empresa as number,
+          id_empresa: Number(r.id_empresa),
           servico: Boolean(r.servico),
-          preco: Number(r.preco),
+          nome: String(r.produto ?? "Produto"),
+          preco_venda: r.preco_venda,
         },
       ]),
     );
@@ -100,23 +114,23 @@ export async function montarLinhasProdutosAgendamentoDoBody(
           error: "Use apenas mercadorias (produtos não marcados como serviço).",
         };
       }
-      if (!Number.isFinite(meta.preco) || meta.preco < 0) {
+      const vUnit = vendaEfetivaTabela(meta.preco_venda, null);
+      if (vUnit == null) {
         return {
           ok: false,
           status: 400,
-          error: "Preço do produto inválido no cadastro.",
+          error: `"${meta.nome}" não tem valor de venda cadastrado. Cadastre em Estoque → Cadastro.`,
         };
       }
-      const vUnit = Math.round(meta.preco * 100) / 100;
       const brutoLinha = Math.round(row.qtd * vUnit * 100) / 100;
       if (row.valor_desconto > brutoLinha + 0.001) {
         return {
           ok: false,
           status: 400,
-          error: "Desconto do produto não pode ser maior que o subtotal (qtd × preço).",
+          error: "Desconto do produto não pode ser maior que o subtotal (qtd × preço de venda).",
         };
       }
-      row.valor_produto = vUnit;
+      row.valor_produto = Math.round(vUnit * 100) / 100;
       row.valor_final = Math.round((brutoLinha - row.valor_desconto) * 100) / 100;
     }
   }

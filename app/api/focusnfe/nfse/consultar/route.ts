@@ -35,15 +35,6 @@ export async function POST(request: Request) {
   }
 
   const supabase = createAdminClient();
-  const config = await obterConfigFocusNfe(supabase, empresaId);
-  if (!config) {
-    return NextResponse.json({ error: "Focus NFe não configurado." }, { status: 400 });
-  }
-
-  const token = await obterTokenFocusNfe(supabase, empresaId);
-  if (!token) {
-    return NextResponse.json({ error: "Token Focus NFe não configurado." }, { status: 400 });
-  }
 
   let q = supabase
     .from("nfse_focus_emissoes")
@@ -67,6 +58,38 @@ export async function POST(request: Request) {
   }
 
   const ref = emissao.focus_ref as string;
+
+  if (String(ref).startsWith("adn-")) {
+    return NextResponse.json({
+      ok: true,
+      emissao: {
+        id: emissao.id,
+        focus_ref: emissao.focus_ref,
+        status: emissao.status,
+        numero_nfse: emissao.numero_nfse,
+        codigo_verificacao: emissao.codigo_verificacao,
+        numero_rps: emissao.numero_rps,
+        serie_rps: emissao.serie_rps,
+        url_danfse: emissao.url_danfse,
+        error_message: emissao.error_message,
+        emitted_at: emissao.emitted_at,
+        valor_servicos: emissao.valor_servicos,
+        discriminacao: emissao.discriminacao,
+      },
+      focus: { status: emissao.status },
+      status_interno: statusInternoDeFocus(emissao.status as string),
+    });
+  }
+
+  const config = await obterConfigFocusNfe(supabase, empresaId);
+  if (!config) {
+    return NextResponse.json({ error: "Focus NFe não configurado." }, { status: 400 });
+  }
+
+  const token = await obterTokenFocusNfe(supabase, empresaId);
+  if (!token) {
+    return NextResponse.json({ error: "Token Focus NFe não configurado." }, { status: 400 });
+  }
 
   let consulta;
   try {

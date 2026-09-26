@@ -172,3 +172,40 @@ export async function consultarPagamentoAsaasPorId(
     respostaBruta: body,
   };
 }
+
+/**
+ * Cancela cobrança pendente no Asaas (DELETE /v3/payments/{id}).
+ * Se já estiver paga, retorna `ja_paga` para o chamador confirmar o agendamento.
+ */
+export async function cancelarCobrancaAsaasSePendente(
+  config: AsaasConfig,
+  paymentId: string,
+): Promise<"cancelada" | "ja_paga" | "ignorada"> {
+  const id = paymentId.trim();
+  if (!id) return "ignorada";
+
+  try {
+    const det = await consultarPagamentoAsaasPorId(config, id);
+    const map = statusInternoTaxaFromAsaas(det.statusPagamento);
+    if (map.confirmarAgendamento) return "ja_paga";
+    if (map.status === "cancelado" || map.status === "expirado") return "ignorada";
+  } catch (e) {
+    console.error("consultar cobrança Asaas para cancelar:", e);
+  }
+
+  const url = `${config.baseUrl}/v3/payments/${encodeURIComponent(id)}`;
+  const res = await fetch(url, { method: "DELETE", headers: headersAsaas(config) });
+  const body = await parseJson(res);
+  if (!res.ok) {
+    try {
+      const det = await consultarPagamentoAsaasPorId(config, id);
+      const map = statusInternoTaxaFromAsaas(det.statusPagamento);
+      if (map.confirmarAgendamento) return "ja_paga";
+    } catch {
+      /* ignore */
+    }
+    console.error("cancelar cobrança Asaas:", mensagemErro(body, res.status));
+    return "ignorada";
+  }
+  return "cancelada";
+}

@@ -104,11 +104,10 @@ export async function obterConfigFocusNfe(
   };
 }
 
-export function validarConfigFocusParaEmissao(
+/** Prestador/IM/município/cTribMun — usado na Focus e na emissão direta Sefin. */
+export function validarConfigPrestadorNfseNacional(
   config: ConfigFocusNfeEmpresa,
-  temToken: boolean,
 ): string | null {
-  if (!temToken) return "Configure o token Focus NFe em Parâmetros.";
   if (config.prestadorCnpj.length !== 14) {
     return "CNPJ do prestador inválido nos parâmetros Focus NFe.";
   }
@@ -122,4 +121,12 @@ export function validarConfigFocusParaEmissao(
     return "Informe o código de tributação municipal (cTribMun) nos parâmetros Focus NFe.";
   }
   return null;
+}
+
+export function validarConfigFocusParaEmissao(
+  config: ConfigFocusNfeEmpresa,
+  temToken: boolean,
+): string | null {
+  if (!temToken) return "Configure o token Focus NFe em Parâmetros.";
+  return validarConfigPrestadorNfseNacional(config);
 }
