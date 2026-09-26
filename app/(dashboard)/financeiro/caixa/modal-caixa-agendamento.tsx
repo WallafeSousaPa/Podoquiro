@@ -12,7 +12,10 @@ import {
 import { calcularValorTotal } from "@/lib/agenda/totais";
 import { totalAReceberCaixaComTaxa } from "@/lib/financeiro/taxa-agendamento-caixa";
 import { agendamentoExigeRetornoNoCaixa } from "@/lib/agenda/retorno-agendamento";
-import { formaPagamentoEhCartao } from "@/lib/financeiro/forma-pagamento-cartao";
+import {
+  formaPagamentoEhCartao,
+  formaPagamentoExigeMaquineta,
+} from "@/lib/financeiro/forma-pagamento-cartao";
 import { ModalAgendarRetornoCaixa } from "@/components/modal-agendar-retorno-caixa";
 import { dataReferenciaBrasilia } from "@/lib/financeiro/data-referencia-brasilia";
 import {
@@ -709,6 +712,11 @@ export function ModalCaixaAgendamento({
           );
           return;
         }
+        const erroMaq = mensagemErroPagamentosMaquineta();
+        if (erroMaq) {
+          setErro(erroMaq);
+          return;
+        }
         const caixaOk = await garantirCaixaHabilitadoParaPagamento();
         if (!caixaOk) return;
       }
@@ -823,6 +831,11 @@ export function ModalCaixaAgendamento({
           setErro(
             `A soma dos pagamentos (${fmtBrl(somaPgR)}) deve ser igual ao total a receber (${fmtBrl(totalEsp)})${taxaMsgR}. Ajuste os valores antes de salvar.`,
           );
+          return;
+        }
+        const erroMaqR = mensagemErroPagamentosMaquineta();
+        if (erroMaqR) {
+          setErro(erroMaqR);
           return;
         }
         const caixaOkR = await garantirCaixaHabilitadoParaPagamento();
@@ -969,6 +982,11 @@ export function ModalCaixaAgendamento({
       setErro(
         `A soma dos pagamentos (${fmtBrl(somaPg)}) deve ser igual ao total a receber (${fmtBrl(totalEsperado)})${taxaMsgOnly}. Ajuste os valores antes de salvar.`,
       );
+      return;
+    }
+    const erroMaqOnly = mensagemErroPagamentosMaquineta();
+    if (erroMaqOnly) {
+      setErro(erroMaqOnly);
       return;
     }
     const caixaOk = await garantirCaixaHabilitadoParaPagamento();
@@ -1127,6 +1145,30 @@ export function ModalCaixaAgendamento({
   function formaEhCartao(idForma: number) {
     const f = formasPg.find((x) => x.id === idForma);
     return formaPagamentoEhCartao(f?.agrupamento_caixa, f?.nome);
+  }
+
+  function formaExigeMaquineta(idForma: number) {
+    const f = formasPg.find((x) => x.id === idForma);
+    return formaPagamentoExigeMaquineta(f?.agrupamento_caixa, f?.nome);
+  }
+
+  function mensagemErroPagamentosMaquineta(): string | null {
+    for (const p of pagamentos) {
+      if (!p.id_forma_pagamento) continue;
+      if (
+        formaExigeMaquineta(p.id_forma_pagamento) &&
+        (p.id_maquineta == null || p.id_maquineta <= 0)
+      ) {
+        return `Selecione a maquineta para o pagamento em ${nomeForma(p.id_forma_pagamento)}.`;
+      }
+      if (
+        formaEhCartao(p.id_forma_pagamento) &&
+        (p.id_bandeira == null || p.id_bandeira <= 0)
+      ) {
+        return `Selecione a bandeira para o pagamento com cartão (${nomeForma(p.id_forma_pagamento)}).`;
+      }
+    }
+    return null;
   }
 
   function nomeMaquineta(id: number | null) {
@@ -1789,8 +1831,15 @@ export function ModalCaixaAgendamento({
                                 {caixaBusy ? "Verificando caixa…" : "+ Pagamento"}
                               </button>
                             </div>
+                            <p className="small text-muted mb-2">
+                              PIX, link de pagamento e cartão exigem a <strong>maquineta</strong>{" "}
+                              (REDE, TON, CREDISHOP etc.).
+                            </p>
                             {pagamentos.map((linha, idx) => {
                               const linhaCartao = formaEhCartao(linha.id_forma_pagamento);
+                              const linhaExigeMaquineta = formaExigeMaquineta(
+                                linha.id_forma_pagamento,
+                              );
                               return (
                               <div key={idx} className="form-row align-items-end mb-2">
                                 <div className="form-group col-md-3 mb-0">
@@ -1801,13 +1850,14 @@ export function ModalCaixaAgendamento({
                                     onChange={(e) => {
                                       const v = Number(e.target.value);
                                       const cartao = formaEhCartao(v);
+                                      const exigeMaq = formaExigeMaquineta(v);
                                       setPagamentos((prev) =>
                                         prev.map((p, i) =>
                                           i === idx
                                             ? {
                                                 ...p,
                                                 id_forma_pagamento: v,
-                                                id_maquineta: cartao ? p.id_maquineta : null,
+                                                id_maquineta: exigeMaq ? p.id_maquineta : null,
                                                 id_bandeira: cartao ? p.id_bandeira : null,
                                               }
                                             : p,
@@ -1822,68 +1872,79 @@ export function ModalCaixaAgendamento({
                                     ))}
                                   </select>
                                 </div>
+                                {linhaExigeMaquineta ? (
+                                  <div className="form-group col-md-3 mb-0">
+                                    <label className="small">
+                                      Maquineta <span className="text-danger">*</span>
+                                    </label>
+                                    <select
+                                      className={`form-control form-control-sm${
+                                        linha.id_maquineta == null ? " is-invalid" : ""
+                                      }`}
+                                      required
+                                      value={linha.id_maquineta ?? ""}
+                                      onChange={(e) => {
+                                        const v = e.target.value;
+                                        setPagamentos((prev) =>
+                                          prev.map((p, i) =>
+                                            i === idx
+                                              ? {
+                                                  ...p,
+                                                  id_maquineta:
+                                                    v === "" ? null : Number(v),
+                                                }
+                                              : p,
+                                          ),
+                                        );
+                                      }}
+                                    >
+                                      <option value="">Selecione…</option>
+                                      {maquinetas.map((m) => (
+                                        <option key={m.id} value={m.id}>
+                                          {m.nome}
+                                        </option>
+                                      ))}
+                                    </select>
+                                  </div>
+                                ) : null}
                                 {linhaCartao ? (
-                                  <>
-                                    <div className="form-group col-md-3 mb-0">
-                                      <label className="small">Maquineta</label>
-                                      <select
-                                        className="form-control form-control-sm"
-                                        value={linha.id_maquineta ?? ""}
-                                        onChange={(e) => {
-                                          const v = e.target.value;
-                                          setPagamentos((prev) =>
-                                            prev.map((p, i) =>
-                                              i === idx
-                                                ? {
-                                                    ...p,
-                                                    id_maquineta:
-                                                      v === "" ? null : Number(v),
-                                                  }
-                                                : p,
-                                            ),
-                                          );
-                                        }}
-                                      >
-                                        <option value="">Selecione…</option>
-                                        {maquinetas.map((m) => (
-                                          <option key={m.id} value={m.id}>
-                                            {m.nome}
-                                          </option>
-                                        ))}
-                                      </select>
-                                    </div>
-                                    <div className="form-group col-md-3 mb-0">
-                                      <label className="small">Bandeira</label>
-                                      <select
-                                        className="form-control form-control-sm"
-                                        value={linha.id_bandeira ?? ""}
-                                        onChange={(e) => {
-                                          const v = e.target.value;
-                                          setPagamentos((prev) =>
-                                            prev.map((p, i) =>
-                                              i === idx
-                                                ? {
-                                                    ...p,
-                                                    id_bandeira:
-                                                      v === "" ? null : Number(v),
-                                                  }
-                                                : p,
-                                            ),
-                                          );
-                                        }}
-                                      >
-                                        <option value="">Selecione…</option>
-                                        {bandeiras.map((b) => (
-                                          <option key={b.id} value={b.id}>
-                                            {b.nome_bandeira}
-                                          </option>
-                                        ))}
-                                      </select>
-                                    </div>
-                                  </>
+                                  <div className="form-group col-md-3 mb-0">
+                                    <label className="small">Bandeira</label>
+                                    <select
+                                      className="form-control form-control-sm"
+                                      value={linha.id_bandeira ?? ""}
+                                      onChange={(e) => {
+                                        const v = e.target.value;
+                                        setPagamentos((prev) =>
+                                          prev.map((p, i) =>
+                                            i === idx
+                                              ? {
+                                                  ...p,
+                                                  id_bandeira:
+                                                    v === "" ? null : Number(v),
+                                                }
+                                              : p,
+                                          ),
+                                        );
+                                      }}
+                                    >
+                                      <option value="">Selecione…</option>
+                                      {bandeiras.map((b) => (
+                                        <option key={b.id} value={b.id}>
+                                          {b.nome_bandeira}
+                                        </option>
+                                      ))}
+                                    </select>
+                                  </div>
                                 ) : null}
                                 <div
-                                  className={`form-group mb-0 ${linhaCartao ? "col-md-2" : "col-md-6"}`}
+                                  className={`form-group mb-0 ${
+                                    linhaCartao
+                                      ? "col-md-2"
+                                      : linhaExigeMaquineta
+                                        ? "col-md-5"
+                                        : "col-md-8"
+                                  }`}
                                 >
                                   <label className="small">Valor (R$)</label>
                                   <input

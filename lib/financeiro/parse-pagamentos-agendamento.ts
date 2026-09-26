@@ -1,5 +1,8 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { formaPagamentoEhCartao } from "@/lib/financeiro/forma-pagamento-cartao";
+import {
+  formaPagamentoEhCartao,
+  formaPagamentoExigeMaquineta,
+} from "@/lib/financeiro/forma-pagamento-cartao";
 
 const PG_STATUS = new Set(["pendente", "pago", "estornado"]);
 
@@ -109,13 +112,14 @@ export async function parsePagamentosAgendamentoBody(
     const forma = formaMap.get(p.id_forma_pagamento);
     if (!forma) continue;
     const ehCartao = formaPagamentoEhCartao(forma.agrupamento, forma.nome);
+    const exigeMaquineta = formaPagamentoExigeMaquineta(forma.agrupamento, forma.nome);
+    if (exigeMaquineta && !p.id_maquineta) {
+      return {
+        ok: false,
+        error: "Selecione a maquineta para PIX, link de pagamento ou cartão.",
+      };
+    }
     if (ehCartao) {
-      if (!p.id_maquineta) {
-        return {
-          ok: false,
-          error: "Selecione a maquineta para pagamento com cartão.",
-        };
-      }
       if (!p.id_bandeira) {
         return {
           ok: false,

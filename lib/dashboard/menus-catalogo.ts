@@ -226,6 +226,12 @@ export const MENUS_LATERAIS: MenuLateralGrupo[] = [
         rotas: ["/relatorios/caixa"],
       },
       {
+        chave: "relatorios.movimento",
+        label: "Movimento",
+        href: "/relatorios/movimento",
+        rotas: ["/relatorios/movimento"],
+      },
+      {
         chave: "relatorios.atendimentos",
         label: "Atendimentos",
         href: "/relatorios/atendimentos",

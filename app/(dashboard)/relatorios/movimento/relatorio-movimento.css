@@ -1,0 +1,52 @@
+.relatorio-movimento-filtros .form-group {
+  margin-bottom: 0.75rem;
+}
+
+.relatorio-movimento .card-tools .badge {
+  font-size: 0.9rem;
+  font-weight: 600;
+}
+
+.relatorio-movimento-link {
+  color: #007bff;
+  font-weight: 600;
+  text-decoration: underline;
+  vertical-align: baseline;
+  line-height: inherit;
+}
+
+.relatorio-movimento-link:hover,
+.relatorio-movimento-link:focus {
+  color: #0056b3;
+  text-decoration: underline;
+}
+
+.relatorio-movimento-tabela tfoot th {
+  border-top: 2px solid #dee2e6;
+}
+
+@media print {
+  .no-print,
+  .content-header,
+  .main-sidebar,
+  .main-header,
+  .main-footer {
+    display: none !important;
+  }
+
+  .relatorio-movimento-print-titulo {
+    display: block !important;
+  }
+
+  .relatorio-movimento .card {
+    break-inside: avoid;
+    box-shadow: none;
+    border: 1px solid #ddd;
+  }
+
+  .relatorio-movimento-link {
+    color: inherit !important;
+    text-decoration: none !important;
+    font-weight: inherit;
+  }
+}

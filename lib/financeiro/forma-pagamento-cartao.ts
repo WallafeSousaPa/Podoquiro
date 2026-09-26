@@ -12,3 +12,17 @@ export function formaPagamentoEhCartao(
   if (n.includes("cart") || n.includes("cartao") || n.includes("cartão")) return true;
   return false;
 }
+
+/** PIX, link de pagamento e cartão precisam da maquineta/adquirente. */
+export function formaPagamentoExigeMaquineta(
+  agrupamentoCaixa: string | null | undefined,
+  nome?: string | null,
+): boolean {
+  if (formaPagamentoEhCartao(agrupamentoCaixa, nome)) return true;
+  const ag = agrupamentoCaixa?.trim().toLowerCase();
+  if (ag === "pix" || ag === "link_pagamento") return true;
+  const n = (nome ?? "").toLowerCase();
+  if (n.includes("pix")) return true;
+  if (n.includes("link")) return true;
+  return false;
+}
