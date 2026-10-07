@@ -94,7 +94,7 @@ export function ModalDetalheMovimento({ linha, onClose }: Props) {
                       </tr>
                     ) : (
                       linha.lancamentos.map((l) => (
-                        <tr key={l.id}>
+                        <tr key={`${l.tipo_entrada}-${l.id}`}>
                           <td>
                             {fmtDataRef(l.dia)}
                             <div className="small text-muted">

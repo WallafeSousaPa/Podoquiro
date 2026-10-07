@@ -173,9 +173,9 @@ export function RelatorioMovimentoClient() {
             </div>
           </div>
           <p className="text-muted small mb-0">
-            PIX, link de pagamento e cartão mostram a maquineta. Clique em uma forma para ver
-            dia, atendimento e os demais lançamentos. Intervalo com mais de um dia também sai
-            consolidado.
+            Totais iguais ao Caixa: pagamentos quitados dos atendimentos do dia e taxas/links
+            recebidos no período. PIX, link e cartão mostram a maquineta. Clique na forma para
+            ver os lançamentos. Intervalo com mais de um dia sai consolidado.
           </p>
         </div>
       </div>

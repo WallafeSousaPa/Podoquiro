@@ -1,5 +1,10 @@
 import { NextResponse } from "next/server";
 import { getSession } from "@/lib/auth/session";
+import {
+  compararComSistema,
+  type EsperadoCaixa,
+  type InformadoCaixa,
+} from "@/lib/financeiro/caixa-comparacao";
 import { createAdminClient } from "@/lib/supabase/admin";
 
 function parseEmpresaId(idEmpresa: string) {
@@ -46,6 +51,7 @@ export async function POST(request: Request) {
     valor_cartao_debito?: unknown;
     valor_pix?: unknown;
     valor_link_pagamento?: unknown;
+    confirmou_divergencia?: unknown;
   };
   try {
     body = await request.json();
@@ -74,6 +80,8 @@ export async function POST(request: Request) {
     );
   }
 
+  const confirmouDivergencia = body.confirmou_divergencia === true;
+
   const supabase = createAdminClient();
 
   const { data: uOk, error: uErr } = await supabase
@@ -90,6 +98,57 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Usuário inválido." }, { status: 403 });
   }
 
+  const informado: InformadoCaixa = {
+    dinheiro: vd,
+    pix: vp,
+    cartao_credito: vcc,
+    cartao_debito: vcd,
+    link_pagamento: vl,
+  };
+
+  let esperado: EsperadoCaixa = {
+    dinheiro: 0,
+    pix: 0,
+    cartao_credito: 0,
+    cartao_debito: 0,
+    link_pagamento: 0,
+    outros: 0,
+  };
+  let temResumo = false;
+  const { data: rawResumo, error: resumoErr } = await supabase.rpc(
+    "caixa_resumo_pagamentos_dia",
+    {
+      p_id_empresa: empresaId,
+      p_data: dataRef,
+      p_id_usuario: null,
+    },
+  );
+  if (!resumoErr && rawResumo && typeof rawResumo === "object") {
+    const esp = (rawResumo as { esperado?: EsperadoCaixa }).esperado;
+    if (esp) {
+      temResumo = true;
+      esperado = {
+        dinheiro: Number(esp.dinheiro) || 0,
+        pix: Number(esp.pix) || 0,
+        cartao_credito: Number(esp.cartao_credito) || 0,
+        cartao_debito: Number(esp.cartao_debito) || 0,
+        link_pagamento: Number(esp.link_pagamento ?? 0) || 0,
+        outros: Number(esp.outros) || 0,
+      };
+    }
+  }
+
+  const divergencias = temResumo ? compararComSistema(esperado, informado) : [];
+  if (divergencias.length > 0 && !confirmouDivergencia) {
+    return NextResponse.json(
+      {
+        error: "Confirme a sobra ou falta para fechar o caixa.",
+        divergencias,
+      },
+      { status: 409 },
+    );
+  }
+
   const { data: rpcData, error: rpcErr } = await supabase.rpc(
     "caixa_fechar_com_relatorio",
     {
@@ -101,6 +160,12 @@ export async function POST(request: Request) {
       p_valor_cartao_debito: vcd,
       p_valor_pix: vp,
       p_valor_link_pagamento: vl,
+      p_confirmou_divergencia: divergencias.length > 0,
+      p_esperado_dinheiro: esperado.dinheiro,
+      p_esperado_cartao_credito: esperado.cartao_credito,
+      p_esperado_cartao_debito: esperado.cartao_debito,
+      p_esperado_pix: esperado.pix,
+      p_esperado_link_pagamento: esperado.link_pagamento,
     },
   );
 

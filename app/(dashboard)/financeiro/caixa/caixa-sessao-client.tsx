@@ -219,7 +219,7 @@ export function CaixaSessaoClient({
     void abrirCaixa(fundo);
   }
 
-  async function executarFechamento() {
+  async function executarFechamento(confirmouDivergencia = false) {
     setFechando(true);
     setFormErr(null);
     try {
@@ -233,9 +233,17 @@ export function CaixaSessaoClient({
           valor_cartao_debito: vCd,
           valor_pix: vPix,
           valor_link_pagamento: vLink,
+          confirmou_divergencia: confirmouDivergencia,
         }),
       });
-      const j = (await res.json()) as { error?: string };
+      const j = (await res.json()) as {
+        error?: string;
+        divergencias?: LinhaDivergencia[];
+      };
+      if (res.status === 409 && Array.isArray(j.divergencias) && j.divergencias.length > 0) {
+        setDivergencias(j.divergencias);
+        return;
+      }
       if (!res.ok) throw new Error(j.error ?? "Erro ao fechar caixa.");
       setModalFechar(false);
       setDivergencias(null);
@@ -282,12 +290,11 @@ export function CaixaSessaoClient({
       }
     }
 
-    void executarFechamento();
+    void executarFechamento(false);
   }
 
   function confirmarFechamentoComDivergencia() {
-    setDivergencias(null);
-    void executarFechamento();
+    void executarFechamento(true);
   }
 
   const podeFechar =

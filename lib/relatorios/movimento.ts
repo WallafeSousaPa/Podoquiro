@@ -135,38 +135,10 @@ export function classificarBucketMovimento(args: {
   return "outros";
 }
 
-type CaixaMovRow = {
-  id: number;
-  tipo_entrada: string | null;
-  forma_pagamento: string | null;
-  valor: number | string | null;
-  id_pagamento: number | null;
-  id_taxa_rede: number | null;
-  data_movimentacao: string | null;
-  descricao: string | null;
-  atendimento_id: number | null;
-};
-
 type FormaEmbed = { nome?: string | null; agrupamento_caixa?: string | null };
 type MaquinetaEmbed = { nome?: string | null };
 type PacienteEmbed = { nome_completo?: string | null; nome_social?: string | null };
 type UsuarioEmbed = { nome_completo?: string | null; usuario?: string | null };
-
-type PagamentoRow = {
-  id: number;
-  id_maquineta?: number | null;
-  formas_pagamento?: FormaEmbed | FormaEmbed[] | null;
-  maquinetas?: MaquinetaEmbed | MaquinetaEmbed[] | null;
-};
-
-type TaxaRow = {
-  id: number;
-  pago_em_dinheiro?: boolean | null;
-  asaas_payment_id?: string | null;
-  asaas_payment_link_id?: string | null;
-  rede_tid?: string | null;
-  rede_payment_link_id?: string | null;
-};
 
 type AgendamentoRow = {
   id: number;
@@ -175,7 +147,39 @@ type AgendamentoRow = {
   usuarios?: UsuarioEmbed | UsuarioEmbed[] | null;
 };
 
-function origemMaquinetaTaxa(t: TaxaRow | undefined): string | null {
+type PagamentoCaixaRow = {
+  id: number;
+  id_agendamento: number;
+  valor_pago: number | string | null;
+  id_maquineta?: number | null;
+  formas_pagamento?: FormaEmbed | FormaEmbed[] | null;
+  maquinetas?: MaquinetaEmbed | MaquinetaEmbed[] | null;
+};
+
+type TaxaMovRow = {
+  id: number;
+  tipo_entrada: string | null;
+  forma_pagamento: string | null;
+  valor: number | string | null;
+  id_taxa_rede: number | null;
+  data_movimentacao: string | null;
+  descricao: string | null;
+  atendimento_id: number | null;
+};
+
+type TaxaRedeRow = {
+  id: number;
+  id_agendamento?: number | null;
+  valor?: number | string | null;
+  status?: string | null;
+  pago_em_dinheiro?: boolean | null;
+  asaas_payment_id?: string | null;
+  asaas_payment_link_id?: string | null;
+  rede_tid?: string | null;
+  rede_payment_link_id?: string | null;
+};
+
+function origemMaquinetaTaxa(t: TaxaRedeRow | undefined): string | null {
   if (!t || t.pago_em_dinheiro) return null;
   const asaas =
     Boolean(t.asaas_payment_id?.trim()) || Boolean(t.asaas_payment_link_id?.trim());
@@ -216,29 +220,24 @@ function nomeProfissional(u: UsuarioEmbed | null): string {
   return u.nome_completo?.trim() || u.usuario?.trim() || "—";
 }
 
-async function fetchAllMovimentos(
-  supabase: SupabaseClient,
-  idEmpresa: number,
-  dataInicio: string,
-  dataFim: string,
-): Promise<CaixaMovRow[]> {
-  const out: CaixaMovRow[] = [];
+function nomePacienteDeAg(ag: AgendamentoRow | undefined): string {
+  const pac = one(ag?.pacientes);
+  if (!pac) return "—";
+  return (
+    nomeExibicaoPaciente({
+      nome_completo: pac.nome_completo ?? null,
+      nome_social: pac.nome_social ?? null,
+    }) || "—"
+  );
+}
+
+async function fetchPages<T>(
+  run: (from: number, to: number) => Promise<T[]>,
+): Promise<T[]> {
+  const out: T[] = [];
   let from = 0;
   for (;;) {
-    const { data, error } = await supabase
-      .from("caixa_movimento")
-      .select(
-        "id, tipo_entrada, forma_pagamento, valor, id_pagamento, id_taxa_rede, data_movimentacao, descricao, atendimento_id",
-      )
-      .eq("id_empresa", idEmpresa)
-      .in("tipo_entrada", [TIPO_ENTRADA_ATENDIMENTO, TIPO_ENTRADA_TAXA_AGENDAMENTO])
-      .gte("data_movimentacao", dayStartIsoBr(dataInicio))
-      .lt("data_movimentacao", nextDayStartIsoBr(dataFim))
-      .gt("valor", 0)
-      .order("id", { ascending: true })
-      .range(from, from + PAGE - 1);
-    if (error) throw new Error(error.message);
-    const batch = (data ?? []) as CaixaMovRow[];
+    const batch = await run(from, from + PAGE - 1);
     out.push(...batch);
     if (batch.length < PAGE) break;
     from += PAGE;
@@ -246,46 +245,27 @@ async function fetchAllMovimentos(
   return out;
 }
 
-async function fetchPagamentosPorIds(
+async function fetchAgendamentosNoPeriodo(
   supabase: SupabaseClient,
-  ids: number[],
-): Promise<Map<number, PagamentoRow>> {
-  const map = new Map<number, PagamentoRow>();
-  if (ids.length === 0) return map;
-  for (let i = 0; i < ids.length; i += PAGE) {
-    const slice = ids.slice(i, i + PAGE);
+  idEmpresa: number,
+  dataInicio: string,
+  dataFim: string,
+): Promise<Map<number, AgendamentoRow>> {
+  const rows = await fetchPages(async (from, to) => {
     const { data, error } = await supabase
-      .from("pagamentos")
-      .select("id, id_maquineta, formas_pagamento(nome, agrupamento_caixa), maquinetas(nome)")
-      .in("id", slice);
-    if (error) throw new Error(error.message);
-    for (const row of (data ?? []) as PagamentoRow[]) {
-      map.set(row.id, row);
-    }
-  }
-  return map;
-}
-
-async function fetchTaxasPorIds(
-  supabase: SupabaseClient,
-  ids: number[],
-): Promise<Map<number, TaxaRow>> {
-  const map = new Map<number, TaxaRow>();
-  if (ids.length === 0) return map;
-  for (let i = 0; i < ids.length; i += PAGE) {
-    const slice = ids.slice(i, i + PAGE);
-    const { data, error } = await supabase
-      .from("agendamento_taxa_rede")
+      .from("agendamentos")
       .select(
-        "id, pago_em_dinheiro, asaas_payment_id, asaas_payment_link_id, rede_tid, rede_payment_link_id",
+        "id, data_hora_inicio, pacientes ( nome_completo, nome_social ), usuarios ( nome_completo, usuario )",
       )
-      .in("id", slice);
+      .eq("id_empresa", idEmpresa)
+      .gte("data_hora_inicio", dayStartIsoBr(dataInicio))
+      .lt("data_hora_inicio", nextDayStartIsoBr(dataFim))
+      .order("id", { ascending: true })
+      .range(from, to);
     if (error) throw new Error(error.message);
-    for (const row of (data ?? []) as TaxaRow[]) {
-      map.set(row.id, row);
-    }
-  }
-  return map;
+    return (data ?? []) as AgendamentoRow[];
+  });
+  return new Map(rows.map((r) => [r.id, r]));
 }
 
 async function fetchAgendamentosPorIds(
@@ -310,122 +290,278 @@ async function fetchAgendamentosPorIds(
   return map;
 }
 
+async function fetchPagamentosQuitados(
+  supabase: SupabaseClient,
+  idsAgendamento: number[],
+): Promise<PagamentoCaixaRow[]> {
+  if (idsAgendamento.length === 0) return [];
+  const out: PagamentoCaixaRow[] = [];
+  for (let i = 0; i < idsAgendamento.length; i += PAGE) {
+    const slice = idsAgendamento.slice(i, i + PAGE);
+    const { data, error } = await supabase
+      .from("pagamentos")
+      .select(
+        "id, id_agendamento, valor_pago, id_maquineta, formas_pagamento(nome, agrupamento_caixa), maquinetas(nome)",
+      )
+      .eq("status_pagamento", "pago")
+      .gt("valor_pago", 0)
+      .in("id_agendamento", slice);
+    if (error) throw new Error(error.message);
+    out.push(...((data ?? []) as PagamentoCaixaRow[]));
+  }
+  return out;
+}
+
+async function fetchTaxasMovimentoNoPeriodo(
+  supabase: SupabaseClient,
+  idEmpresa: number,
+  dataInicio: string,
+  dataFim: string,
+): Promise<TaxaMovRow[]> {
+  return fetchPages(async (from, to) => {
+    const { data, error } = await supabase
+      .from("caixa_movimento")
+      .select(
+        "id, tipo_entrada, forma_pagamento, valor, id_taxa_rede, data_movimentacao, descricao, atendimento_id",
+      )
+      .eq("id_empresa", idEmpresa)
+      .eq("tipo_entrada", TIPO_ENTRADA_TAXA_AGENDAMENTO)
+      .gte("data_movimentacao", dayStartIsoBr(dataInicio))
+      .lt("data_movimentacao", nextDayStartIsoBr(dataFim))
+      .gt("valor", 0)
+      .order("id", { ascending: true })
+      .range(from, to);
+    if (error) throw new Error(error.message);
+    return (data ?? []) as TaxaMovRow[];
+  });
+}
+
+async function fetchTaxasRede(
+  supabase: SupabaseClient,
+  ids: number[],
+): Promise<Map<number, TaxaRedeRow>> {
+  const map = new Map<number, TaxaRedeRow>();
+  if (ids.length === 0) return map;
+  for (let i = 0; i < ids.length; i += PAGE) {
+    const slice = ids.slice(i, i + PAGE);
+    const { data, error } = await supabase
+      .from("agendamento_taxa_rede")
+      .select(
+        "id, id_agendamento, valor, status, pago_em_dinheiro, asaas_payment_id, asaas_payment_link_id, rede_tid, rede_payment_link_id",
+      )
+      .in("id", slice);
+    if (error) throw new Error(error.message);
+    for (const row of (data ?? []) as TaxaRedeRow[]) {
+      map.set(row.id, row);
+    }
+  }
+  return map;
+}
+
+async function fetchTaxasRedePorAgendamentos(
+  supabase: SupabaseClient,
+  idsAgendamento: number[],
+): Promise<Map<number, TaxaRedeRow[]>> {
+  const map = new Map<number, TaxaRedeRow[]>();
+  if (idsAgendamento.length === 0) return map;
+  for (let i = 0; i < idsAgendamento.length; i += PAGE) {
+    const slice = idsAgendamento.slice(i, i + PAGE);
+    const { data, error } = await supabase
+      .from("agendamento_taxa_rede")
+      .select("id, id_agendamento, valor, status, pago_em_dinheiro")
+      .eq("status", "pago")
+      .eq("pago_em_dinheiro", true)
+      .in("id_agendamento", slice);
+    if (error) throw new Error(error.message);
+    for (const row of (data ?? []) as TaxaRedeRow[]) {
+      const idAg = row.id_agendamento;
+      if (idAg == null) continue;
+      const lista = map.get(idAg) ?? [];
+      lista.push(row);
+      map.set(idAg, lista);
+    }
+  }
+  return map;
+}
+
+function pagamentoRepeteTaxaDinheiro(
+  pagamento: PagamentoCaixaRow,
+  taxas: TaxaRedeRow[] | undefined,
+): boolean {
+  if (!taxas || taxas.length === 0) return false;
+  const valor = arredondarMoeda(Number(pagamento.valor_pago));
+  return taxas.some((t) => arredondarMoeda(Number(t.valor)) === valor);
+}
+
 function chaveLinha(bucket: BucketMovimento, detalhe: string | null): string {
   return `${bucket}|${(detalhe ?? "").toLowerCase()}`;
+}
+
+function agregar(
+  acc: Map<string, LinhaRelatorioMovimento>,
+  args: {
+    bucket: BucketMovimento;
+    nomeForma: string;
+    maquineta: string | null;
+    lancamento: LancamentoRelatorioMovimento;
+  },
+) {
+  const detalheOutros = args.bucket === "outros" ? args.nomeForma : null;
+  const chave = chaveLinha(args.bucket, args.maquineta ?? detalheOutros);
+  const atual = acc.get(chave);
+  if (atual) {
+    atual.quantidade += 1;
+    atual.total = arredondarMoeda(atual.total + args.lancamento.valor);
+    atual.lancamentos.push(args.lancamento);
+    return;
+  }
+  acc.set(chave, {
+    chave,
+    forma: args.bucket === "outros" ? args.nomeForma : LABELS[args.bucket],
+    maquineta: args.maquineta,
+    quantidade: 1,
+    total: args.lancamento.valor,
+    lancamentos: [args.lancamento],
+  });
 }
 
 export async function gerarRelatorioMovimento(
   supabase: SupabaseClient,
   args: { idEmpresa: number; dataInicio: string; dataFim: string },
 ): Promise<RelatorioMovimentoData> {
-  const movimentos = await fetchAllMovimentos(
+  const agendamentosPeriodo = await fetchAgendamentosNoPeriodo(
     supabase,
     args.idEmpresa,
     args.dataInicio,
     args.dataFim,
   );
+  const idsAgPeriodo = [...agendamentosPeriodo.keys()];
 
-  const idsPagamento = [
-    ...new Set(
-      movimentos
-        .map((m) => m.id_pagamento)
-        .filter((id): id is number => typeof id === "number" && id > 0),
+  const [pagamentos, taxasMov, taxasDinheiroPorAg] = await Promise.all([
+    fetchPagamentosQuitados(supabase, idsAgPeriodo),
+    fetchTaxasMovimentoNoPeriodo(
+      supabase,
+      args.idEmpresa,
+      args.dataInicio,
+      args.dataFim,
     ),
-  ];
-  const idsTaxa = [
+    fetchTaxasRedePorAgendamentos(supabase, idsAgPeriodo),
+  ]);
+
+  const idsTaxaMov = [
     ...new Set(
-      movimentos
+      taxasMov
         .map((m) => m.id_taxa_rede)
         .filter((id): id is number => typeof id === "number" && id > 0),
     ),
   ];
-  const idsAgendamento = [
+  const idsAgTaxaFaltando = [
     ...new Set(
-      movimentos
+      taxasMov
         .map((m) => m.atendimento_id)
-        .filter((id): id is number => typeof id === "number" && id > 0),
+        .filter(
+          (id): id is number =>
+            typeof id === "number" && id > 0 && !agendamentosPeriodo.has(id),
+        ),
     ),
   ];
-  const [pagamentos, taxas, agendamentos] = await Promise.all([
-    fetchPagamentosPorIds(supabase, idsPagamento),
-    fetchTaxasPorIds(supabase, idsTaxa),
-    fetchAgendamentosPorIds(supabase, idsAgendamento),
+  const [taxasRede, agendamentosTaxa] = await Promise.all([
+    fetchTaxasRede(supabase, idsTaxaMov),
+    fetchAgendamentosPorIds(supabase, idsAgTaxaFaltando),
+  ]);
+
+  const agendamentos = new Map<number, AgendamentoRow>([
+    ...agendamentosPeriodo,
+    ...agendamentosTaxa,
   ]);
 
   const acc = new Map<string, LinhaRelatorioMovimento>();
   let quantidade = 0;
   let total = 0;
 
-  for (const mov of movimentos) {
-    const valor = arredondarMoeda(Number(mov.valor));
+  for (const pag of pagamentos) {
+    if (pagamentoRepeteTaxaDinheiro(pag, taxasDinheiroPorAg.get(pag.id_agendamento))) {
+      continue;
+    }
+    const valor = arredondarMoeda(Number(pag.valor_pago));
     if (!Number.isFinite(valor) || valor <= 0) continue;
 
-    const pag = mov.id_pagamento != null ? pagamentos.get(mov.id_pagamento) : undefined;
-    const taxa = mov.id_taxa_rede != null ? taxas.get(mov.id_taxa_rede) : undefined;
-    const ag =
-      mov.atendimento_id != null ? agendamentos.get(mov.atendimento_id) : undefined;
-    const forma = one(pag?.formas_pagamento);
-    const maq = one(pag?.maquinetas);
-    const nomeForma =
-      (forma?.nome ?? "").trim() ||
-      (mov.forma_pagamento ?? "").trim() ||
-      "—";
-    const agrupamento = forma?.agrupamento_caixa ?? null;
-
+    const ag = agendamentos.get(pag.id_agendamento);
+    const forma = one(pag.formas_pagamento);
+    const maq = one(pag.maquinetas);
+    const nomeForma = (forma?.nome ?? "").trim() || "—";
     const bucket = classificarBucketMovimento({
-      tipoEntrada: String(mov.tipo_entrada ?? ""),
-      agrupamento,
+      tipoEntrada: TIPO_ENTRADA_ATENDIMENTO,
+      agrupamento: forma?.agrupamento_caixa,
       nomeForma,
     });
+    const nomeMaquinetaCadastro = (maq?.nome ?? "").trim();
+    const maquineta = bucketUsaMaquineta(bucket)
+      ? nomeMaquinetaCadastro || SEM_MAQUINETA
+      : null;
+    const iso = ag?.data_hora_inicio?.trim() || "";
+    const paciente = nomePacienteDeAg(ag);
 
     quantidade += 1;
     total = arredondarMoeda(total + valor);
-
-    const nomeMaquinetaCadastro = (maq?.nome ?? "").trim();
-    const origemLink = origemMaquinetaTaxa(taxa);
-    let maquineta: string | null = null;
-    if (bucketUsaMaquineta(bucket)) {
-      maquineta = nomeMaquinetaCadastro || origemLink || SEM_MAQUINETA;
-    }
-    const detalheOutros = bucket === "outros" ? nomeForma : null;
-    const chave = chaveLinha(bucket, maquineta ?? detalheOutros);
-
-    const pac = one(ag?.pacientes);
-    const dataMov = mov.data_movimentacao?.trim() || "";
-    const tipo = String(mov.tipo_entrada ?? "");
-    const lancamento: LancamentoRelatorioMovimento = {
-      id: mov.id,
-      dia: dataMov ? ymdBrFromIso(dataMov) : "",
-      data_movimentacao: dataMov,
-      atendimento_id: mov.atendimento_id,
-      data_hora_atendimento: ag?.data_hora_inicio ?? null,
-      paciente: pac
-        ? nomeExibicaoPaciente({
-            nome_completo: pac.nome_completo ?? null,
-            nome_social: pac.nome_social ?? null,
-          }) || "—"
-        : "—",
-      profissional: nomeProfissional(one(ag?.usuarios)),
-      tipo_entrada: tipo,
-      tipo_label: rotuloTipoEntrada(tipo),
-      descricao: (mov.descricao ?? "").trim() || "—",
-      valor,
-    };
-
-    const atual = acc.get(chave);
-    if (atual) {
-      atual.quantidade += 1;
-      atual.total = arredondarMoeda(atual.total + valor);
-      atual.lancamentos.push(lancamento);
-      continue;
-    }
-    acc.set(chave, {
-      chave,
-      forma: bucket === "outros" ? nomeForma : LABELS[bucket],
+    agregar(acc, {
+      bucket,
+      nomeForma,
       maquineta,
-      quantidade: 1,
-      total: valor,
-      lancamentos: [lancamento],
+      lancamento: {
+        id: pag.id,
+        dia: iso ? ymdBrFromIso(iso) : "",
+        data_movimentacao: iso,
+        atendimento_id: pag.id_agendamento,
+        data_hora_atendimento: ag?.data_hora_inicio ?? null,
+        paciente,
+        profissional: nomeProfissional(one(ag?.usuarios)),
+        tipo_entrada: TIPO_ENTRADA_ATENDIMENTO,
+        tipo_label: rotuloTipoEntrada(TIPO_ENTRADA_ATENDIMENTO),
+        descricao: `Pagamento atendimento #${pag.id_agendamento} — ${paciente}`,
+        valor,
+      },
+    });
+  }
+
+  for (const mov of taxasMov) {
+    const valor = arredondarMoeda(Number(mov.valor));
+    if (!Number.isFinite(valor) || valor <= 0) continue;
+
+    const taxa = mov.id_taxa_rede != null ? taxasRede.get(mov.id_taxa_rede) : undefined;
+    const ag =
+      mov.atendimento_id != null ? agendamentos.get(mov.atendimento_id) : undefined;
+    const nomeForma = (mov.forma_pagamento ?? "").trim() || "Link pagamento";
+    const bucket = classificarBucketMovimento({
+      tipoEntrada: TIPO_ENTRADA_TAXA_AGENDAMENTO,
+      agrupamento: null,
+      nomeForma,
+    });
+    const maquineta = bucketUsaMaquineta(bucket)
+      ? origemMaquinetaTaxa(taxa) || SEM_MAQUINETA
+      : null;
+    const iso = mov.data_movimentacao?.trim() || "";
+    const paciente = nomePacienteDeAg(ag);
+
+    quantidade += 1;
+    total = arredondarMoeda(total + valor);
+    agregar(acc, {
+      bucket,
+      nomeForma,
+      maquineta,
+      lancamento: {
+        id: mov.id,
+        dia: iso ? ymdBrFromIso(iso) : "",
+        data_movimentacao: iso,
+        atendimento_id: mov.atendimento_id,
+        data_hora_atendimento: ag?.data_hora_inicio ?? null,
+        paciente,
+        profissional: nomeProfissional(one(ag?.usuarios)),
+        tipo_entrada: TIPO_ENTRADA_TAXA_AGENDAMENTO,
+        tipo_label: rotuloTipoEntrada(TIPO_ENTRADA_TAXA_AGENDAMENTO),
+        descricao: (mov.descricao ?? "").trim() || "—",
+        valor,
+      },
     });
   }
 
