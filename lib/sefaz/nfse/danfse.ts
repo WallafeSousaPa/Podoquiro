@@ -2,16 +2,51 @@ import type { AmbienteNfe } from "../nfe/types";
 import { getBinarioComCertificado } from "../nfe/soap-https";
 import { municipioNfseBelem, urlAdnDanfse, urlNfseBelemDanfse } from "./urls";
 
-export function chaveAcessoNfseDeResposta(json: unknown): string | null {
-  if (!json || typeof json !== "object") return null;
-  const o = json as Record<string, unknown>;
-  const raw = o.chaveAcesso ?? o.chaveacesso ?? o.chave;
+/** Belém devolve NFS + 50 dígitos (53 no total); a Sefin nacional usa NFS + 47. */
+const CHAVE_NFSE_RE = /NFS\d{40,60}/i;
+
+function normalizarChaveNfse(raw: unknown): string | null {
   const s = String(raw ?? "")
     .trim()
     .toUpperCase()
     .replace(/\s+/g, "");
-  if (/^NFS\d{47}$/.test(s)) return s;
-  if (/^\d{44,50}$/.test(s)) return s;
+  const m = s.match(CHAVE_NFSE_RE);
+  if (m) return m[0].toUpperCase();
+  if (/^\d{44,53}$/.test(s)) return s;
+  return null;
+}
+
+function valorCampoChave(o: Record<string, unknown>): unknown {
+  for (const [k, v] of Object.entries(o)) {
+    const n = k.toLowerCase().replace(/[_-]/g, "");
+    if (n === "chaveacesso" || n === "chave" || n === "chnfse" || n === "chavenfse") {
+      return v;
+    }
+  }
+  return undefined;
+}
+
+export function chaveAcessoNfseDeResposta(json: unknown): string | null {
+  if (json == null) return null;
+  if (typeof json === "string") {
+    const direto = normalizarChaveNfse(json);
+    if (direto) return direto;
+    try {
+      return chaveAcessoNfseDeResposta(JSON.parse(json));
+    } catch {
+      return null;
+    }
+  }
+  if (typeof json !== "object") return null;
+  const o = json as Record<string, unknown>;
+  const direto = normalizarChaveNfse(valorCampoChave(o));
+  if (direto) return direto;
+  for (const v of Object.values(o)) {
+    if (v && typeof v === "object" && !Array.isArray(v)) {
+      const nested = normalizarChaveNfse(valorCampoChave(v as Record<string, unknown>));
+      if (nested) return nested;
+    }
+  }
   return null;
 }
 
