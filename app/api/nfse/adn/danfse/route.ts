@@ -4,14 +4,45 @@ import { respostaSeSemPermissaoNfseAdn } from "@/lib/dashboard/nota-fiscal-permi
 import { obterConfigFocusNfe } from "@/lib/focusnfe";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { carregarCertificadoEmpresa, type AmbienteNfe } from "@/lib/sefaz/nfe";
-import { baixarDanfsePdf, chaveAcessoNfseDeResposta, ehRefNfseAdn } from "@/lib/sefaz/nfse";
+import {
+  baixarDanfsePdf,
+  chaveAcessoNfseDeResposta,
+  ehRefNfseAdn,
+  extrairDadosDanfse,
+  nfseXmlGZipDeResposta,
+  renderDanfsePdfBuffer,
+  type DadosDanfse,
+} from "@/lib/sefaz/nfse";
 
 function parseEmpresaId(idEmpresa: string) {
   const n = Number(idEmpresa);
   return Number.isFinite(n) && n > 0 ? n : null;
 }
 
-/** Proxy autenticado do DANFSe (PDF oficial) pela chave da NFS-e municipal. */
+function completarDados(
+  base: DadosDanfse,
+  extra: Partial<DadosDanfse>,
+): DadosDanfse {
+  return {
+    chave: base.chave || extra.chave || "",
+    numero: base.numero || extra.numero || "",
+    serie: base.serie || extra.serie || "",
+    competencia: base.competencia || extra.competencia || "",
+    dhEmi: base.dhEmi || extra.dhEmi || "",
+    codigoVerificacao: base.codigoVerificacao || extra.codigoVerificacao || "",
+    municipioEmi: base.municipioEmi || extra.municipioEmi || "Belém / PA",
+    prestadorNome: base.prestadorNome || extra.prestadorNome || "",
+    prestadorCnpj: base.prestadorCnpj || extra.prestadorCnpj || "",
+    prestadorIm: base.prestadorIm || extra.prestadorIm || "",
+    tomadorNome: base.tomadorNome || extra.tomadorNome || "",
+    tomadorDoc: base.tomadorDoc || extra.tomadorDoc || "",
+    tomadorEndereco: base.tomadorEndereco || extra.tomadorEndereco || "",
+    discriminacao: base.discriminacao || extra.discriminacao || "",
+    valor: base.valor || extra.valor || "",
+  };
+}
+
+/** Proxy autenticado do DANFSe: tenta o PDF oficial e, se falhar, gera a partir do XML autorizado. */
 export async function GET(request: Request) {
   const session = await getSession();
   const negado = await respostaSeSemPermissaoNfseAdn(session);
@@ -30,7 +61,9 @@ export async function GET(request: Request) {
   const supabase = createAdminClient();
   const { data: row, error: loadErr } = await supabase
     .from("nfse_focus_emissoes")
-    .select("id, focus_ref, status, numero_nfse, payload_resposta")
+    .select(
+      "id, focus_ref, status, numero_nfse, numero_rps, serie_rps, codigo_verificacao, valor_servicos, discriminacao, emitted_at, payload_resposta",
+    )
     .eq("id", id)
     .eq("id_empresa", empresaId)
     .maybeSingle();
@@ -62,38 +95,70 @@ export async function GET(request: Request) {
     );
   }
 
+  const config = await obterConfigFocusNfe(supabase, empresaId);
+  const ambiente: AmbienteNfe = config?.ambiente === "homologacao" ? 2 : 1;
   const cert = await carregarCertificadoEmpresa(supabase, empresaId);
-  if (!cert) {
+
+  if (cert) {
+    try {
+      const oficial = await baixarDanfsePdf({
+        chaveAcesso: chave,
+        pfx: cert.pfx,
+        senha: cert.senha,
+        ambiente,
+        codigoMunicipioPrestador: config?.prestadorCodigoMunicipio,
+      });
+      const numero = String(row.numero_nfse ?? chave).replace(/[^\w.-]+/g, "");
+      return new NextResponse(new Uint8Array(oficial), {
+        status: 200,
+        headers: {
+          "Content-Type": "application/pdf",
+          "Content-Disposition": `inline; filename="DANFSe-${numero}.pdf"`,
+          "Cache-Control": "private, max-age=300",
+        },
+      });
+    } catch {
+      /* gera a partir do XML autorizado */
+    }
+  }
+
+  const xml = nfseXmlGZipDeResposta(row.payload_resposta);
+  const { data: emp } = await supabase
+    .from("empresas")
+    .select("razao_social, nome_fantasia")
+    .eq("id", empresaId)
+    .maybeSingle();
+
+  const extraidos = xml ? extrairDadosDanfse(xml, chave) : extrairDadosDanfse("", chave);
+  const dados = completarDados(extraidos, {
+    chave,
+    numero: String(row.numero_nfse ?? ""),
+    serie: String(row.serie_rps ?? ""),
+    dhEmi: String(row.emitted_at ?? ""),
+    codigoVerificacao: String(row.codigo_verificacao ?? ""),
+    prestadorNome:
+      String(emp?.razao_social ?? "").trim() || String(emp?.nome_fantasia ?? "").trim(),
+    prestadorCnpj: config?.prestadorCnpj ?? "",
+    prestadorIm: config?.prestadorInscricaoMunicipal ?? "",
+    discriminacao: String(row.discriminacao ?? ""),
+    valor: String(row.valor_servicos ?? ""),
+  });
+
+  if (!dados.numero && !dados.discriminacao && !xml) {
     return NextResponse.json(
-      { error: "Cadastre o certificado A1 da empresa para baixar o DANFSe." },
-      { status: 400 },
+      { error: "Não foi possível montar o PDF desta NFS-e." },
+      { status: 502 },
     );
   }
 
-  const config = await obterConfigFocusNfe(supabase, empresaId);
-  const ambiente: AmbienteNfe = config?.ambiente === "homologacao" ? 2 : 1;
-
-  let pdf: Buffer;
-  try {
-    pdf = await baixarDanfsePdf({
-      chaveAcesso: chave,
-      pfx: cert.pfx,
-      senha: cert.senha,
-      ambiente,
-      codigoMunicipioPrestador: config?.prestadorCodigoMunicipio,
-    });
-  } catch (e) {
-    const msg = e instanceof Error ? e.message : "Falha ao baixar o DANFSe.";
-    return NextResponse.json({ error: msg }, { status: 502 });
-  }
-
-  const numero = String(row.numero_nfse ?? chave).replace(/[^\w.-]+/g, "");
+  const pdf = await renderDanfsePdfBuffer(dados);
+  const numero = String(dados.numero || row.numero_nfse || chave).replace(/[^\w.-]+/g, "");
   return new NextResponse(new Uint8Array(pdf), {
     status: 200,
     headers: {
       "Content-Type": "application/pdf",
       "Content-Disposition": `inline; filename="DANFSe-${numero}.pdf"`,
-      "Cache-Control": "private, max-age=300",
+      "Cache-Control": "private, max-age=120",
     },
   });
 }

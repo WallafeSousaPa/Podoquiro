@@ -124,6 +124,7 @@ export function getBinarioComCertificado(
   pfx: Buffer,
   passphrase: string,
   accept = "application/pdf, application/json;q=0.9, */*;q=0.1",
+  timeoutMs = 90_000,
 ): Promise<ResultadoHttpsBinario> {
   const u = new URL(urlStr);
   const { cert, key } = pfxBufferParaCertKeyPem(pfx, passphrase);
@@ -140,7 +141,7 @@ export function getBinarioComCertificado(
         cert,
         key,
         ...tlsOpts,
-        timeout: 90_000,
+        timeout: timeoutMs,
       },
       (res) => {
         const chunks: Buffer[] = [];

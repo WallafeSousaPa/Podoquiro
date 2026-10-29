@@ -53,13 +53,18 @@ export function urlEmitirDpsNfse(params: {
   return urlSefinEmitirNfse(params.ambiente);
 }
 
-/** GET DANFSe (PDF) no ADN nacional. */
+/** GET DANFSe (PDF) no ADN nacional. A chave na URL são 50 dígitos (sem prefixo NFS). */
 export function urlAdnDanfse(ambiente: AmbienteNfe, chaveAcesso: string): string {
   const chave = encodeURIComponent(chaveAcesso.trim());
   if (ambiente === 2) {
     return `https://adn.producaorestrita.nfse.gov.br/danfse/${chave}`;
   }
   return `https://adn.nfse.gov.br/danfse/${chave}`;
+}
+
+/** GET DANFSe (PDF) na Sefin Nacional. */
+export function urlSefinDanfse(ambiente: AmbienteNfe, chaveAcesso: string): string {
+  return `${urlSefinNacionalBase(ambiente)}/danfse/${encodeURIComponent(chaveAcesso.trim())}`;
 }
 
 /** GET DANFSe (PDF) na API municipal de Belém. */

@@ -1,6 +1,12 @@
 import type { AmbienteNfe } from "../nfe/types";
 import { getBinarioComCertificado } from "../nfe/soap-https";
-import { municipioNfseBelem, urlAdnDanfse, urlNfseBelemDanfse } from "./urls";
+import { gunzipB64ParaUtf8 } from "./gzip-b64";
+import {
+  municipioNfseBelem,
+  urlAdnDanfse,
+  urlNfseBelemDanfse,
+  urlSefinDanfse,
+} from "./urls";
 
 /** Belém devolve NFS + 50 dígitos (53 no total); a Sefin nacional usa NFS + 47. */
 const CHAVE_NFSE_RE = /NFS\d{40,60}/i;
@@ -50,13 +56,35 @@ export function chaveAcessoNfseDeResposta(json: unknown): string | null {
   return null;
 }
 
+/** DSF/ADN exigem 50 dígitos na URL (sem o prefixo NFS). */
+export function chaveNfse50Digitos(chave: string): string | null {
+  const raw = chave.trim().toUpperCase().replace(/\s+/g, "");
+  const digits = (raw.startsWith("NFS") ? raw.slice(3) : raw).replace(/\D/g, "");
+  return digits.length === 50 ? digits : digits.length >= 44 ? digits : null;
+}
+
+export function nfseXmlGZipDeResposta(json: unknown): string | null {
+  if (!json || typeof json !== "object") return null;
+  const o = json as Record<string, unknown>;
+  for (const [k, v] of Object.entries(o)) {
+    if (k.toLowerCase().replace(/[_-]/g, "") === "nfsexmlgzipb64" && typeof v === "string") {
+      try {
+        return gunzipB64ParaUtf8(v);
+      } catch {
+        return null;
+      }
+    }
+  }
+  return null;
+}
+
 function corpoEhPdf(buf: Buffer, contentType: string): boolean {
   if (buf.length >= 5 && buf.subarray(0, 5).toString("latin1") === "%PDF-") return true;
   return /application\/pdf/i.test(contentType) && buf.length > 20;
 }
 
 /**
- * Baixa o DANFSe oficial (PDF) pela chave: Belém municipal primeiro, ADN nacional depois.
+ * Baixa o DANFSe oficial (PDF) pela chave de 50 dígitos: ADN, Sefin e Belém.
  */
 export async function baixarDanfsePdf(params: {
   chaveAcesso: string;
@@ -65,32 +93,34 @@ export async function baixarDanfsePdf(params: {
   ambiente: AmbienteNfe;
   codigoMunicipioPrestador?: string;
 }): Promise<Buffer> {
-  const chave = params.chaveAcesso.trim();
-  const urls: string[] = [];
+  const chaveOrig = params.chaveAcesso.trim();
+  const chave50 = chaveNfse50Digitos(chaveOrig) ?? chaveOrig;
   const ibge = params.codigoMunicipioPrestador ?? "";
+  const urls: string[] = [
+    urlAdnDanfse(params.ambiente, chave50),
+    urlSefinDanfse(params.ambiente, chave50),
+  ];
   if (!ibge || municipioNfseBelem(ibge)) {
-    urls.push(urlNfseBelemDanfse(params.ambiente, chave));
+    urls.push(urlNfseBelemDanfse(params.ambiente, chave50));
   }
-  urls.push(urlAdnDanfse(params.ambiente, chave));
 
-  let ultimoErro = "O DANFSe não foi encontrado.";
-  for (const url of urls) {
-    const { statusCode, body, contentType } = await getBinarioComCertificado(
-      url,
-      params.pfx,
-      params.senha,
-    );
+  const tentativas = await Promise.allSettled(
+    urls.map((url) =>
+      getBinarioComCertificado(
+        url,
+        params.pfx,
+        params.senha,
+        "application/pdf, application/json;q=0.9, */*;q=0.1",
+        8_000,
+      ),
+    ),
+  );
+  for (const t of tentativas) {
+    if (t.status !== "fulfilled") continue;
+    const { statusCode, body, contentType } = t.value;
     if (statusCode >= 200 && statusCode < 300 && corpoEhPdf(body, contentType)) {
       return body;
     }
-    const texto = body.toString("utf8").replace(/\s+/g, " ").trim().slice(0, 280);
-    if (statusCode === 404) {
-      ultimoErro = "O PDF da NFS-e ainda não está no repositório nacional.";
-      continue;
-    }
-    ultimoErro = texto
-      ? `A prefeitura não devolveu o PDF (HTTP ${statusCode}): ${texto}`
-      : `A prefeitura não devolveu o PDF (HTTP ${statusCode}).`;
   }
-  throw new Error(ultimoErro);
+  throw new Error("O serviço de PDF da prefeitura está temporariamente indisponível.");
 }
