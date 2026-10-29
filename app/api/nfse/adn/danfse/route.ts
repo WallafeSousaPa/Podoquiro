@@ -3,9 +3,7 @@ import { getSession } from "@/lib/auth/session";
 import { respostaSeSemPermissaoNfseAdn } from "@/lib/dashboard/nota-fiscal-permissao";
 import { obterConfigFocusNfe } from "@/lib/focusnfe";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { carregarCertificadoEmpresa, type AmbienteNfe } from "@/lib/sefaz/nfe";
 import {
-  baixarDanfsePdf,
   chaveAcessoNfseDeResposta,
   ehRefNfseAdn,
   extrairDadosDanfse,
@@ -19,30 +17,23 @@ function parseEmpresaId(idEmpresa: string) {
   return Number.isFinite(n) && n > 0 ? n : null;
 }
 
-function completarDados(
-  base: DadosDanfse,
-  extra: Partial<DadosDanfse>,
-): DadosDanfse {
-  return {
-    chave: base.chave || extra.chave || "",
-    numero: base.numero || extra.numero || "",
-    serie: base.serie || extra.serie || "",
-    competencia: base.competencia || extra.competencia || "",
-    dhEmi: base.dhEmi || extra.dhEmi || "",
-    codigoVerificacao: base.codigoVerificacao || extra.codigoVerificacao || "",
-    municipioEmi: base.municipioEmi || extra.municipioEmi || "Belém / PA",
-    prestadorNome: base.prestadorNome || extra.prestadorNome || "",
-    prestadorCnpj: base.prestadorCnpj || extra.prestadorCnpj || "",
-    prestadorIm: base.prestadorIm || extra.prestadorIm || "",
-    tomadorNome: base.tomadorNome || extra.tomadorNome || "",
-    tomadorDoc: base.tomadorDoc || extra.tomadorDoc || "",
-    tomadorEndereco: base.tomadorEndereco || extra.tomadorEndereco || "",
-    discriminacao: base.discriminacao || extra.discriminacao || "",
-    valor: base.valor || extra.valor || "",
-  };
+function preencher(d: DadosDanfse, patch: Partial<DadosDanfse>): DadosDanfse {
+  const out = { ...d };
+  for (const [k, v] of Object.entries(patch) as [keyof DadosDanfse, DadosDanfse[keyof DadosDanfse]][]) {
+    if (v == null || v === "") continue;
+    if (out[k] == null || out[k] === "") {
+      (out as Record<string, unknown>)[k] = v;
+    }
+  }
+  if (!out.chave50 && out.chave) {
+    out.chave50 = out.chave.replace(/^NFS/i, "").replace(/\D/g, "");
+  }
+  if (!out.vLiq) out.vLiq = out.valor;
+  if (!out.vTotNf) out.vTotNf = out.vLiq || out.valor;
+  return out;
 }
 
-/** Proxy autenticado do DANFSe: tenta o PDF oficial e, se falhar, gera a partir do XML autorizado. */
+/** DANFSe no leiaute nacional (NT 008/2026) a partir do XML autorizado. */
 export async function GET(request: Request) {
   const session = await getSession();
   const negado = await respostaSeSemPermissaoNfseAdn(session);
@@ -96,32 +87,6 @@ export async function GET(request: Request) {
   }
 
   const config = await obterConfigFocusNfe(supabase, empresaId);
-  const ambiente: AmbienteNfe = config?.ambiente === "homologacao" ? 2 : 1;
-  const cert = await carregarCertificadoEmpresa(supabase, empresaId);
-
-  if (cert) {
-    try {
-      const oficial = await baixarDanfsePdf({
-        chaveAcesso: chave,
-        pfx: cert.pfx,
-        senha: cert.senha,
-        ambiente,
-        codigoMunicipioPrestador: config?.prestadorCodigoMunicipio,
-      });
-      const numero = String(row.numero_nfse ?? chave).replace(/[^\w.-]+/g, "");
-      return new NextResponse(new Uint8Array(oficial), {
-        status: 200,
-        headers: {
-          "Content-Type": "application/pdf",
-          "Content-Disposition": `inline; filename="DANFSe-${numero}.pdf"`,
-          "Cache-Control": "private, max-age=300",
-        },
-      });
-    } catch {
-      /* gera a partir do XML autorizado */
-    }
-  }
-
   const xml = nfseXmlGZipDeResposta(row.payload_resposta);
   const { data: emp } = await supabase
     .from("empresas")
@@ -129,12 +94,14 @@ export async function GET(request: Request) {
     .eq("id", empresaId)
     .maybeSingle();
 
-  const extraidos = xml ? extrairDadosDanfse(xml, chave) : extrairDadosDanfse("", chave);
-  const dados = completarDados(extraidos, {
+  const extraidos = extrairDadosDanfse(xml ?? "", chave);
+  const dados = preencher(extraidos, {
     chave,
     numero: String(row.numero_nfse ?? ""),
     serie: String(row.serie_rps ?? ""),
+    nDps: String(row.numero_rps ?? ""),
     dhEmi: String(row.emitted_at ?? ""),
+    dhProc: String(row.emitted_at ?? ""),
     codigoVerificacao: String(row.codigo_verificacao ?? ""),
     prestadorNome:
       String(emp?.razao_social ?? "").trim() || String(emp?.nome_fantasia ?? "").trim(),
@@ -142,6 +109,7 @@ export async function GET(request: Request) {
     prestadorIm: config?.prestadorInscricaoMunicipal ?? "",
     discriminacao: String(row.discriminacao ?? ""),
     valor: String(row.valor_servicos ?? ""),
+    municipioEmi: "Belém / PA",
   });
 
   if (!dados.numero && !dados.discriminacao && !xml) {
