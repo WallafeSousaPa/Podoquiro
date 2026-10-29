@@ -1,7 +1,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { buscarPacientesPorNomeEmpresa } from "@/lib/pacientes/buscar-pacientes-nome-empresa";
 import { dayStartIsoBr, nextDayStartIsoBr } from "@/lib/relatorios/periodo";
-import { ehRefNfseAdn, urlDanfseAdnLocal } from "@/lib/sefaz/nfse";
+import { ehRefNfseAdn, urlDanfseAdnLocal } from "@/lib/sefaz/nfse/id-dps";
 
 export type NfseFocusConsultaRow = {
   id: string;

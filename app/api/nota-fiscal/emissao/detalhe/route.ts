@@ -4,7 +4,7 @@ import { respostaSeSemPermissaoNfseNoCaixa } from "@/lib/dashboard/nota-fiscal-p
 import { agendamentoPagamentoQuitado } from "@/lib/financeiro/agendamento-pagamento-quitado";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { mensagemErroFocusNfse } from "@/lib/focusnfe/mensagem-erro";
-import { ehRefNfseAdn, urlDanfseAdnLocal } from "@/lib/sefaz/nfse";
+import { ehRefNfseAdn, urlDanfseAdnLocal } from "@/lib/sefaz/nfse/id-dps";
 
 function parseEmpresaId(idEmpresa: string) {
   const n = Number(idEmpresa);
