@@ -43,12 +43,12 @@ export type FocusNfseEmitirBody = {
   /** CST PIS/COFINS (`situacao_tributaria_pis_cofins`). Substitui tpRetPisCofins no schema atual. */
   situacao_tributaria_pis_cofins: string;
   indicador_total_tributacao: string;
-  finalidade_emissao: number;
-  consumidor_final: number;
-  indicador_destinatario: number;
-  codigo_indicador_operacao: string;
-  ibs_cbs_situacao_tributaria: string;
-  ibs_cbs_classificacao_tributaria: string;
+  finalidade_emissao?: number;
+  consumidor_final?: number;
+  indicador_destinatario?: number;
+  codigo_indicador_operacao?: string;
+  ibs_cbs_situacao_tributaria?: string;
+  ibs_cbs_classificacao_tributaria?: string;
 };
 
 export type FocusNfseRespostaEmitir = {

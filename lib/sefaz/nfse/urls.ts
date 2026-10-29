@@ -25,10 +25,18 @@ export function municipioNfseBelem(ibge: string): boolean {
 }
 
 /**
- * API municipal de Belém — mesmo contrato da Sefin (DPS gzip+base64 + mTLS).
- * Documentado no portal: POST `/notafiscal-ws/nfse`.
+ * API municipal de Belém — POST `{ dpsXmlGZipB64 }` (mesmo contrato da Sefin).
+ * Só `/notafiscal-ws/nfse` aceita POST. `/api/adn` e `/api/adn/nfse` devolvem 404.
  */
 export function urlNfseBelemMunicipal(ambiente: AmbienteNfe): string {
+  if (ambiente === 2) {
+    return "https://homol-nfse2.belem.pa.gov.br/notafiscal-ws/nfse";
+  }
+  return "https://nfseapi.belem.pa.gov.br/notafiscal-ws/nfse";
+}
+
+/** Homologação DSF alternativa. Em produção coincide com a URL principal. */
+export function urlNfseBelemMunicipalFallback(ambiente: AmbienteNfe): string {
   if (ambiente === 2) {
     return "https://nfse2-bel.dsfweb.com.br/notafiscal-ws/nfse";
   }

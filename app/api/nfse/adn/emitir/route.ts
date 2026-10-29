@@ -1,5 +1,4 @@
 import { NextResponse } from "next/server";
-import { getPodeVerTodosAgendamentos } from "@/lib/agenda/permissoes-calendario";
 import { getSession } from "@/lib/auth/session";
 import { respostaSeSemPermissaoNfseAdn } from "@/lib/dashboard/nota-fiscal-permissao";
 import { agendamentoPagamentoQuitado } from "@/lib/financeiro/agendamento-pagamento-quitado";
@@ -7,6 +6,7 @@ import {
   bloqueiaReemissaoFocusNfse,
   cpfValidoParaTomadorNfse,
   discriminacaoDeProcedimentos,
+  mensagemCpfTomadorNfse,
   obterConfigFocusNfe,
   validarConfigPrestadorNfseNacional,
 } from "@/lib/focusnfe";
@@ -34,7 +34,7 @@ function parseEmpresaId(idEmpresa: string) {
 const SELECT_EMISSAO =
   "id, focus_ref, status, numero_nfse, codigo_verificacao, numero_rps, serie_rps, url_danfse, error_message, emitted_at, valor_servicos, discriminacao";
 
-/** NFS-e sem Focus: API municipal de Belém (DPS) ou Sefin nos demais municípios. Somente Administrador. */
+/** NFS-e na prefeitura: API municipal de Belém (DPS) ou Sefin nos demais municípios. */
 export async function POST(request: Request) {
   const session = await getSession();
   const negado = await respostaSeSemPermissaoNfseAdn(session);
@@ -44,8 +44,6 @@ export async function POST(request: Request) {
   if (!empresaId) {
     return NextResponse.json({ error: "Empresa inválida." }, { status: 400 });
   }
-
-  const sessionUserId = Number(session!.sub);
 
   let body: { id_agendamento?: number; iss_retido?: boolean };
   try {
@@ -64,7 +62,7 @@ export async function POST(request: Request) {
   const config = await obterConfigFocusNfe(supabase, empresaId);
   if (!config) {
     return NextResponse.json(
-      { error: "Configure os parâmetros municipais da NFS-e (Parâmetros Focus NFe) antes de emitir." },
+      { error: "Configure os parâmetros municipais da NFS-e (Nota Fiscal › Parâmetros da NFS-e) antes de emitir." },
       { status: 400 },
     );
   }
@@ -98,9 +96,7 @@ export async function POST(request: Request) {
     );
   }
 
-  const podeVerTodos = await getPodeVerTodosAgendamentos(supabase, sessionUserId);
-
-  let q = supabase
+  const q = supabase
     .from("agendamentos")
     .select(
       `
@@ -122,16 +118,12 @@ export async function POST(request: Request) {
     .eq("id", idAgendamento)
     .eq("id_empresa", empresaId);
 
-  if (!podeVerTodos) {
-    q = q.eq("id_usuario", sessionUserId);
-  }
-
   const { data: ag, error: agErr } = await q.maybeSingle();
   if (agErr) {
     return NextResponse.json({ error: agErr.message }, { status: 500 });
   }
   if (!ag) {
-    return NextResponse.json({ error: "Atendimento não encontrado." }, { status: 404 });
+    return NextResponse.json({ error: "Atendimento não encontrado." }, { status: 400 });
   }
   if (String(ag.status) !== "realizado") {
     return NextResponse.json(
@@ -197,12 +189,14 @@ export async function POST(request: Request) {
     | null;
   const paciente = Array.isArray(pacRaw) ? pacRaw[0] : pacRaw;
   if (!paciente) {
-    return NextResponse.json({ error: "Paciente não encontrado." }, { status: 404 });
+    return NextResponse.json({ error: "Paciente não encontrado." }, { status: 400 });
   }
-  if (!cpfValidoParaTomadorNfse(paciente.cpf)) {
+  const erroCpf = mensagemCpfTomadorNfse(paciente.cpf);
+  if (erroCpf || !cpfValidoParaTomadorNfse(paciente.cpf)) {
     return NextResponse.json(
       {
         error:
+          erroCpf ??
           "Cadastre o CPF do paciente para emitir a NFS-e. A prefeitura exige tomador identificado.",
       },
       { status: 400 },

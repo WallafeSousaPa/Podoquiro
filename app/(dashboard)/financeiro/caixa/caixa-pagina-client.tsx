@@ -36,7 +36,9 @@ type CaixaPaginaClientProps = {
   podeEmitirNfse?: boolean;
 };
 
-export function CaixaPaginaClient({ podeEmitirNfse = false }: CaixaPaginaClientProps) {
+export function CaixaPaginaClient({
+  podeEmitirNfse = false,
+}: CaixaPaginaClientProps) {
   const [dataRef, setDataRef] = useState(dataLocalYmd);
   const [rows, setRows] = useState<CaixaAgendamentoRow[]>([]);
   const [loadingRows, setLoadingRows] = useState(true);

@@ -2,6 +2,7 @@ export {
   urlSefinEmitirNfse,
   urlSefinNacionalBase,
   urlNfseBelemMunicipal,
+  urlNfseBelemMunicipalFallback,
   urlEmitirDpsNfse,
   municipioNfseBelem,
 } from "./urls";
@@ -18,6 +19,9 @@ export {
   mensagemDeErroItemSefin,
   mensagemErrosSefin,
   mensagemErrosSefinDeResposta,
+  MSG_L9999_TOMADOR,
+  MSG_L9999_SCHEMA,
+  MSG_L9999_GENERICO,
   type SefinNfseErroItem,
 } from "./erros";
 export {

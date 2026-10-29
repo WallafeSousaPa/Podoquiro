@@ -1,3 +1,9 @@
+import {
+  MSG_L9999_GENERICO,
+  MSG_L9999_SCHEMA,
+  MSG_L9999_TOMADOR,
+} from "@/lib/sefaz/nfse/erros";
+
 const MSG_L0017 =
   "L0017: informe o código de tributação municipal (cTribMun) em " +
   "Nota Fiscal › Parâmetros Focus NFe. Em Belém costuma ter 3 dígitos (ex.: 001).";
@@ -35,6 +41,11 @@ function mensagemLayoutNacional(texto: string): string | null {
   if (ehL0017(texto)) return MSG_L0017;
   if (ehL0022(texto)) return MSG_L0022;
   if (ehE0316(texto)) return MSG_E0316;
+  if (/CPF\/CNPJ Tomador Inv[áa]lido/i.test(texto)) return MSG_L9999_TOMADOR;
+  if (/L9999/i.test(texto) && /XML Schema|XSD|Invalid content|em desacordo/i.test(texto)) {
+    return MSG_L9999_SCHEMA;
+  }
+  if (/^L9999\s*$/i.test(texto.trim())) return MSG_L9999_GENERICO;
   if (ehCepTomador(texto)) return MSG_CEP_TOMADOR;
   return null;
 }
@@ -86,6 +97,9 @@ export function mensagemErroFocusNfse(body: unknown): string | null {
       if (codigo === "L0017" || ehL0017(bruto)) return MSG_L0017;
       if (codigo === "L0022" || ehL0022(bruto)) return MSG_L0022;
       if (codigo === "E0316" || ehE0316(bruto)) return MSG_E0316;
+      if (codigo === "L9999") {
+        return mensagemLayoutNacional(bruto) ?? MSG_L9999_GENERICO;
+      }
       if (ehCepTomador(bruto)) return MSG_CEP_TOMADOR;
       const main = [item.codigo, item.mensagem].filter(Boolean).join(": ");
       const correcao = item.correcao?.trim();

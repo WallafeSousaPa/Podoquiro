@@ -35,12 +35,35 @@ const MSG_E0039 =
   "E0039: o município não habilitou o emissor público da Sefin Nacional. " +
   "Em Belém a emissão direta vai para a API municipal (nfseapi.belem.pa.gov.br), sem a Focus.";
 
+export const MSG_L9999_TOMADOR =
+  "L9999: CPF/CNPJ do tomador inválido. Confira o CPF no cadastro do paciente " +
+  "(11 dígitos, dígitos verificadores corretos) e emita novamente.";
+
+export const MSG_L9999_SCHEMA =
+  "L9999: a prefeitura rejeitou o XML da NFS-e (fora do leiaute esperado). Tente emitir novamente.";
+
+export const MSG_L9999_GENERICO =
+  "L9999: a prefeitura retornou um erro interno ao processar a NFS-e. Tente emitir novamente. " +
+  "Se persistir, o webservice municipal (SEFIN Belém) pode estar instável.";
+
 function mensagemAmigavelSefin(codigo: string | undefined, texto: string): string | null {
   const c = (codigo ?? "").toUpperCase();
   const t = `${c} ${texto}`.toUpperCase();
   if (c === "E0039" || t.includes("EMISSORES PÚBLICOS NACIONAIS") || t.includes("EMISSORES PUBLICOS NACIONAIS")) {
     return MSG_E0039;
   }
+  const falaTomador =
+    t.includes("CPF/CNPJ TOMADOR") ||
+    t.includes("TOMADOR INVÁLIDO") ||
+    t.includes("TOMADOR INVALIDO");
+  const falaSchema =
+    t.includes("XML SCHEMA") ||
+    t.includes("XSD") ||
+    t.includes("INVALID CONTENT") ||
+    t.includes("EM DESACORDO");
+  if (falaTomador) return MSG_L9999_TOMADOR;
+  if (c === "L9999" && falaSchema) return MSG_L9999_SCHEMA;
+  if (c === "L9999") return MSG_L9999_GENERICO;
   return null;
 }
 

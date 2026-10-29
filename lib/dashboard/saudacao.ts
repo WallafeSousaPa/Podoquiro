@@ -1,7 +1,6 @@
 import { cache } from "react";
 import { createAdminClient } from "@/lib/supabase/admin";
 import {
-  grupoUsuariosAdministrador,
   grupoUsuariosAdministradorOuDiretoria,
   grupoUsuariosNfseNoCaixa,
   grupoUsuariosPodePersonalizarMensagemWhatsappTaxa,
@@ -41,8 +40,6 @@ export type SaudacaoNomes = {
   podePersonalizarMensagemWhatsappTaxa: boolean;
   /** Excluir importação de NF-e e reverter estoque (Administrador / Diretoria). */
   podeExcluirImportacaoEstoque: boolean;
-  /** Emitir NFS-e direto na prefeitura (sem Focus): somente Administrador. */
-  podeEmitirNfseAdn: boolean;
 };
 
 /**
@@ -64,7 +61,6 @@ export const getNomesSaudacao = cache(
     let podeEmitirNfseNoCaixa = false;
     let podePersonalizarMensagemWhatsappTaxa = false;
     let podeExcluirImportacaoEstoque = false;
-    let podeEmitirNfseAdn = false;
 
     if (Number.isFinite(userId) && userId > 0 && Number.isFinite(empresaId) && empresaId > 0) {
       const supabase = createAdminClient();
@@ -95,7 +91,6 @@ export const getNomesSaudacao = cache(
         grupoUsuariosPodePersonalizarMensagemWhatsappTaxa(nomeGrupo);
       podeExcluirImportacaoEstoque =
         grupoUsuariosAdministradorOuDiretoria(nomeGrupo);
-      podeEmitirNfseAdn = grupoUsuariosAdministrador(nomeGrupo);
 
       try {
         const efetivo = await menusEfetivosDoUsuario(supabase, userId);
@@ -135,7 +130,6 @@ export const getNomesSaudacao = cache(
       podeEmitirNfseNoCaixa,
       podePersonalizarMensagemWhatsappTaxa,
       podeExcluirImportacaoEstoque,
-      podeEmitirNfseAdn,
     };
   },
 );

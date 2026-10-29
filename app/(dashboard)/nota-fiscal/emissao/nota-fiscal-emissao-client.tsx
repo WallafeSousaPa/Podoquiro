@@ -39,15 +39,12 @@ function fmtDataRef(ymd: string) {
 }
 
 type Props = {
-  /** Parâmetros Focus NFe — somente Administrador / Diretoria. */
+  /** Parâmetros municipais da NFS-e — Administrador / Diretoria. */
   exibirParametros?: boolean;
-  /** Botão de NFS-e direto na SEFAZ — somente Administrador. */
-  podeEmitirNfseAdn?: boolean;
 };
 
 export function NotaFiscalEmissaoClient({
   exibirParametros = true,
-  podeEmitirNfseAdn = false,
 }: Props) {
   const hoje = dataLocalYmd();
   const semanaPadrao = limitesSemanaInclusive(hoje);
@@ -123,7 +120,7 @@ export function NotaFiscalEmissaoClient({
             onClick={() => setModalParametros(true)}
           >
             <i className="fas fa-cog mr-1" aria-hidden />
-            Parâmetros Focus NFe
+            Parâmetros da NFS-e
           </button>
         </div>
       ) : null}
@@ -336,7 +333,6 @@ export function NotaFiscalEmissaoClient({
         row={rowEmissao}
         onFechar={() => setRowEmissao(null)}
         onEmitido={() => void carregar()}
-        podeEmitirNfseAdn={podeEmitirNfseAdn}
       />
     </>
   );

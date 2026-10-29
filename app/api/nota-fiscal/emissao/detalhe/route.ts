@@ -1,5 +1,4 @@
 import { NextResponse } from "next/server";
-import { getPodeVerTodosAgendamentos } from "@/lib/agenda/permissoes-calendario";
 import { getSession } from "@/lib/auth/session";
 import { respostaSeSemPermissaoNfseNoCaixa } from "@/lib/dashboard/nota-fiscal-permissao";
 import { agendamentoPagamentoQuitado } from "@/lib/financeiro/agendamento-pagamento-quitado";
@@ -33,17 +32,16 @@ export async function GET(req: Request) {
     return NextResponse.json({ error: "Empresa inválida." }, { status: 400 });
   }
 
-  const sessionUserId = Number(session!.sub);
   const idAgendamento = Number(new URL(req.url).searchParams.get("id_agendamento"));
 
   if (!Number.isFinite(idAgendamento) || idAgendamento <= 0) {
     return NextResponse.json({ error: "Informe id_agendamento." }, { status: 400 });
   }
 
+  try {
   const supabase = createAdminClient();
-  const podeVerTodos = await getPodeVerTodosAgendamentos(supabase, sessionUserId);
 
-  let q = supabase
+  const q = supabase
     .from("agendamentos")
     .select(
       `
@@ -78,16 +76,12 @@ export async function GET(req: Request) {
     .eq("id", idAgendamento)
     .eq("id_empresa", empresaId);
 
-  if (!podeVerTodos) {
-    q = q.eq("id_usuario", sessionUserId);
-  }
-
   const { data: raw, error } = await q.maybeSingle();
   if (error) {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
   if (!raw) {
-    return NextResponse.json({ error: "Atendimento não encontrado." }, { status: 404 });
+    return NextResponse.json({ error: "Atendimento não encontrado." }, { status: 400 });
   }
 
   if (String(raw.status) !== "realizado") {
@@ -255,4 +249,9 @@ export async function GET(req: Request) {
         }
       : null,
   });
+  } catch (e) {
+    const msg =
+      e instanceof Error ? e.message : "Não foi possível carregar os dados da NFS-e.";
+    return NextResponse.json({ error: msg }, { status: 500 });
+  }
 }

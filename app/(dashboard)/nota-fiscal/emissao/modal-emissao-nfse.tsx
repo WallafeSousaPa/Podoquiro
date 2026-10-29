@@ -3,9 +3,10 @@
 import type { NotaFiscalAtendimentoRow } from "@/lib/financeiro/nota-fiscal-atendimentos-rows";
 import {
   bloqueiaReemissaoFocusNfse,
+  cpfDigitosTomadorNfse,
   cpfValidoParaTomadorNfse,
+  mensagemCpfTomadorNfse,
   mensagemErroFocusNfse,
-  mensagemErroFocusNfseOuFallback,
   podeCancelarFocusNfse,
   statusInternoDeFocus,
 } from "@/lib/focusnfe";
@@ -59,28 +60,13 @@ type DetalheResponse = {
   nfse: NfseEmissao | null;
 };
 
-type ConsultarRes = {
-  emissao?: NfseEmissao;
-  focus?: {
-    status?: string;
-    mensagem?: string;
-    erros?: { codigo?: string; mensagem?: string; correcao?: string }[];
-  };
-  error?: string;
-};
-
 type FaseModal = "detalhe" | "processando" | "resultado";
 
 type Props = {
   row: NotaFiscalAtendimentoRow | null;
   onFechar: () => void;
   onEmitido?: () => void;
-  /** Emissão direta na prefeitura (sem Focus) — visível só para Administrador. */
-  podeEmitirNfseAdn?: boolean;
 };
-
-const POLL_INTERVALO_MS = 2500;
-const POLL_MAX_TENTATIVAS = 48;
 
 function fmtBrl(n: number) {
   return n.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
@@ -102,10 +88,6 @@ function fmtCpf(doc: string | null | undefined) {
   const d = doc.replace(/\D/g, "");
   if (d.length !== 11) return doc;
   return d.replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, "$1.$2.$3-$4");
-}
-
-function sleep(ms: number) {
-  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 function ModalBackdrop({
@@ -293,17 +275,23 @@ function ModalConfirmarCancelamentoNfse({
 
 async function lerJsonResposta<T>(res: Response): Promise<T> {
   const texto = await res.text();
-  if (!texto.trim()) {
+  const t = texto.trim();
+  if (!t) {
     throw new Error(
       res.ok
-        ? "A Focus NFe não retornou dados."
+        ? "A prefeitura não retornou dados da NFS-e."
         : `Falha ao emitir NFS-e (HTTP ${res.status}). Tente novamente.`,
     );
   }
+  if (/^<!DOCTYPE/i.test(t) || /^<html/i.test(t)) {
+    throw new Error(
+      `Falha ao emitir NFS-e (HTTP ${res.status}). Tente novamente.`,
+    );
+  }
   try {
-    return JSON.parse(texto) as T;
+    return JSON.parse(t) as T;
   } catch {
-    throw new Error(texto.slice(0, 500));
+    throw new Error(t.length > 280 ? `${t.slice(0, 280)}…` : t);
   }
 }
 
@@ -311,14 +299,13 @@ export function ModalEmissaoNfse({
   row,
   onFechar,
   onEmitido,
-  podeEmitirNfseAdn = false,
 }: Props) {
   const [loading, setLoading] = useState(true);
   const [erro, setErro] = useState<string | null>(null);
   const [detalhe, setDetalhe] = useState<DetalheResponse | null>(null);
   const [discriminacao, setDiscriminacao] = useState<string | null>(null);
   const [fase, setFase] = useState<FaseModal>("detalhe");
-  const [processoMsg, setProcessoMsg] = useState("Enviando NFS-e à Focus NFe…");
+  const [processoMsg, setProcessoMsg] = useState("Enviando NFS-e à prefeitura…");
   const [notaEmitida, setNotaEmitida] = useState<NfseEmissao | null>(null);
   const [cancelando, setCancelando] = useState(false);
   const [confirmCancelId, setConfirmCancelId] = useState<string | null>(null);
@@ -365,46 +352,10 @@ export function ModalEmissaoNfse({
       setCancelando(false);
       setConfirmCancelId(null);
       setOkMsg(null);
-      setProcessoMsg("Enviando NFS-e à Focus NFe…");
+      setProcessoMsg("Enviando NFS-e à prefeitura…");
       void carregar();
     }
   }, [row, carregar]);
-
-  const consultarPorId = async (emissaoId: string): Promise<ConsultarRes> => {
-    const res = await fetch("/api/focusnfe/nfse/consultar", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      credentials: "include",
-      body: JSON.stringify({ id: emissaoId }),
-    });
-    const j = await lerJsonResposta<ConsultarRes>(res);
-    if (!res.ok) throw new Error(j.error ?? "Erro ao consultar NFS-e.");
-    return j;
-  };
-
-  const aguardarAutorizacao = async (emissaoId: string): Promise<NfseEmissao> => {
-    setProcessoMsg("Aguardando autorização da prefeitura…");
-    for (let t = 0; t < POLL_MAX_TENTATIVAS; t++) {
-      await sleep(POLL_INTERVALO_MS);
-      const j = await consultarPorId(emissaoId);
-      const status = (j.focus?.status ?? j.emissao?.status ?? "").toLowerCase();
-      const interno = statusInternoDeFocus(status);
-
-      if (interno === "autorizado" && j.emissao) {
-        return j.emissao;
-      }
-      if (interno === "erro") {
-        throw new Error(
-          mensagemErroFocusNfse(j.emissao?.error_message) ??
-            mensagemErroFocusNfse(j.focus) ??
-            mensagemErroFocusNfseOuFallback(null),
-        );
-      }
-    }
-    throw new Error(
-      "Tempo esgotado aguardando autorização. Tente consultar o status mais tarde.",
-    );
-  };
 
   const executarCancelamento = async (emissaoId: string) => {
     setCancelando(true);
@@ -433,31 +384,20 @@ export function ModalEmissaoNfse({
     }
   };
 
-  const emitir = async (canal: "focus" | "adn") => {
+  const emitir = async () => {
     if (!row) return;
-    if (canal === "adn" && !podeEmitirNfseAdn) {
-      setErro("Somente o administrador pode emitir NFS-e direto na prefeitura.");
-      return;
-    }
     const cpfPaciente = detalhe?.paciente?.cpf;
-    if (!cpfValidoParaTomadorNfse(cpfPaciente)) {
-      setErro(
-        "Cadastre o CPF do paciente para emitir a NFS-e. A prefeitura exige tomador identificado.",
-      );
+    const erroCpf = mensagemCpfTomadorNfse(cpfPaciente);
+    if (erroCpf) {
+      setErro(erroCpf);
       return;
     }
     setFase("processando");
-    setProcessoMsg(
-      canal === "adn"
-        ? "Enviando NFS-e à prefeitura de Belém…"
-        : "Enviando NFS-e à Focus NFe…",
-    );
+    setProcessoMsg("Enviando NFS-e à prefeitura de Belém…");
     setErro(null);
 
     try {
-      const url =
-        canal === "adn" ? "/api/nfse/adn/emitir" : "/api/focusnfe/nfse/emitir";
-      const res = await fetch(url, {
+      const res = await fetch("/api/nfse/adn/emitir", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
@@ -468,8 +408,6 @@ export function ModalEmissaoNfse({
         detalhe?: unknown;
         erros?: { codigo?: string; mensagem?: string; descricao?: string }[];
         emissao?: NfseEmissao & { id: string; status?: string };
-        focus?: { status?: string };
-        sefin?: { chaveAcesso?: string };
       }>(res);
       if (!res.ok) {
         const sefinMsg =
@@ -485,27 +423,15 @@ export function ModalEmissaoNfse({
         );
       }
 
-      const emissaoId = j.emissao?.id;
-      if (!emissaoId) throw new Error("Resposta de emissão inválida.");
-
-      const statusInicial = (
-        j.focus?.status ??
-        j.emissao?.status ??
-        ""
-      ).toLowerCase();
-      let nf: NfseEmissao;
-
-      if (canal === "adn" && j.emissao && statusInicial === "autorizado") {
-        nf = j.emissao;
-      } else if (statusInicial === "autorizado") {
-        const consulta = await consultarPorId(emissaoId);
-        if (!consulta.emissao) throw new Error("NFS-e autorizada, mas sem dados na consulta.");
-        nf = consulta.emissao;
-      } else {
-        nf = await aguardarAutorizacao(emissaoId);
+      if (!j.emissao) throw new Error("Resposta de emissão inválida.");
+      if ((j.emissao.status ?? "").toLowerCase() !== "autorizado") {
+        throw new Error(
+          j.emissao.error_message?.trim() ||
+            "A prefeitura não autorizou a NFS-e.",
+        );
       }
 
-      setNotaEmitida(nf);
+      setNotaEmitida(j.emissao);
       setFase("resultado");
       onEmitido?.();
     } catch (e) {
@@ -518,6 +444,7 @@ export function ModalEmissaoNfse({
 
   const pac = detalhe?.paciente;
   const comTomador = pac ? cpfValidoParaTomadorNfse(pac.cpf) : false;
+  const cpfInformado = pac ? cpfDigitosTomadorNfse(pac.cpf).length === 11 : false;
   const cepTomadorOk = pac ? String(pac.cep ?? "").replace(/\D/g, "").length === 8 : false;
   const nfExistente = detalhe?.nfse;
   const jaEmitida = nfExistente ? bloqueiaReemissaoFocusNfse(nfExistente.status) : false;
@@ -672,10 +599,16 @@ export function ModalEmissaoNfse({
             <h6 className="text-uppercase text-muted small">
               Paciente{comTomador ? " (tomador)" : ""}
             </h6>
-            {pac && !comTomador ? (
+            {pac && !cpfInformado ? (
               <p className="alert alert-warning small py-2">
                 Sem CPF cadastrado — a prefeitura exige tomador. Cadastre o CPF do paciente
                 (e um CEP válido) para emitir a NFS-e.
+              </p>
+            ) : null}
+            {pac && cpfInformado && !comTomador ? (
+              <p className="alert alert-warning small py-2">
+                O CPF cadastrado é inválido (não passa na verificação dos dígitos). Corrija o
+                cadastro do paciente antes de emitir a NFS-e.
               </p>
             ) : null}
             {pac && comTomador && !cepTomadorOk ? (
@@ -689,7 +622,7 @@ export function ModalEmissaoNfse({
                 <dt className="col-sm-3">Nome</dt>
                 <dd className="col-sm-9">{pac.nome}</dd>
                 <dt className="col-sm-3">CPF</dt>
-                <dd className="col-sm-9">{comTomador ? fmtCpf(pac.cpf) : "Não informado"}</dd>
+                <dd className="col-sm-9">{cpfInformado ? fmtCpf(pac.cpf) : "Não informado"}</dd>
                 <dt className="col-sm-3">E-mail</dt>
                 <dd className="col-sm-9">{pac.email?.trim() || "—"}</dd>
                 <dt className="col-sm-3">Telefone</dt>
@@ -753,45 +686,24 @@ export function ModalEmissaoNfse({
           </button>
         ) : null}
         {!jaEmitida ? (
-          <>
-            <button
-              type="button"
-              className="btn btn-primary"
-              disabled={
-                loading ||
-                !detalhe?.paciente ||
-                !discriminacao ||
-                !comTomador ||
-                !cepTomadorOk ||
-                cancelando ||
-                !!confirmCancelId
-              }
-              onClick={() => void emitir("focus")}
-            >
-              <i className="fas fa-file-invoice mr-1" aria-hidden />
-              Emitir NFS-e
-            </button>
-            {podeEmitirNfseAdn ? (
-              <button
-                type="button"
-                className="btn btn-outline-dark"
-                title="Emite no webservice da prefeitura de Belém, sem passar pela Focus"
-                disabled={
-                  loading ||
-                  !detalhe?.paciente ||
-                  !discriminacao ||
-                  !comTomador ||
-                  !cepTomadorOk ||
-                  cancelando ||
-                  !!confirmCancelId
-                }
-                onClick={() => void emitir("adn")}
-              >
-                <i className="fas fa-university mr-1" aria-hidden />
-                Emitir NFS-e (prefeitura)
-              </button>
-            ) : null}
-          </>
+          <button
+            type="button"
+            className="btn btn-primary"
+            title="Emite no webservice da prefeitura de Belém"
+            disabled={
+              loading ||
+              !detalhe?.paciente ||
+              !discriminacao ||
+              !comTomador ||
+              !cepTomadorOk ||
+              cancelando ||
+              !!confirmCancelId
+            }
+            onClick={() => void emitir()}
+          >
+            <i className="fas fa-university mr-1" aria-hidden />
+            Emitir NFS-e
+          </button>
         ) : null}
       </div>
     </ModalBackdrop>

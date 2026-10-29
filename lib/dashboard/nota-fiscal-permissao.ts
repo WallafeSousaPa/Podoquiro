@@ -1,7 +1,6 @@
 import { NextResponse } from "next/server";
 import type { SessionPayload } from "@/lib/auth/session";
 import {
-  getUsuarioGrupoAdministrador,
   getUsuarioPodeMenuNotaFiscal,
   getUsuarioPodeNfseNoCaixa,
 } from "@/lib/dashboard/menu-grupo";
@@ -57,7 +56,7 @@ export async function respostaSeSemPermissaoNfseNoCaixa(
   return null;
 }
 
-/** Emissão de NFS-e sem Focus (DSF Belém / Sefin): somente Administrador. */
+/** Emissão de NFS-e na prefeitura: mesma regra do Caixa ou menu Nota Fiscal. */
 export async function respostaSeSemPermissaoNfseAdn(
   session: SessionPayload | null,
 ): Promise<NextResponse | null> {
@@ -71,10 +70,11 @@ export async function respostaSeSemPermissaoNfseAdn(
   }
 
   const supabase = createAdminClient();
-  const ehAdmin = await getUsuarioGrupoAdministrador(supabase, userId);
-  if (!ehAdmin) {
+  const podeMenu = await getUsuarioPodeMenuNotaFiscal(supabase, userId);
+  const podeCaixa = await getUsuarioPodeNfseNoCaixa(supabase, userId);
+  if (!podeMenu && !podeCaixa) {
     return NextResponse.json(
-      { error: "Somente o administrador pode emitir NFS-e direto na prefeitura." },
+      { error: "Sem permissão para emitir NFS-e na prefeitura." },
       { status: 403 },
     );
   }

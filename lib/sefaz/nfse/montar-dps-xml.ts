@@ -62,8 +62,21 @@ function nbs9Digitos(raw: string): string {
 }
 
 /**
- * DPS 1.01 (Sefin Nacional), no mesmo leiaute que a Focus gerava,
- * com bloco `<toma>` obrigatório (L9999 em Belém).
+ * ViaCEP grava faixa de numeração ("de 1261/1262 a 1937/1938") em complemento.
+ * Isso não é unidade/apto e a Belém já quebrou parser com string curta + barra.
+ */
+function complementoTomadorNfse(raw: string | null | undefined): string | null {
+  const t = semControle(raw ?? "");
+  if (!t) return null;
+  if (/^de\s+\d/i.test(t)) return null;
+  if (/\d+\s*\/\s*\d+/.test(t) && /\ba\b/i.test(t)) return null;
+  return t.slice(0, 156);
+}
+
+/**
+ * DPS 1.01 no XSD que a API municipal de Belém valida hoje:
+ * após `cLocEmi` vem `prest`; `finNFSe`/`indDest` ficam em `IBSCBS`;
+ * CST/cClassTrib ficam dentro de `gIBSCBS`.
  */
 export function montarDpsXml(params: {
   config: ConfigFocusNfeEmpresa;
@@ -83,19 +96,23 @@ export function montarDpsXml(params: {
   const dhEmi = dataEmissaoIsoFocusBr();
   const dCompet = dhEmi.slice(0, 10);
   const issRetido = params.issRetido ?? config.issRetidoPadrao;
-  const cpf = apenasDigitos(paciente.cpf ?? "");
-  const cep = apenasDigitos(paciente.cep ?? "");
-  const cMunToma = apenasDigitos(params.codigoMunicipioTomador);
+  const cpf = apenasDigitos(paciente.cpf ?? "").padStart(11, "0").slice(-11);
+  const cep = apenasDigitos(paciente.cep ?? "").padStart(8, "0").slice(-8);
+  const cMunToma = apenasDigitos(params.codigoMunicipioTomador).padStart(7, "0").slice(-7);
   const nbs = nbs9Digitos(NBS_PODOLOGIA_PEDICURE);
   const opSimpNac = config.optanteSimplesNacional ? 3 : 1;
   const xDesc = escXml(discriminacao.trim().slice(0, 2000));
 
-  const xCpl = paciente.complemento?.trim();
+  const xCpl = complementoTomadorNfse(paciente.complemento);
   const email = paciente.email?.trim();
   const fone = apenasDigitos(paciente.telefone ?? "");
+  const regApTribSn = config.optanteSimplesNacional
+    ? "\n        <regApTribSN>1</regApTribSN>"
+    : "";
 
   const tomaEndCpl = xCpl ? `\n        <xCpl>${escXml(xCpl)}</xCpl>` : "";
-  const tomaFone = fone.length >= 10 ? `\n      <fone>${fone}</fone>` : "";
+  const tomaFone =
+    fone.length >= 6 && fone.length <= 20 ? `\n      <fone>${fone}</fone>` : "";
   const tomaEmail = email ? `\n      <email>${escXml(email)}</email>` : "";
 
   const xml = `<DPS xmlns="http://www.sped.fazenda.gov.br/nfse" versao="1.01">
@@ -112,7 +129,7 @@ export function montarDpsXml(params: {
       <CNPJ>${cnpj}</CNPJ>
       <IM>${escXml(config.prestadorInscricaoMunicipal)}</IM>
       <regTrib>
-        <opSimpNac>${opSimpNac}</opSimpNac>
+        <opSimpNac>${opSimpNac}</opSimpNac>${regApTribSn}
         <regEspTrib>${regimeEspecialNacional(config.regimeEspecialTributacao)}</regEspTrib>
       </regTrib>
     </prest>

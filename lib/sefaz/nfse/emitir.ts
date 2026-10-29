@@ -6,7 +6,12 @@ import {
   type SefinNfseErroItem,
 } from "./erros";
 import { gunzipB64ParaUtf8, gzipUtf8ParaB64, xmlDpsComEncodingUtf8 } from "./gzip-b64";
-import { urlEmitirDpsNfse, urlSefinEmitirNfse } from "./urls";
+import {
+  municipioNfseBelem,
+  urlEmitirDpsNfse,
+  urlNfseBelemMunicipalFallback,
+  urlSefinEmitirNfse,
+} from "./urls";
 
 export type { SefinNfseErroItem };
 
@@ -93,16 +98,36 @@ export async function enviarDpsSefinNacional(params: {
       : urlSefinEmitirNfse(params.ambiente));
   const xmlEnvio = xmlDpsComEncodingUtf8(params.xmlAssinado);
   const payload = JSON.stringify({ dpsXmlGZipB64: gzipUtf8ParaB64(xmlEnvio) });
-  const { statusCode, body } = await postJsonComCertificado(
-    url,
+  let urlUsada = url;
+  let { statusCode, body } = await postJsonComCertificado(
+    urlUsada,
     payload,
     params.pfx,
     params.senha,
   );
 
+  const fallback =
+    !params.url &&
+    (statusCode === 404 || statusCode === 405) &&
+    params.codigoMunicipioPrestador &&
+    municipioNfseBelem(params.codigoMunicipioPrestador)
+      ? urlNfseBelemMunicipalFallback(params.ambiente)
+      : null;
+  if (fallback && fallback !== urlUsada) {
+    console.warn(`[nfse-dps] HTTP ${statusCode} em ${urlUsada}; tentando ${fallback}`);
+    urlUsada = fallback;
+    ({ statusCode, body } = await postJsonComCertificado(
+      urlUsada,
+      payload,
+      params.pfx,
+      params.senha,
+    ));
+  }
+
   if (statusCode !== 201) {
+    const inf = params.xmlAssinado.replace(/<Signature[\s\S]*<\/Signature>/i, "");
     console.error(
-      `[nfse-dps] HTTP ${statusCode} ${url} corpo=${recorteCorpo(body)}`,
+      `[nfse-dps] HTTP ${statusCode} ${urlUsada} corpo=${recorteCorpo(body)} xml=${recorteCorpo(inf)}`,
     );
   }
 

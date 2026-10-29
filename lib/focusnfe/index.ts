@@ -24,10 +24,12 @@ export {
   type ConfigFocusNfeEmpresa,
 } from "./config";
 export {
+  cpfDigitosTomadorNfse,
   cpfValidoParaTomadorNfse,
   dataEmissaoIsoFocusBr,
   discriminacaoDeProcedimentos,
   gerarRefFocusNfse,
+  mensagemCpfTomadorNfse,
   montarPayloadFocusNfse,
   bloqueiaReemissaoFocusNfse,
   podeCancelarFocusNfse,

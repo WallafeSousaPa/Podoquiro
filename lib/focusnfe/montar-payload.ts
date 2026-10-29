@@ -21,9 +21,38 @@ function apenasDigitos(s: string): string {
   return s.replace(/\D/g, "");
 }
 
-/** CPF com 11 dígitos — necessário para enviar bloco tomador à Focus. */
+export function cpfDigitosTomadorNfse(cpf: string | null | undefined): string {
+  return apenasDigitos(cpf ?? "");
+}
+
+/** CPF com 11 dígitos e dígitos verificadores válidos — exigido pela prefeitura (L9999). */
 export function cpfValidoParaTomadorNfse(cpf: string | null | undefined): boolean {
-  return apenasDigitos(cpf ?? "").length === 11;
+  const digits = cpfDigitosTomadorNfse(cpf);
+  if (!/^\d{11}$/.test(digits)) return false;
+  if (/^(\d)\1{10}$/.test(digits)) return false;
+
+  let sum = 0;
+  for (let i = 0; i < 9; i++) sum += Number(digits[i]) * (10 - i);
+  let d1 = (sum * 10) % 11;
+  if (d1 === 10) d1 = 0;
+  if (d1 !== Number(digits[9])) return false;
+
+  sum = 0;
+  for (let i = 0; i < 10; i++) sum += Number(digits[i]) * (11 - i);
+  let d2 = (sum * 10) % 11;
+  if (d2 === 10) d2 = 0;
+  return d2 === Number(digits[10]);
+}
+
+export function mensagemCpfTomadorNfse(cpf: string | null | undefined): string | null {
+  const digits = cpfDigitosTomadorNfse(cpf);
+  if (digits.length !== 11) {
+    return "Cadastre o CPF do paciente para emitir a NFS-e. A prefeitura exige tomador identificado.";
+  }
+  if (!cpfValidoParaTomadorNfse(cpf)) {
+    return "O CPF cadastrado do paciente é inválido. Corrija os dígitos no cadastro e tente emitir novamente.";
+  }
+  return null;
 }
 
 function nomeTomador(p: PacienteFocusTomador): string {
@@ -88,11 +117,10 @@ export function montarPayloadFocusNfse(params: {
   codigoMunicipioTomador?: string;
 }): FocusNfseEmitirBody {
   const { config, paciente, valorServicos, discriminacao } = params;
-  const cpf = apenasDigitos(paciente.cpf ?? "");
-  if (cpf.length !== 11) {
-    throw new Error(
-      "Cadastre o CPF do paciente para emitir a NFS-e. A prefeitura exige tomador identificado.",
-    );
+  const cpf = cpfDigitosTomadorNfse(paciente.cpf);
+  const erroCpf = mensagemCpfTomadorNfse(paciente.cpf);
+  if (erroCpf) {
+    throw new Error(erroCpf);
   }
   const dataEmissao = dataEmissaoIsoFocusBr();
   const municipio = Number(config.prestadorCodigoMunicipio);
@@ -143,13 +171,16 @@ export function montarPayloadFocusNfse(params: {
     tipo_retencao_iss: issRetido ? 2 : 1,
     situacao_tributaria_pis_cofins: "00",
     indicador_total_tributacao: "0",
-    finalidade_emissao: 0,
-    consumidor_final: 1,
-    indicador_destinatario: 0,
-    codigo_indicador_operacao: "030101",
-    ibs_cbs_situacao_tributaria: "200",
-    ibs_cbs_classificacao_tributaria: "200029",
   };
+
+  if (!config.optanteSimplesNacional) {
+    body.finalidade_emissao = 0;
+    body.consumidor_final = 1;
+    body.indicador_destinatario = 0;
+    body.codigo_indicador_operacao = "030101";
+    body.ibs_cbs_situacao_tributaria = "200";
+    body.ibs_cbs_classificacao_tributaria = "200029";
+  }
 
   const complemento = paciente.complemento?.trim();
   if (complemento) body.complemento_tomador = complemento;
