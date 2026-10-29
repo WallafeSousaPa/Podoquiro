@@ -1,6 +1,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { buscarPacientesPorNomeEmpresa } from "@/lib/pacientes/buscar-pacientes-nome-empresa";
 import { dayStartIsoBr, nextDayStartIsoBr } from "@/lib/relatorios/periodo";
+import { ehRefNfseAdn, urlDanfseAdnLocal } from "@/lib/sefaz/nfse";
 
 export type NfseFocusConsultaRow = {
   id: string;
@@ -128,7 +129,12 @@ export async function listarNfseFocusConsulta(
       serie_rps: raw.serie_rps as string | null,
       valor_servicos: Number(raw.valor_servicos),
       discriminacao: String(raw.discriminacao),
-      url_danfse: raw.url_danfse as string | null,
+      url_danfse:
+        (raw.url_danfse as string | null) ||
+        (ehRefNfseAdn(raw.focus_ref as string) &&
+        String(raw.status).toLowerCase() === "autorizado"
+          ? urlDanfseAdnLocal(raw.id as string)
+          : null),
       error_message: raw.error_message as string | null,
       created_at: raw.created_at as string,
       emitted_at: raw.emitted_at as string | null,

@@ -24,3 +24,8 @@ export function ehRefNfseAdn(ref: string | null | undefined): boolean {
 export function gerarRefNfseAdn(idAgendamento: number): string {
   return `adn-${idAgendamento}-${Date.now()}`;
 }
+
+/** PDF da NFS-e municipal: proxy autenticado no próprio sistema. */
+export function urlDanfseAdnLocal(idEmissao: string): string {
+  return `/api/nfse/adn/danfse?id=${encodeURIComponent(idEmissao)}`;
+}

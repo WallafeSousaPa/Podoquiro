@@ -4,6 +4,7 @@ import { respostaSeSemPermissaoNfseNoCaixa } from "@/lib/dashboard/nota-fiscal-p
 import { agendamentoPagamentoQuitado } from "@/lib/financeiro/agendamento-pagamento-quitado";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { mensagemErroFocusNfse } from "@/lib/focusnfe/mensagem-erro";
+import { ehRefNfseAdn, urlDanfseAdnLocal } from "@/lib/sefaz/nfse";
 
 function parseEmpresaId(idEmpresa: string) {
   const n = Number(idEmpresa);
@@ -239,7 +240,12 @@ export async function GET(req: Request) {
           serie_rps: emissao.serie_rps,
           valor_servicos: emissao.valor_servicos,
           discriminacao: emissao.discriminacao,
-          url_danfse: emissao.url_danfse,
+          url_danfse:
+            (emissao.url_danfse as string | null) ||
+            (ehRefNfseAdn(emissao.focus_ref as string) &&
+            String(emissao.status).toLowerCase() === "autorizado"
+              ? urlDanfseAdnLocal(String(emissao.id))
+              : null),
           error_message:
             mensagemErroFocusNfse(emissao.error_message) ??
             mensagemErroFocusNfse(emissao.payload_resposta) ??

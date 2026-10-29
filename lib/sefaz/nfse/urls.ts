@@ -52,3 +52,21 @@ export function urlEmitirDpsNfse(params: {
   }
   return urlSefinEmitirNfse(params.ambiente);
 }
+
+/** GET DANFSe (PDF) no ADN nacional. */
+export function urlAdnDanfse(ambiente: AmbienteNfe, chaveAcesso: string): string {
+  const chave = encodeURIComponent(chaveAcesso.trim());
+  if (ambiente === 2) {
+    return `https://adn.producaorestrita.nfse.gov.br/danfse/${chave}`;
+  }
+  return `https://adn.nfse.gov.br/danfse/${chave}`;
+}
+
+/** GET DANFSe (PDF) na API municipal de Belém. */
+export function urlNfseBelemDanfse(ambiente: AmbienteNfe, chaveAcesso: string): string {
+  const chave = encodeURIComponent(chaveAcesso.trim());
+  if (ambiente === 2) {
+    return `https://homol-nfse2.belem.pa.gov.br/notafiscal-ws/danfse/${chave}`;
+  }
+  return `https://nfseapi.belem.pa.gov.br/notafiscal-ws/danfse/${chave}`;
+}

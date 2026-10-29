@@ -111,3 +111,54 @@ export function postJsonComCertificado(
     req.end();
   });
 }
+
+export type ResultadoHttpsBinario = {
+  statusCode: number;
+  body: Buffer;
+  contentType: string;
+};
+
+/** GET binário com mTLS (DANFSe PDF / ADN). */
+export function getBinarioComCertificado(
+  urlStr: string,
+  pfx: Buffer,
+  passphrase: string,
+  accept = "application/pdf, application/json;q=0.9, */*;q=0.1",
+): Promise<ResultadoHttpsBinario> {
+  const u = new URL(urlStr);
+  const { cert, key } = pfxBufferParaCertKeyPem(pfx, passphrase);
+  const tlsOpts = opcoesTlsClienteSefaz();
+
+  return new Promise((resolve, reject) => {
+    const req = https.request(
+      {
+        hostname: u.hostname,
+        port: u.port || 443,
+        path: `${u.pathname}${u.search}`,
+        method: "GET",
+        headers: { Accept: accept },
+        cert,
+        key,
+        ...tlsOpts,
+        timeout: 90_000,
+      },
+      (res) => {
+        const chunks: Buffer[] = [];
+        res.on("data", (c: Buffer) => chunks.push(c));
+        res.on("end", () => {
+          resolve({
+            statusCode: res.statusCode ?? 0,
+            body: Buffer.concat(chunks),
+            contentType: String(res.headers["content-type"] ?? ""),
+          });
+        });
+      },
+    );
+    req.on("error", reject);
+    req.on("timeout", () => {
+      req.destroy();
+      reject(new Error("Tempo esgotado ao baixar o DANFSe."));
+    });
+    req.end();
+  });
+}

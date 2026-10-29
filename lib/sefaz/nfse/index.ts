@@ -4,6 +4,8 @@ export {
   urlNfseBelemMunicipal,
   urlNfseBelemMunicipalFallback,
   urlEmitirDpsNfse,
+  urlAdnDanfse,
+  urlNfseBelemDanfse,
   municipioNfseBelem,
 } from "./urls";
 export { gzipUtf8ParaB64, gunzipB64ParaUtf8, xmlDpsComEncodingUtf8 } from "./gzip-b64";
@@ -12,7 +14,9 @@ export {
   ehRefNfseAdn,
   gerarRefNfseAdn,
   montarIdInfDps,
+  urlDanfseAdnLocal,
 } from "./id-dps";
+export { baixarDanfsePdf, chaveAcessoNfseDeResposta } from "./danfse";
 export { montarDpsXml, type DadosDpsMontada } from "./montar-dps-xml";
 export {
   extrairErrosSefin,

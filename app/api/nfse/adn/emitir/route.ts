@@ -24,6 +24,7 @@ import {
   gerarRefNfseAdn,
   montarDpsXml,
   municipioNfseBelem,
+  urlDanfseAdnLocal,
 } from "@/lib/sefaz/nfse";
 
 function parseEmpresaId(idEmpresa: string) {
@@ -339,15 +340,23 @@ export async function POST(request: Request) {
     .select(SELECT_EMISSAO)
     .single();
 
-  if (insErr) {
+  if (insErr || !row) {
     return NextResponse.json(
       {
-        error: `NFS-e autorizada${enviado.resposta.chaveAcesso ? ` (chave ${enviado.resposta.chaveAcesso})` : ""}, mas falhou ao gravar localmente: ${insErr.message}`,
+        error: `NFS-e autorizada${enviado.resposta.chaveAcesso ? ` (chave ${enviado.resposta.chaveAcesso})` : ""}, mas falhou ao gravar localmente: ${insErr?.message ?? "sem registro"}`,
         sefin: enviado.resposta,
       },
       { status: 500 },
     );
   }
+
+  const urlDanfse = urlDanfseAdnLocal(row.id);
+  const { error: urlErr } = await supabase
+    .from("nfse_focus_emissoes")
+    .update({ url_danfse: urlDanfse })
+    .eq("id", row.id)
+    .eq("id_empresa", empresaId);
+  if (!urlErr) row.url_danfse = urlDanfse;
 
   return NextResponse.json({
     ok: true,
