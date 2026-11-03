@@ -140,6 +140,12 @@ function ConteudoNotaEmitida({
 }) {
   return (
     <div className="text-center py-2">
+      <img
+        src="/PodoquiroLogoHome.jpeg"
+        alt="Podoquiro"
+        className="mb-3"
+        style={{ maxHeight: 88, maxWidth: "100%" }}
+      />
       <div className="mb-3">
         <span className="badge badge-success badge-lg px-3 py-2">Autorizada</span>
       </div>
@@ -305,7 +311,7 @@ export function ModalEmissaoNfse({
   const [detalhe, setDetalhe] = useState<DetalheResponse | null>(null);
   const [discriminacao, setDiscriminacao] = useState<string | null>(null);
   const [fase, setFase] = useState<FaseModal>("detalhe");
-  const [processoMsg, setProcessoMsg] = useState("Enviando NFS-e à prefeitura…");
+  const [processoMsg, setProcessoMsg] = useState("Enviando NFS-e ao Emissor Nacional…");
   const [notaEmitida, setNotaEmitida] = useState<NfseEmissao | null>(null);
   const [cancelando, setCancelando] = useState(false);
   const [confirmCancelId, setConfirmCancelId] = useState<string | null>(null);
@@ -352,7 +358,7 @@ export function ModalEmissaoNfse({
       setCancelando(false);
       setConfirmCancelId(null);
       setOkMsg(null);
-      setProcessoMsg("Enviando NFS-e à prefeitura…");
+      setProcessoMsg("Enviando NFS-e ao Emissor Nacional…");
       void carregar();
     }
   }, [row, carregar]);
@@ -393,7 +399,7 @@ export function ModalEmissaoNfse({
       return;
     }
     setFase("processando");
-    setProcessoMsg("Enviando NFS-e à prefeitura de Belém…");
+    setProcessoMsg("Enviando NFS-e ao Emissor Nacional…");
     setErro(null);
 
     try {
@@ -427,7 +433,7 @@ export function ModalEmissaoNfse({
       if ((j.emissao.status ?? "").toLowerCase() !== "autorizado") {
         throw new Error(
           j.emissao.error_message?.trim() ||
-            "A prefeitura não autorizou a NFS-e.",
+            "O Emissor Nacional não autorizou a NFS-e.",
         );
       }
 
@@ -601,8 +607,8 @@ export function ModalEmissaoNfse({
             </h6>
             {pac && !cpfInformado ? (
               <p className="alert alert-warning small py-2">
-                Sem CPF cadastrado — a prefeitura exige tomador. Cadastre o CPF do paciente
-                (e um CEP válido) para emitir a NFS-e.
+                Sem CPF cadastrado — o Emissor Nacional exige tomador identificado. Cadastre o
+                CPF do paciente (e um CEP válido) para emitir a NFS-e.
               </p>
             ) : null}
             {pac && cpfInformado && !comTomador ? (
@@ -689,7 +695,7 @@ export function ModalEmissaoNfse({
           <button
             type="button"
             className="btn btn-primary"
-            title="Emite no webservice da prefeitura de Belém"
+            title="Emite no Emissor Nacional da NFS-e (Sefin)"
             disabled={
               loading ||
               !detalhe?.paciente ||

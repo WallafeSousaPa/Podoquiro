@@ -67,7 +67,7 @@ export async function GET(request: Request) {
   }
   if (!ehRefNfseAdn(row.focus_ref as string)) {
     return NextResponse.json(
-      { error: "Esta NFS-e não foi emitida pela prefeitura." },
+      { error: "Esta NFS-e não foi emitida pelo Emissor Nacional." },
       { status: 400 },
     );
   }

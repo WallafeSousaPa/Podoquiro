@@ -4,6 +4,8 @@ export {
   urlNfseBelemMunicipal,
   urlNfseBelemMunicipalFallback,
   urlEmitirDpsNfse,
+  deveEmitirPeloEmissorNacional,
+  COMPETENCIA_EMISSOR_NACIONAL_SN,
   urlAdnDanfse,
   urlSefinDanfse,
   urlNfseBelemDanfse,
@@ -34,6 +36,7 @@ export {
   MSG_L9999_TOMADOR,
   MSG_L9999_SCHEMA,
   MSG_L9999_GENERICO,
+  MSG_L9999_EMISSOR_NACIONAL,
   type SefinNfseErroItem,
 } from "./erros";
 export {

@@ -43,10 +43,38 @@ export function urlNfseBelemMunicipalFallback(ambiente: AmbienteNfe): string {
   return "https://nfseapi.belem.pa.gov.br/notafiscal-ws/nfse";
 }
 
+/**
+ * Resolução CGSN nº 191/2026: a partir da competência 01/11/2026, ME/EPP do
+ * Simples Nacional emite só no Emissor Nacional (Sefin), mesmo em município
+ * com sistema próprio (Belém).
+ */
+export const COMPETENCIA_EMISSOR_NACIONAL_SN = "2026-11-01";
+
+export function deveEmitirPeloEmissorNacional(params: {
+  optanteSimplesNacional: boolean;
+  dCompet: string;
+}): boolean {
+  if (!params.optanteSimplesNacional) return false;
+  const d = String(params.dCompet ?? "").trim().slice(0, 10);
+  return /^\d{4}-\d{2}-\d{2}$/.test(d) && d >= COMPETENCIA_EMISSOR_NACIONAL_SN;
+}
+
 export function urlEmitirDpsNfse(params: {
   ambiente: AmbienteNfe;
   codigoMunicipioPrestador: string;
+  optanteSimplesNacional?: boolean;
+  dCompet?: string;
 }): string {
+  if (
+    params.optanteSimplesNacional &&
+    params.dCompet &&
+    deveEmitirPeloEmissorNacional({
+      optanteSimplesNacional: true,
+      dCompet: params.dCompet,
+    })
+  ) {
+    return urlSefinEmitirNfse(params.ambiente);
+  }
   if (municipioNfseBelem(params.codigoMunicipioPrestador)) {
     return urlNfseBelemMunicipal(params.ambiente);
   }

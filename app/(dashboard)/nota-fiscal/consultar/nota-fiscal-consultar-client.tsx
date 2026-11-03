@@ -219,7 +219,7 @@ export function NotaFiscalConsultarClient() {
           <div>
             <h3 className="card-title mb-0">NFS-e emitidas</h3>
             <p className="text-muted small mb-0 mt-1">
-              Notas enviadas via Focus NFe no período selecionado.
+              Notas de serviço emitidas no Emissor Nacional no período selecionado.
             </p>
           </div>
           {!loading && rows.length > 0 ? (
@@ -232,7 +232,7 @@ export function NotaFiscalConsultarClient() {
           ) : null}
         </div>
         <div className="card-body table-responsive p-0">
-          <table className="table table-hover table-striped table-sm mb-0">
+          <table className="table table-hover table-striped mb-0">
             <thead>
               <tr>
                 <th style={{ minWidth: "130px" }}>Emissão</th>
@@ -304,7 +304,7 @@ export function NotaFiscalConsultarClient() {
                     <td className="text-right text-nowrap font-weight-bold">
                       {fmtBrl(r.valor_servicos)}
                     </td>
-                    <td className="small text-truncate" style={{ maxWidth: "220px" }} title={r.discriminacao}>
+                    <td className="small" style={{ minWidth: "220px", maxWidth: "320px", whiteSpace: "normal" }}>
                       {r.discriminacao}
                     </td>
                     <td className="text-center align-middle">

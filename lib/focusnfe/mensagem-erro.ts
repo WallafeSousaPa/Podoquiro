@@ -1,4 +1,5 @@
 import {
+  MSG_L9999_EMISSOR_NACIONAL,
   MSG_L9999_GENERICO,
   MSG_L9999_SCHEMA,
   MSG_L9999_TOMADOR,
@@ -44,6 +45,13 @@ function mensagemLayoutNacional(texto: string): string | null {
   if (/CPF\/CNPJ Tomador Inv[áa]lido/i.test(texto)) return MSG_L9999_TOMADOR;
   if (/L9999/i.test(texto) && /XML Schema|XSD|Invalid content|em desacordo/i.test(texto)) {
     return MSG_L9999_SCHEMA;
+  }
+  if (
+    /Emissor Nacional/i.test(texto) ||
+    /Resolu[cç][aã]o n[ºo]?\s*191/i.test(texto) ||
+    /\bCGSN\b/i.test(texto)
+  ) {
+    return MSG_L9999_EMISSOR_NACIONAL;
   }
   if (/^L9999\s*$/i.test(texto.trim())) return MSG_L9999_GENERICO;
   if (ehCepTomador(texto)) return MSG_CEP_TOMADOR;

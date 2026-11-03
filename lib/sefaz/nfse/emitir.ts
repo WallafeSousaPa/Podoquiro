@@ -7,6 +7,7 @@ import {
 } from "./erros";
 import { gunzipB64ParaUtf8, gzipUtf8ParaB64, xmlDpsComEncodingUtf8 } from "./gzip-b64";
 import {
+  deveEmitirPeloEmissorNacional,
   municipioNfseBelem,
   urlEmitirDpsNfse,
   urlNfseBelemMunicipalFallback,
@@ -78,8 +79,10 @@ export async function enviarDpsSefinNacional(params: {
   pfx: Buffer;
   senha: string;
   ambiente: AmbienteNfe;
-  /** Prestador IBGE — Belém usa a API municipal, não a Sefin pública. */
+  /** Prestador IBGE — Belém usa a API municipal, salvo SN a partir de 01/11/2026. */
   codigoMunicipioPrestador?: string;
+  optanteSimplesNacional?: boolean;
+  dCompet?: string;
   /** Sobrescreve a URL (testes). */
   url?: string;
 }): Promise<{
@@ -88,12 +91,18 @@ export async function enviarDpsSefinNacional(params: {
   numeroNfse: string | null;
   codigoVerificacao: string | null;
 }> {
+  const usarEmissorNacional = deveEmitirPeloEmissorNacional({
+    optanteSimplesNacional: Boolean(params.optanteSimplesNacional),
+    dCompet: params.dCompet ?? "",
+  });
   const url =
     params.url ??
     (params.codigoMunicipioPrestador
       ? urlEmitirDpsNfse({
           ambiente: params.ambiente,
           codigoMunicipioPrestador: params.codigoMunicipioPrestador,
+          optanteSimplesNacional: params.optanteSimplesNacional,
+          dCompet: params.dCompet,
         })
       : urlSefinEmitirNfse(params.ambiente));
   const xmlEnvio = xmlDpsComEncodingUtf8(params.xmlAssinado);
@@ -108,6 +117,7 @@ export async function enviarDpsSefinNacional(params: {
 
   const fallback =
     !params.url &&
+    !usarEmissorNacional &&
     (statusCode === 404 || statusCode === 405) &&
     params.codigoMunicipioPrestador &&
     municipioNfseBelem(params.codigoMunicipioPrestador)

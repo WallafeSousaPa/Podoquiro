@@ -6,6 +6,7 @@ import {
 import { NBS_PODOLOGIA_PEDICURE } from "@/lib/notaas/codigo-servico";
 import type { AmbienteNfe } from "../nfe/types";
 import { montarIdInfDps } from "./id-dps";
+import { deveEmitirPeloEmissorNacional } from "./urls";
 
 const VER_APLIC = "Podoquiro_1.0.0";
 
@@ -115,6 +116,53 @@ export function montarDpsXml(params: {
     fone.length >= 6 && fone.length <= 20 ? `\n      <fone>${fone}</fone>` : "";
   const tomaEmail = email ? `\n      <email>${escXml(email)}</email>` : "";
 
+  const emissorNacional = deveEmitirPeloEmissorNacional({
+    optanteSimplesNacional: config.optanteSimplesNacional,
+    dCompet,
+  });
+  const ehMeEppSn = Boolean(config.optanteSimplesNacional);
+
+  /** E0120: no Emissor Nacional, IM só entra se o município tiver complemento no CNC. Belém não tem. */
+  const imPrestador =
+    !emissorNacional && config.prestadorInscricaoMunicipal
+      ? `\n      <IM>${escXml(config.prestadorInscricaoMunicipal)}</IM>`
+      : "";
+
+  /**
+   * totTrib é obrigatório no XSD (E1235). Choice: vTotTrib | pTotTrib | indTotTrib | pTotTribSN.
+   * ME/EPP: E0712 — não pode indTotTrib; o choice válido é pTotTribSN (Lei 12.741 / alíquota do SN).
+   * 6,00 = 1ª faixa do Anexo III (serviços), percentual aproximado até haver cadastro da alíquota efetiva.
+   * Não optante / API municipal: indTotTrib=0.
+   */
+  const totTribXml =
+    ehMeEppSn && emissorNacional
+      ? `
+        <totTrib>
+          <pTotTribSN>6.00</pTotTribSN>
+        </totTrib>`
+      : `
+        <totTrib>
+          <indTotTrib>0</indTotTrib>
+        </totTrib>`;
+  const ibsXml =
+    ehMeEppSn && emissorNacional
+      ? ""
+      : `
+    <IBSCBS>
+      <finNFSe>0</finNFSe>
+      <indFinal>1</indFinal>
+      <cIndOp>030101</cIndOp>
+      <indDest>0</indDest>
+      <valores>
+        <trib>
+          <gIBSCBS>
+            <CST>200</CST>
+            <cClassTrib>200029</cClassTrib>
+          </gIBSCBS>
+        </trib>
+      </valores>
+    </IBSCBS>`;
+
   const xml = `<DPS xmlns="http://www.sped.fazenda.gov.br/nfse" versao="1.01">
   <infDPS Id="${idDps}">
     <tpAmb>${ambiente}</tpAmb>
@@ -126,8 +174,7 @@ export function montarDpsXml(params: {
     <tpEmit>1</tpEmit>
     <cLocEmi>${cLocEmi}</cLocEmi>
     <prest>
-      <CNPJ>${cnpj}</CNPJ>
-      <IM>${escXml(config.prestadorInscricaoMunicipal)}</IM>
+      <CNPJ>${cnpj}</CNPJ>${imPrestador}
       <regTrib>
         <opSimpNac>${opSimpNac}</opSimpNac>${regApTribSn}
         <regEspTrib>${regimeEspecialNacional(config.regimeEspecialTributacao)}</regEspTrib>
@@ -170,26 +217,9 @@ export function montarDpsXml(params: {
           <piscofins>
             <CST>00</CST>
           </piscofins>
-        </tribFed>
-        <totTrib>
-          <indTotTrib>0</indTotTrib>
-        </totTrib>
+        </tribFed>${totTribXml}
       </trib>
-    </valores>
-    <IBSCBS>
-      <finNFSe>0</finNFSe>
-      <indFinal>1</indFinal>
-      <cIndOp>030101</cIndOp>
-      <indDest>0</indDest>
-      <valores>
-        <trib>
-          <gIBSCBS>
-            <CST>200</CST>
-            <cClassTrib>200029</cClassTrib>
-          </gIBSCBS>
-        </trib>
-      </valores>
-    </IBSCBS>
+    </valores>${ibsXml}
   </infDPS>
 </DPS>`;
 

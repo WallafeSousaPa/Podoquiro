@@ -22,6 +22,7 @@ import {
   SefinNfseApiError,
   enviarDpsSefinNacional,
   gerarRefNfseAdn,
+  deveEmitirPeloEmissorNacional,
   montarDpsXml,
   municipioNfseBelem,
   urlDanfseAdnLocal,
@@ -253,7 +254,6 @@ export async function POST(request: Request) {
   const issRetido = body.iss_retido ?? config.issRetidoPadrao;
   const ref = gerarRefNfseAdn(idAgendamento);
   const ambiente: AmbienteNfe = config.ambiente === "homologacao" ? 2 : 1;
-  const canal = municipioNfseBelem(config.prestadorCodigoMunicipio) ? "belem" : "adn";
 
   let dps;
   try {
@@ -288,6 +288,15 @@ export async function POST(request: Request) {
     );
   }
 
+  const usarEmissorNacional = deveEmitirPeloEmissorNacional({
+    optanteSimplesNacional: config.optanteSimplesNacional,
+    dCompet: dps.dCompet,
+  });
+  const canal =
+    usarEmissorNacional || !municipioNfseBelem(config.prestadorCodigoMunicipio)
+      ? "adn"
+      : "belem";
+
   let enviado;
   try {
     enviado = await enviarDpsSefinNacional({
@@ -296,6 +305,8 @@ export async function POST(request: Request) {
       senha: cert.senha,
       ambiente,
       codigoMunicipioPrestador: config.prestadorCodigoMunicipio,
+      optanteSimplesNacional: config.optanteSimplesNacional,
+      dCompet: dps.dCompet,
     });
   } catch (e) {
     if (e instanceof SefinNfseApiError) {

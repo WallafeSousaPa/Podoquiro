@@ -46,11 +46,28 @@ export const MSG_L9999_GENERICO =
   "L9999: a prefeitura retornou um erro interno ao processar a NFS-e. Tente emitir novamente. " +
   "Se persistir, o webservice municipal (SEFIN Belém) pode estar instável.";
 
+export const MSG_L9999_EMISSOR_NACIONAL =
+  "A partir de 01/11/2026, ME e EPP do Simples Nacional devem emitir NFS-e pelo " +
+  "Emissor Nacional (Resolução CGSN nº 191), não pela API da prefeitura. " +
+  "O sistema envia para a Sefin Nacional. Tente emitir novamente.";
+
 function mensagemAmigavelSefin(codigo: string | undefined, texto: string): string | null {
   const c = (codigo ?? "").toUpperCase();
   const t = `${c} ${texto}`.toUpperCase();
   if (c === "E0039" || t.includes("EMISSORES PÚBLICOS NACIONAIS") || t.includes("EMISSORES PUBLICOS NACIONAIS")) {
     return MSG_E0039;
+  }
+  if (c === "E0712" || t.includes("INDICADOR DE INFORMAÇÃO DE VALOR TOTAL DE TRIBUTOS")) {
+    return (
+      "E0712: ME/EPP do Simples Nacional não informa o indicador de total de tributos (indTotTrib). " +
+      "O sistema já omite esse campo. Emita novamente."
+    );
+  }
+  if (c === "E0120" || t.includes("IM DO PRESTADOR NÃO DEVE SER INFORMADO")) {
+    return (
+      "E0120: no Emissor Nacional a inscrição municipal (IM) não deve ir na DPS " +
+      "quando o município não tem dados complementares no CNC. O sistema já omite o IM. Emita novamente."
+    );
   }
   const falaTomador =
     t.includes("CPF/CNPJ TOMADOR") ||
@@ -61,9 +78,19 @@ function mensagemAmigavelSefin(codigo: string | undefined, texto: string): strin
     t.includes("XSD") ||
     t.includes("INVALID CONTENT") ||
     t.includes("EM DESACORDO");
+  const falaEmissorNacional =
+    t.includes("EMISSOR NACIONAL") ||
+    t.includes("RESOLUÇÃO Nº 191") ||
+    t.includes("RESOLUCAO N") ||
+    t.includes("CGSN");
   if (falaTomador) return MSG_L9999_TOMADOR;
   if (c === "L9999" && falaSchema) return MSG_L9999_SCHEMA;
-  if (c === "L9999") return MSG_L9999_GENERICO;
+  if (c === "L9999" && falaEmissorNacional) return MSG_L9999_EMISSOR_NACIONAL;
+  if (c === "L9999") {
+    const detalhe = texto.replace(/^L9999[:\s]*/i, "").trim();
+    if (detalhe.length > 40) return `L9999: ${detalhe}`;
+    return MSG_L9999_GENERICO;
+  }
   return null;
 }
 
