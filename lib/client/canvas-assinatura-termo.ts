@@ -15,13 +15,17 @@ export function dimensoesCanvasAssinaturaTermo(): { cssW: number; cssH: number }
 }
 
 /** Configura resolução do canvas (DPR limitado) para telas de alta densidade. */
-export function prepararCanvasAssinaturaTermo(canvas: HTMLCanvasElement): void {
-  const { cssW, cssH } = dimensoesCanvasAssinaturaTermo();
+export function prepararCanvasAssinaturaTermo(canvas: HTMLCanvasElement, larguraCss?: number): void {
+  const base = dimensoesCanvasAssinaturaTermo();
+  const cssW =
+    larguraCss && larguraCss > 0 ? Math.min(larguraCss, LARGURA_MAX_CSS_PT) : base.cssW;
+  const cssH = base.cssH;
   const dpr = Math.min(typeof window !== "undefined" ? window.devicePixelRatio || 1 : 1, DPR_MAX);
 
   canvas.width = Math.round(cssW * dpr);
   canvas.height = Math.round(cssH * dpr);
   canvas.style.width = `${cssW}px`;
+  canvas.style.maxWidth = "100%";
   canvas.style.height = `${cssH}px`;
 
   const ctx = canvas.getContext("2d");

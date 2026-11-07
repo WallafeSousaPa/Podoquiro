@@ -93,6 +93,12 @@ export const MENUS_LATERAIS: MenuLateralGrupo[] = [
         href: "/pacientes/avaliacoes",
         rotas: ["/pacientes/avaliacoes"],
       },
+      {
+        chave: "pacientes.contratos",
+        label: "Contratos",
+        href: "/pacientes/contratos",
+        rotas: ["/pacientes/contratos"],
+      },
     ],
   },
   {

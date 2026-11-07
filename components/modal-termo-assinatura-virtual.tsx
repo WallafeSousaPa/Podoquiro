@@ -62,6 +62,8 @@ type Props = {
   onClose: () => void;
   /** Arquivo PDF (termo + assinatura) para enviar na anamnese. */
   onConfirm: (file: File) => void;
+  /** Acima de outro modal já aberto (a ficha de enfermagem usa 1080). */
+  zIndex?: number;
 };
 
 export function ModalTermoAssinaturaVirtual({
@@ -70,6 +72,7 @@ export function ModalTermoAssinaturaVirtual({
   nomeDisplayPaciente,
   onClose,
   onConfirm,
+  zIndex = 1080,
 }: Props) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const [canvasKey, setCanvasKey] = useState(0);
@@ -247,7 +250,7 @@ export function ModalTermoAssinaturaVirtual({
       className="position-fixed d-flex flex-column"
       style={{
         inset: 0,
-        zIndex: 1080,
+        zIndex,
         backgroundColor: "#f8f9fa",
       }}
       role="dialog"

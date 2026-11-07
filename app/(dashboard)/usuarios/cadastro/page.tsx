@@ -121,6 +121,21 @@ export default async function UsuariosCadastroPage() {
     }
   }
 
+  const idsComAssinatura = new Set<number>();
+  if (!loadError && usuarios.length > 0) {
+    const { data: assinaturas, error: assinaturaError } = await supabase
+      .from("usuarios")
+      .select("id")
+      .eq("id_empresa", empresaId)
+      .not("assinatura", "is", null)
+      .neq("assinatura", "");
+    if (assinaturaError) {
+      loadError = assinaturaError.message;
+    } else {
+      for (const item of assinaturas ?? []) idsComAssinatura.add(item.id);
+    }
+  }
+
   const nomeEmpresaPorId = new Map(empresas.map((e) => [e.id, e.nome_fantasia]));
 
   const usuariosView = usuarios.map((u) => {
@@ -140,6 +155,7 @@ export default async function UsuariosCadastroPage() {
       grupo_usuarios: Array.isArray(u.usuarios_grupos)
         ? (u.usuarios_grupos[0]?.grupo_usuarios ?? null)
         : (u.usuarios_grupos?.grupo_usuarios ?? null),
+      tem_assinatura: idsComAssinatura.has(u.id),
       expediente: e
         ? {
             horario_inicio: normalizarHoraHHMM(e.horario_inicio) ?? "",

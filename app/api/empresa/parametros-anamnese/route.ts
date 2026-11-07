@@ -27,7 +27,7 @@ export async function GET() {
   const podeEditar = await getUsuarioGrupoAdministrativo(supabase, idUsuario);
   const { data, error } = await supabase
     .from("empresas")
-    .select("dias_entre_anamneses")
+    .select("dias_entre_anamneses, dias_entre_anamneses_enfermagem")
     .eq("id", empresaId)
     .maybeSingle();
   if (error) {
@@ -36,10 +36,12 @@ export async function GET() {
   }
 
   const raw = data?.dias_entre_anamneses ?? null;
+  const rawEnf = data?.dias_entre_anamneses_enfermagem ?? null;
   return NextResponse.json({
     pode_editar: podeEditar,
-    dias_entre_anamneses:
-      raw == null ? null : diasEntreAnamnesesDoValorDb(raw),
+    dias_entre_anamneses: raw == null ? null : diasEntreAnamnesesDoValorDb(raw),
+    dias_entre_anamneses_enfermagem:
+      rawEnf == null ? null : diasEntreAnamnesesDoValorDb(rawEnf),
   });
 }
 
@@ -57,7 +59,10 @@ export async function PATCH(request: Request) {
     return NextResponse.json({ error: "Sessão inválida." }, { status: 400 });
   }
 
-  let body: { dias_entre_anamneses?: number | null };
+  let body: {
+    dias_entre_anamneses?: number | null;
+    dias_entre_anamneses_enfermagem?: number | null;
+  };
   try {
     body = await request.json();
   } catch {
@@ -73,32 +78,44 @@ export async function PATCH(request: Request) {
     );
   }
 
-  let valorDb: number | null;
-  if (body.dias_entre_anamneses === null || typeof body.dias_entre_anamneses === "undefined") {
-    valorDb = null;
-  } else {
-    const n = Number(body.dias_entre_anamneses);
+  function lerDias(valor: number | null | undefined, rotulo: string): number | null | NextResponse {
+    if (valor === null || typeof valor === "undefined") return null;
+    const n = Number(valor);
     if (!Number.isFinite(n)) {
-      return NextResponse.json({ error: "Informe um número válido ou deixe vazio para desativar." }, { status: 400 });
+      return NextResponse.json(
+        { error: `${rotulo}: informe um número válido ou deixe vazio para desativar.` },
+        { status: 400 },
+      );
     }
     const i = Math.trunc(n);
     if (i <= 0) {
       return NextResponse.json(
-        { error: "O intervalo deve ser de pelo menos 1 dia ou use desativado (vazio)." },
+        { error: `${rotulo}: o intervalo deve ser de pelo menos 1 dia ou use desativado (vazio).` },
         { status: 400 },
       );
     }
     if (i > 3650) {
-      return NextResponse.json({ error: "Intervalo máximo permitido: 3650 dias." }, { status: 400 });
+      return NextResponse.json(
+        { error: `${rotulo}: intervalo máximo permitido é 3650 dias.` },
+        { status: 400 },
+      );
     }
-    valorDb = i;
+    return i;
   }
+
+  const diasPodologo = lerDias(body.dias_entre_anamneses, "Podólogo");
+  if (diasPodologo instanceof NextResponse) return diasPodologo;
+  const diasEnfermagem = lerDias(body.dias_entre_anamneses_enfermagem, "Enfermagem");
+  if (diasEnfermagem instanceof NextResponse) return diasEnfermagem;
 
   const { data, error } = await supabase
     .from("empresas")
-    .update({ dias_entre_anamneses: valorDb })
+    .update({
+      dias_entre_anamneses: diasPodologo,
+      dias_entre_anamneses_enfermagem: diasEnfermagem,
+    })
     .eq("id", empresaId)
-    .select("dias_entre_anamneses")
+    .select("dias_entre_anamneses, dias_entre_anamneses_enfermagem")
     .maybeSingle();
 
   if (error) {
@@ -110,8 +127,9 @@ export async function PATCH(request: Request) {
   }
 
   const rawAtual = data.dias_entre_anamneses ?? null;
+  const rawEnf = data.dias_entre_anamneses_enfermagem ?? null;
   return NextResponse.json({
-    dias_entre_anamneses:
-      rawAtual == null ? null : diasEntreAnamnesesDoValorDb(rawAtual),
+    dias_entre_anamneses: rawAtual == null ? null : diasEntreAnamnesesDoValorDb(rawAtual),
+    dias_entre_anamneses_enfermagem: rawEnf == null ? null : diasEntreAnamnesesDoValorDb(rawEnf),
   });
 }

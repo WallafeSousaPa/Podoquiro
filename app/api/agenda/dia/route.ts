@@ -11,8 +11,8 @@ import {
   filtrarColunasAgendaSomenteUsuarioPodoquiro,
 } from "@/lib/agenda/usuarios-colunas-agenda";
 import {
-  carregarGatesAnamnesePorPaciente,
-  type GateAnamneseAgendamento,
+  carregarGatesAnamneseDosAgendamentos,
+  type GatesAnamneseAgendamento,
 } from "@/lib/avaliacoes/anamnese-intervalo";
 import { getSession } from "@/lib/auth/session";
 import { createAdminClient } from "@/lib/supabase/admin";
@@ -337,19 +337,17 @@ export async function GET(request: Request) {
     };
   });
 
-  const gatePadrao: GateAnamneseAgendamento = {
+  const gatePadrao: GatesAnamneseAgendamento = {
     anamnese_bloqueada: false,
     anamnese_bloqueio_texto: null,
+    anamnese_enfermagem_bloqueada: false,
+    anamnese_enfermagem_bloqueio_texto: null,
   };
   try {
-    const gates = await carregarGatesAnamnesePorPaciente(
-      supabase,
-      empresaId,
-      agendamentos.map((x) => x.id_paciente),
-    );
+    const gates = await carregarGatesAnamneseDosAgendamentos(supabase, empresaId, agendamentos);
     agendamentos = agendamentos.map((a) => ({
       ...a,
-      ...(gates[a.id_paciente] ?? gatePadrao),
+      ...(gates[a.id] ?? gatePadrao),
     }));
   } catch (e) {
     console.error(e);
@@ -358,6 +356,26 @@ export async function GET(request: Request) {
       ...gatePadrao,
     }));
   }
+
+  const idsPacientes = [...new Set(agendamentos.map((a) => a.id_paciente))];
+  let pacientesComContrato = new Set<number>();
+  if (idsPacientes.length > 0) {
+    const { data: contratosRows, error: cErr } = await supabase
+      .from("pacientes_contratos_enfermagem")
+      .select("id_paciente")
+      .eq("id_empresa", empresaId)
+      .in("id_paciente", idsPacientes);
+    if (cErr) console.error(cErr);
+    else {
+      pacientesComContrato = new Set(
+        (contratosRows ?? []).map((r) => r.id_paciente as number),
+      );
+    }
+  }
+  agendamentos = agendamentos.map((a) => ({
+    ...a,
+    tem_contrato: pacientesComContrato.has(a.id_paciente),
+  }));
 
   const usuarios = (usuariosRows ?? []).map((u) => ({
     id: u.id as number,

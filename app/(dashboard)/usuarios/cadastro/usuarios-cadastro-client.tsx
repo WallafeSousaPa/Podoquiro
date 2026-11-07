@@ -1,7 +1,8 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { type FormEvent, type ReactNode, useEffect, useId, useMemo, useState } from "react";
+import { type FormEvent, type ReactNode, useEffect, useId, useMemo, useRef, useState } from "react";
+import { CampoAssinatura, type CampoAssinaturaHandle } from "@/components/campo-assinatura";
 import { isCpfLengthOk, normalizeCpfDigits } from "@/lib/pacientes";
 import { grupoUsuariosAdministradorOuDiretoria } from "@/lib/dashboard/menu-grupo";
 
@@ -37,6 +38,7 @@ type UsuarioItem = {
   card_cor: string | null;
   nome_empresa: string | null;
   grupo_usuarios: string | null;
+  tem_assinatura: boolean;
   expediente: ExpedienteForm | null;
 };
 
@@ -134,6 +136,14 @@ export function UsuariosCadastroClient({
   const [feedback, setFeedback] = useState<{ title: string; message: string } | null>(
     null,
   );
+
+  const [assinaturaUser, setAssinaturaUser] = useState<UsuarioItem | null>(null);
+  const [assinaturaAtual, setAssinaturaAtual] = useState<string | null>(null);
+  const [assinaturaCarregando, setAssinaturaCarregando] = useState(false);
+  const [assinaturaErro, setAssinaturaErro] = useState<string | null>(null);
+  const [salvandoAssinatura, setSalvandoAssinatura] = useState(false);
+  const [limparAssinatura, setLimparAssinatura] = useState(0);
+  const assinaturaRef = useRef<CampoAssinaturaHandle>(null);
 
   const [expedienteUser, setExpedienteUser] = useState<UsuarioItem | null>(null);
   const [expedienteForm, setExpedienteForm] = useState<ExpedienteForm>(EXPEDIENTE_VAZIO);
@@ -389,6 +399,96 @@ export function UsuariosCadastroClient({
     }
   }
 
+  function fecharAssinatura() {
+    setAssinaturaUser(null);
+    setAssinaturaAtual(null);
+    setAssinaturaErro(null);
+  }
+
+  function pedirFecharAssinatura() {
+    if (salvandoAssinatura) return;
+    fecharAssinatura();
+  }
+
+  async function abrirAssinatura(row: UsuarioItem) {
+    setAssinaturaUser(row);
+    setAssinaturaAtual(null);
+    setAssinaturaErro(null);
+    setLimparAssinatura((n) => n + 1);
+    setAssinaturaCarregando(true);
+    try {
+      const res = await fetch(`/api/usuarios/${row.id}/assinatura`);
+      const json = (await res.json()) as { error?: string; assinatura?: string | null };
+      if (!res.ok) throw new Error(json.error ?? "Erro ao carregar a assinatura.");
+      setAssinaturaAtual(json.assinatura ?? null);
+    } catch (err) {
+      setAssinaturaErro(err instanceof Error ? err.message : "Erro ao carregar a assinatura.");
+    } finally {
+      setAssinaturaCarregando(false);
+    }
+  }
+
+  async function salvarAssinatura() {
+    if (!assinaturaUser) return;
+    const imagem = assinaturaRef.current?.exportarJpeg();
+    if (!imagem) {
+      setAssinaturaErro("Desenhe a assinatura no campo indicado.");
+      return;
+    }
+    setSalvandoAssinatura(true);
+    setAssinaturaErro(null);
+    try {
+      const res = await fetch(`/api/usuarios/${assinaturaUser.id}/assinatura`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ assinatura: imagem }),
+      });
+      const json = (await res.json()) as { error?: string };
+      if (!res.ok) throw new Error(json.error ?? "Erro ao salvar a assinatura.");
+      const id = assinaturaUser.id;
+      const nome = assinaturaUser.nome_completo?.trim() || assinaturaUser.usuario;
+      setRows((atual) => atual.map((r) => (r.id === id ? { ...r, tem_assinatura: true } : r)));
+      fecharAssinatura();
+      setFeedback({
+        title: "Assinatura salva",
+        message: `A assinatura de "${nome}" será usada nos próximos contratos.`,
+      });
+      router.refresh();
+    } catch (err) {
+      setAssinaturaErro(err instanceof Error ? err.message : "Erro ao salvar a assinatura.");
+    } finally {
+      setSalvandoAssinatura(false);
+    }
+  }
+
+  async function removerAssinatura() {
+    if (!assinaturaUser) return;
+    setSalvandoAssinatura(true);
+    setAssinaturaErro(null);
+    try {
+      const res = await fetch(`/api/usuarios/${assinaturaUser.id}/assinatura`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ assinatura: null }),
+      });
+      const json = (await res.json()) as { error?: string };
+      if (!res.ok) throw new Error(json.error ?? "Erro ao remover a assinatura.");
+      const id = assinaturaUser.id;
+      const nome = assinaturaUser.nome_completo?.trim() || assinaturaUser.usuario;
+      setRows((atual) => atual.map((r) => (r.id === id ? { ...r, tem_assinatura: false } : r)));
+      fecharAssinatura();
+      setFeedback({
+        title: "Assinatura removida",
+        message: `A assinatura de "${nome}" foi removida.`,
+      });
+      router.refresh();
+    } catch (err) {
+      setAssinaturaErro(err instanceof Error ? err.message : "Erro ao remover a assinatura.");
+    } finally {
+      setSalvandoAssinatura(false);
+    }
+  }
+
   if (loadError) {
     return (
       <div className="alert alert-danger" role="alert">
@@ -433,7 +533,7 @@ export function UsuariosCadastroClient({
                 <th>Grupo</th>
                 <th style={{ width: "100px" }}>Na agenda</th>
                 <th style={{ width: "90px" }}>Status</th>
-                <th style={{ width: "380px" }} className="text-right">
+                <th style={{ width: "500px" }} className="text-right">
                   Ações
                 </th>
               </tr>
@@ -476,6 +576,17 @@ export function UsuariosCadastroClient({
                         onClick={() => openEdit(row)}
                       >
                         <i className="fas fa-edit" aria-hidden /> Editar
+                      </button>
+                      <button
+                        type="button"
+                        className="btn btn-sm btn-outline-secondary mr-1"
+                        onClick={() => void abrirAssinatura(row)}
+                        title="Cadastrar a assinatura do profissional"
+                      >
+                        <i className="fas fa-pen" aria-hidden /> Assinatura
+                        {row.tem_assinatura ? (
+                          <i className="fas fa-check text-success ml-1" aria-hidden />
+                        ) : null}
                       </button>
                       <button
                         type="button"
@@ -878,6 +989,91 @@ export function UsuariosCadastroClient({
                   </div>
                 </div>
               </form>
+            </div>
+          </div>
+        </ModalBackdrop>
+      ) : null}
+
+      {assinaturaUser ? (
+        <ModalBackdrop onBackdropClick={pedirFecharAssinatura}>
+          <div className="modal-dialog modal-lg modal-assinatura-usuario" role="document">
+            <div className="modal-content">
+              <div className="modal-header">
+                <h5 className="modal-title">
+                  Assinatura — {assinaturaUser.nome_completo?.trim() || assinaturaUser.usuario}
+                </h5>
+                <button
+                  type="button"
+                  className="close"
+                  aria-label="Fechar"
+                  disabled={salvandoAssinatura}
+                  onClick={pedirFecharAssinatura}
+                >
+                  <span aria-hidden="true">&times;</span>
+                </button>
+              </div>
+              <div className="modal-body">
+                {assinaturaErro ? (
+                  <div className="alert alert-danger py-2 small" role="alert">
+                    {assinaturaErro}
+                  </div>
+                ) : null}
+                <p className="text-muted small">
+                  Assine com o mouse ou o dedo. Esta assinatura entra na via da enfermeira ao salvar um contrato.
+                </p>
+                {assinaturaCarregando ? <p className="text-muted">Carregando...</p> : null}
+                {assinaturaAtual ? (
+                  <div className="mb-3">
+                    <div className="small text-muted mb-1">Assinatura atual</div>
+                    <img
+                      src={assinaturaAtual}
+                      alt="Assinatura cadastrada"
+                      style={{ maxHeight: 80, maxWidth: "100%", objectFit: "contain" }}
+                    />
+                  </div>
+                ) : null}
+                <CampoAssinatura ref={assinaturaRef} resetKey={limparAssinatura} />
+              </div>
+              <div className="modal-footer justify-content-between">
+                <div>
+                  {assinaturaUser.tem_assinatura ? (
+                    <button
+                      type="button"
+                      className="btn btn-outline-danger"
+                      disabled={salvandoAssinatura || assinaturaCarregando}
+                      onClick={() => void removerAssinatura()}
+                    >
+                      Remover
+                    </button>
+                  ) : null}
+                </div>
+                <div>
+                  <button
+                    type="button"
+                    className="btn btn-outline-secondary mr-2"
+                    disabled={salvandoAssinatura}
+                    onClick={() => setLimparAssinatura((n) => n + 1)}
+                  >
+                    Limpar
+                  </button>
+                  <button
+                    type="button"
+                    className="btn btn-secondary mr-2"
+                    disabled={salvandoAssinatura}
+                    onClick={pedirFecharAssinatura}
+                  >
+                    Cancelar
+                  </button>
+                  <button
+                    type="button"
+                    className="btn btn-primary"
+                    disabled={salvandoAssinatura || assinaturaCarregando}
+                    onClick={() => void salvarAssinatura()}
+                  >
+                    {salvandoAssinatura ? "Salvando..." : "Salvar assinatura"}
+                  </button>
+                </div>
+              </div>
             </div>
           </div>
         </ModalBackdrop>

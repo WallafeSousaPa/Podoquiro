@@ -1,4 +1,5 @@
 import { cache } from "react";
+import { perfilAnamneseDoGrupo, type PerfilAnamnese } from "@/lib/agenda/permissoes-calendario";
 import { createAdminClient } from "@/lib/supabase/admin";
 import {
   grupoUsuariosAdministradorOuDiretoria,
@@ -40,6 +41,8 @@ export type SaudacaoNomes = {
   podePersonalizarMensagemWhatsappTaxa: boolean;
   /** Excluir importação de NF-e e reverter estoque (Administrador / Diretoria). */
   podeExcluirImportacaoEstoque: boolean;
+  /** Formulário aberto pelo botão Anamnese. */
+  perfilAnamnese: PerfilAnamnese;
 };
 
 /**
@@ -61,6 +64,7 @@ export const getNomesSaudacao = cache(
     let podeEmitirNfseNoCaixa = false;
     let podePersonalizarMensagemWhatsappTaxa = false;
     let podeExcluirImportacaoEstoque = false;
+    let perfilAnamnese: PerfilAnamnese = "podologo";
 
     if (Number.isFinite(userId) && userId > 0 && Number.isFinite(empresaId) && empresaId > 0) {
       const supabase = createAdminClient();
@@ -91,6 +95,7 @@ export const getNomesSaudacao = cache(
         grupoUsuariosPodePersonalizarMensagemWhatsappTaxa(nomeGrupo);
       podeExcluirImportacaoEstoque =
         grupoUsuariosAdministradorOuDiretoria(nomeGrupo);
+      perfilAnamnese = perfilAnamneseDoGrupo(nomeGrupo);
 
       try {
         const efetivo = await menusEfetivosDoUsuario(supabase, userId);
@@ -130,6 +135,7 @@ export const getNomesSaudacao = cache(
       podeEmitirNfseNoCaixa,
       podePersonalizarMensagemWhatsappTaxa,
       podeExcluirImportacaoEstoque,
+      perfilAnamnese,
     };
   },
 );

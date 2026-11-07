@@ -9,7 +9,8 @@ export default async function AtendimentoPage() {
     redirect("/login");
   }
 
-  const { nomeCompleto, nomeEmpresaComId, menuAtendimento } = await getNomesSaudacao(
+  const { nomeCompleto, nomeEmpresaComId, menuAtendimento, perfilAnamnese } =
+    await getNomesSaudacao(
     session.sub,
     session.usuario,
     session.idEmpresa,
@@ -46,7 +47,7 @@ export default async function AtendimentoPage() {
               <p className="text-muted small mb-3">
                 Olá, <strong>{nomeCompleto}</strong> — <strong>{nomeEmpresaComId}</strong>.
               </p>
-              <AtendimentoFila />
+              <AtendimentoFila perfilAnamnese={perfilAnamnese} />
             </div>
           </div>
         </div>

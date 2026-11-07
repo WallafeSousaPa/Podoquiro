@@ -28,6 +28,18 @@ export default async function PacientesAvaliacoesPage() {
   let formatosPe: ItemRef[] = [];
   let podeParametrizarAnamnese = false;
   let diasEntreAnamnesesInicial: number | null = null;
+  let diasEntreAnamnesesEnfermagemInicial: number | null = null;
+  let fichasEnfermagem: {
+    id: number;
+    id_paciente: number;
+    id_agendamento: number;
+    id_usuario: number;
+    updated_at: string;
+    dados: Record<string, unknown> | null;
+    arquivo_termo_assinatura_virtual: string | null;
+    pacientes: { nome_completo?: string | null; nome_social?: string | null } | null;
+    usuarios: { nome_completo?: string | null; usuario?: string | null } | null;
+  }[] = [];
 
   try {
     const evolucaoSelect =
@@ -46,6 +58,7 @@ export default async function PacientesAvaliacoesPage() {
       fdRes,
       fpRes,
       empresaRes,
+      fichasRes,
     ] = await Promise.all([
       supabase.from("pacientes").select("id, nome_completo, nome_social, telefone").order("id", { ascending: false }),
       supabase.from("usuarios").select("id, usuario, nome_completo").eq("ativo", true).order("nome_completo", { ascending: true }),
@@ -59,9 +72,17 @@ export default async function PacientesAvaliacoesPage() {
       supabase.from("formato_pe").select("id, tipo, ativo").order("tipo", { ascending: true }),
       supabase
         .from("empresas")
-        .select("dias_entre_anamneses")
+        .select("dias_entre_anamneses, dias_entre_anamneses_enfermagem")
         .eq("id", Number(session.idEmpresa))
         .maybeSingle(),
+      supabase
+        .from("pacientes_ficha_enfermagem")
+        .select(
+          "id, id_paciente, id_agendamento, id_usuario, updated_at, dados, arquivo_termo_assinatura_virtual, pacientes(nome_completo, nome_social), usuarios(nome_completo, usuario)",
+        )
+        .eq("id_empresa", Number(session.idEmpresa))
+        .order("updated_at", { ascending: false })
+        .limit(200),
     ]);
 
     const all = [
@@ -76,6 +97,7 @@ export default async function PacientesAvaliacoesPage() {
       fdRes,
       fpRes,
       empresaRes,
+      fichasRes,
     ];
     const err = all.find((x) => x.error)?.error;
     if (err) throw new Error(err.message);
@@ -84,6 +106,34 @@ export default async function PacientesAvaliacoesPage() {
       podeParametrizarAnamnese = await getUsuarioGrupoAdministrativo(supabase, idUsuarioSessao);
     }
     diasEntreAnamnesesInicial = diasEntreAnamnesesDoValorDb(empresaRes.data?.dias_entre_anamneses);
+    diasEntreAnamnesesEnfermagemInicial = diasEntreAnamnesesDoValorDb(
+      empresaRes.data?.dias_entre_anamneses_enfermagem,
+    );
+    fichasEnfermagem = (fichasRes.data ?? []).map((f) => {
+      const pacRaw = f.pacientes as
+        | { nome_completo?: string | null; nome_social?: string | null }
+        | { nome_completo?: string | null; nome_social?: string | null }[]
+        | null;
+      const usuRaw = f.usuarios as
+        | { nome_completo?: string | null; usuario?: string | null }
+        | { nome_completo?: string | null; usuario?: string | null }[]
+        | null;
+      const dados = f.dados;
+      return {
+        id: Number(f.id),
+        id_paciente: Number(f.id_paciente),
+        id_agendamento: Number(f.id_agendamento),
+        id_usuario: Number(f.id_usuario),
+        updated_at: String(f.updated_at ?? ""),
+        dados: dados && typeof dados === "object" ? (dados as Record<string, unknown>) : null,
+        arquivo_termo_assinatura_virtual:
+          typeof f.arquivo_termo_assinatura_virtual === "string" && f.arquivo_termo_assinatura_virtual.trim()
+            ? f.arquivo_termo_assinatura_virtual.trim()
+            : null,
+        pacientes: Array.isArray(pacRaw) ? pacRaw[0] ?? null : pacRaw,
+        usuarios: Array.isArray(usuRaw) ? usuRaw[0] ?? null : usuRaw,
+      };
+    });
 
     pacientes = (pacientesRes.data ?? []).map((p) => ({
       id: Number(p.id),
@@ -147,6 +197,8 @@ export default async function PacientesAvaliacoesPage() {
                 podeParametrizarAnamnese={podeParametrizarAnamnese}
                 podeExcluirEvolucaoPacientes={podeParametrizarAnamnese}
                 diasEntreAnamnesesInicial={diasEntreAnamnesesInicial}
+                diasEntreAnamnesesEnfermagemInicial={diasEntreAnamnesesEnfermagemInicial}
+                fichasEnfermagem={fichasEnfermagem}
               />
             </div>
           </div>

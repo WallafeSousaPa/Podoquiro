@@ -11,8 +11,8 @@ import {
   filtrarColunasAgendaSomenteUsuarioPodoquiro,
 } from "@/lib/agenda/usuarios-colunas-agenda";
 import {
-  carregarGatesAnamnesePorPaciente,
-  type GateAnamneseAgendamento,
+  carregarGatesAnamneseDosAgendamentos,
+  type GatesAnamneseAgendamento,
 } from "@/lib/avaliacoes/anamnese-intervalo";
 import { getSession } from "@/lib/auth/session";
 import { createAdminClient } from "@/lib/supabase/admin";
@@ -356,19 +356,17 @@ export async function GET(request: Request) {
     };
   });
 
-  const gatePadrao: GateAnamneseAgendamento = {
+  const gatePadrao: GatesAnamneseAgendamento = {
     anamnese_bloqueada: false,
     anamnese_bloqueio_texto: null,
+    anamnese_enfermagem_bloqueada: false,
+    anamnese_enfermagem_bloqueio_texto: null,
   };
   try {
-    const gates = await carregarGatesAnamnesePorPaciente(
-      supabase,
-      empresaId,
-      agendamentos.map((x) => x.id_paciente),
-    );
+    const gates = await carregarGatesAnamneseDosAgendamentos(supabase, empresaId, agendamentos);
     agendamentos = agendamentos.map((a) => ({
       ...a,
-      ...(gates[a.id_paciente] ?? gatePadrao),
+      ...(gates[a.id] ?? gatePadrao),
     }));
   } catch (e) {
     console.error(e);

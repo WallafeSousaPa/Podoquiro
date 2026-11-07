@@ -1,11 +1,14 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { type FormEvent, type ReactNode, useEffect, useMemo, useState } from "react";
+import { type FormEvent, type ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import { DropdownCheckboxMultiselect } from "@/components/dropdown-checkbox-multiselect";
 import { montarNomeArquivoTermoAssinatura } from "@/lib/client/render-termo-assinatura-pdf";
 import { FORMAS_CONTATO_PACIENTE } from "@/lib/avaliacoes/evolucao";
 import { nomeExibicaoPaciente } from "@/lib/pacientes";
+import { ConsultaFichaEnfermagem } from "./consulta-ficha-enfermagem";
+import { ModalAvaliacaoEnfermagem } from "../../atendimentos/atendimento/modal-avaliacao-enfermagem";
+import { imprimirHtml } from "@/lib/client/imprimir-html";
 import {
   parseEvolucaoCondicaoIds,
   parseEvolucaoHidroseIds,
@@ -20,7 +23,18 @@ import {
 type OptionItem = { id: number; tipo?: string | null; condicao?: string | null; ativo: boolean };
 type PacienteOpt = { id: number; nome: string };
 type ResponsavelOpt = { id: number; nome: string };
-type Evolucao = Record<string, unknown>;
+type Evolucao = Record<string, unknown> & { origem?: "podologo" | "enfermagem" };
+type FichaEnfermagemLista = {
+  id: number;
+  id_paciente: number;
+  id_agendamento: number;
+  id_usuario: number;
+  updated_at: string;
+  dados: Record<string, unknown> | null;
+  arquivo_termo_assinatura_virtual: string | null;
+  pacientes: { nome_completo?: string | null; nome_social?: string | null } | null;
+  usuarios: { nome_completo?: string | null; usuario?: string | null } | null;
+};
 type CatalogKey =
   | "condicoes-saude"
   | "tipos-unhas"
@@ -87,6 +101,8 @@ type Props = {
   /** Administrador / Diretoria: excluir avaliação permanentemente (substitui inativar na lista). */
   podeExcluirEvolucaoPacientes?: boolean;
   diasEntreAnamnesesInicial?: number | null;
+  diasEntreAnamnesesEnfermagemInicial?: number | null;
+  fichasEnfermagem?: FichaEnfermagemLista[];
 };
 
 export function AvaliacoesClient(props: Props) {
@@ -100,6 +116,14 @@ export function AvaliacoesClient(props: Props) {
   const [filtroPaciente, setFiltroPaciente] = useState("");
   const [filtroDataInicio, setFiltroDataInicio] = useState("");
   const [filtroDataFim, setFiltroDataFim] = useState("");
+  const [filtroOrigem, setFiltroOrigem] = useState<"todos" | "podologo" | "enfermagem">("todos");
+  const [consultaEnfermagem, setConsultaEnfermagem] = useState<Evolucao | null>(null);
+  const [edicaoEnfermagem, setEdicaoEnfermagem] = useState<{
+    id: number;
+    id_paciente: number;
+    paciente_nome: string;
+  } | null>(null);
+  const consultaEnfermagemRef = useRef<HTMLDivElement>(null);
   const [menuAuxOpen, setMenuAuxOpen] = useState(false);
   const [consultaRow, setConsultaRow] = useState<Evolucao | null>(null);
 
@@ -157,6 +181,7 @@ export function AvaliacoesClient(props: Props) {
 
   const [modalParamAnamOpen, setModalParamAnamOpen] = useState(false);
   const [paramAnamDias, setParamAnamDias] = useState("");
+  const [paramAnamDiasEnf, setParamAnamDiasEnf] = useState("");
   const [paramAnamSaving, setParamAnamSaving] = useState(false);
   const [paramAnamError, setParamAnamError] = useState<string | null>(null);
 
@@ -170,34 +195,45 @@ export function AvaliacoesClient(props: Props) {
 
   function abrirModalParamAnam() {
     const v = props.diasEntreAnamnesesInicial;
+    const e = props.diasEntreAnamnesesEnfermagemInicial;
     setParamAnamDias(v != null && v > 0 ? String(v) : "");
+    setParamAnamDiasEnf(e != null && e > 0 ? String(e) : "");
     setParamAnamError(null);
     setModalParamAnamOpen(true);
+  }
+
+  function diasDoCampo(raw: string): number | null {
+    if (raw.trim() === "") return null;
+    const n = Math.trunc(Number(raw));
+    if (!Number.isFinite(n) || n <= 0) {
+      throw new Error("Informe um número inteiro maior que zero ou deixe vazio para desativar.");
+    }
+    return n;
   }
 
   async function salvarModalParamAnam() {
     setParamAnamSaving(true);
     setParamAnamError(null);
     try {
-      const raw = paramAnamDias.trim();
-      const body =
-        raw === ""
-          ? { dias_entre_anamneses: null as number | null }
-          : { dias_entre_anamneses: Math.trunc(Number(raw)) };
-      if (body.dias_entre_anamneses != null) {
-        if (!Number.isFinite(body.dias_entre_anamneses) || body.dias_entre_anamneses <= 0) {
-          throw new Error("Informe um número inteiro maior que zero ou deixe vazio para desativar.");
-        }
-      }
+      const body = {
+        dias_entre_anamneses: diasDoCampo(paramAnamDias),
+        dias_entre_anamneses_enfermagem: diasDoCampo(paramAnamDiasEnf),
+      };
       const res = await fetch("/api/empresa/parametros-anamnese", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(body),
       });
-      const json = (await res.json()) as { error?: string; dias_entre_anamneses?: number | null };
+      const json = (await res.json()) as {
+        error?: string;
+        dias_entre_anamneses?: number | null;
+        dias_entre_anamneses_enfermagem?: number | null;
+      };
       if (!res.ok) throw new Error(json.error ?? "Não foi possível salvar o parâmetro.");
       const novo = json.dias_entre_anamneses;
+      const novoEnf = json.dias_entre_anamneses_enfermagem;
       setParamAnamDias(novo != null && novo > 0 ? String(novo) : "");
+      setParamAnamDiasEnf(novoEnf != null && novoEnf > 0 ? String(novoEnf) : "");
       setModalParamAnamOpen(false);
       router.refresh();
     } catch (ex) {
@@ -216,10 +252,33 @@ export function AvaliacoesClient(props: Props) {
     [props.responsaveis],
   );
 
+  const linhas = useMemo((): Evolucao[] => {
+    const pods: Evolucao[] = rows.map((r) => ({ ...r, origem: "podologo" }));
+    const enfs: Evolucao[] = (props.fichasEnfermagem ?? []).map((f) => ({
+      id: f.id,
+      id_paciente: f.id_paciente,
+      id_agendamento: f.id_agendamento,
+      id_responsavel: f.id_usuario,
+      data: f.updated_at,
+      ativo: true,
+      origem: "enfermagem",
+      pacientes: f.pacientes,
+      dados: f.dados,
+      arquivo_termo_assinatura_virtual: f.arquivo_termo_assinatura_virtual,
+      responsavel_nome:
+        f.usuarios?.nome_completo?.trim() || f.usuarios?.usuario?.trim() || `Usuário #${f.id_usuario}`,
+    }));
+    return [...pods, ...enfs].sort((a, b) => {
+      const da = new Date(String(a.data ?? "")).getTime();
+      const db = new Date(String(b.data ?? "")).getTime();
+      return (Number.isFinite(db) ? db : 0) - (Number.isFinite(da) ? da : 0);
+    });
+  }, [rows, props.fichasEnfermagem]);
+
   const rowsFiltrados = useMemo(() => {
     const q = filtroPaciente.trim().toLowerCase();
-    return rows.filter((r) => {
-      const pid = Number(r.id_paciente);
+    return linhas.filter((r) => {
+      if (filtroOrigem !== "todos" && r.origem !== filtroOrigem) return false;
       const nome = nomePacienteDaLinhaEvolucao(r, pacientesById);
       const okPaciente = !q || nome.toLowerCase().includes(q);
       let okData = true;
@@ -237,7 +296,7 @@ export function AvaliacoesClient(props: Props) {
       }
       return okPaciente && okData;
     });
-  }, [rows, filtroPaciente, pacientesById, filtroDataInicio, filtroDataFim]);
+  }, [linhas, filtroPaciente, pacientesById, filtroDataInicio, filtroDataFim, filtroOrigem]);
 
   const pacientesFiltradosModal = useMemo(() => {
     const q = pacienteBusca.trim().toLowerCase();
@@ -452,12 +511,18 @@ export function AvaliacoesClient(props: Props) {
     setExcluindoEvolucao(true);
     setListError(null);
     try {
-      const res = await fetch(`/api/pacientes-evolucao/${id}`, { method: "DELETE" });
+      const res = await fetch(
+        row.origem === "enfermagem"
+          ? `/api/pacientes/${Number(row.id_paciente)}/ficha-enfermagem?ficha=${id}`
+          : `/api/pacientes-evolucao/${id}`,
+        { method: "DELETE" },
+      );
       const json = (await res.json().catch(() => ({}))) as { error?: string };
       if (!res.ok) throw new Error(json.error ?? "Não foi possível excluir a avaliação.");
       const nomePacienteRef = nomePacienteDaLinhaEvolucao(row, pacientesById);
       setExcluirConfirmRow(null);
       if (consultaRow && Number(consultaRow.id) === id) setConsultaRow(null);
+      if (consultaEnfermagem && Number(consultaEnfermagem.id) === id) setConsultaEnfermagem(null);
       if (modalOpen && editingId === id) {
         setModalOpen(false);
         resetForm();
@@ -580,9 +645,21 @@ export function AvaliacoesClient(props: Props) {
         </div>
         <div className="card-body border-bottom">
           <div className="form-row">
-            <div className="form-group col-md-4 mb-2 mb-md-0">
+            <div className="form-group col-md-3 mb-2 mb-md-0">
               <label className="mb-1">Consultar por paciente</label>
               <input className="form-control" value={filtroPaciente} onChange={(e) => setFiltroPaciente(e.target.value)} placeholder="Digite parte do nome..." />
+            </div>
+            <div className="form-group col-md-2 mb-2 mb-md-0">
+              <label className="mb-1">Profissional</label>
+              <select
+                className="form-control"
+                value={filtroOrigem}
+                onChange={(e) => setFiltroOrigem(e.target.value as "todos" | "podologo" | "enfermagem")}
+              >
+                <option value="todos">Todos</option>
+                <option value="podologo">Podólogo</option>
+                <option value="enfermagem">Enfermagem</option>
+              </select>
             </div>
             <div className="form-group col-md-2 mb-2 mb-md-0">
               <label className="mb-1">Data inicial</label>
@@ -634,6 +711,7 @@ export function AvaliacoesClient(props: Props) {
               <tr>
                 <th>ID</th>
                 <th>Paciente</th>
+                <th>Tipo</th>
                 <th>Responsável</th>
                 <th>Condições</th>
                 <th>Data</th>
@@ -643,30 +721,67 @@ export function AvaliacoesClient(props: Props) {
             </thead>
             <tbody>
               {loadingList ? (
-                <tr><td colSpan={7} className="text-center py-4 text-muted">Carregando...</td></tr>
+                <tr><td colSpan={8} className="text-center py-4 text-muted">Carregando...</td></tr>
               ) : rowsFiltrados.length === 0 ? (
-                <tr><td colSpan={7} className="text-center py-4 text-muted">Nenhuma avaliação encontrada.</td></tr>
+                <tr><td colSpan={8} className="text-center py-4 text-muted">Nenhuma avaliação encontrada.</td></tr>
               ) : rowsFiltrados.map((row) => {
-                const pid = Number(row.id_paciente);
                 const uid = Number(row.id_responsavel);
+                const enfermagem = row.origem === "enfermagem";
                 return (
-                  <tr key={String(row.id)}>
+                  <tr key={`${row.origem ?? "podologo"}-${String(row.id)}`}>
                     <td>{String(row.id)}</td>
                     <td>
                       <button
                         type="button"
                         className="btn btn-link p-0 align-baseline"
-                        onClick={() => setConsultaRow(row)}
+                        onClick={() => (enfermagem ? setConsultaEnfermagem(row) : setConsultaRow(row))}
                         title="Consultar avaliação"
                       >
                         {nomePacienteDaLinhaEvolucao(row, pacientesById)}
                       </button>
                     </td>
-                    <td>{responsavelById[uid] ?? `Usuário #${uid}`}</td>
-                    <td>{resumoTextosCondicoes(row as Record<string, unknown>)}</td>
+                    <td>
+                      {enfermagem ? (
+                        <span className="badge badge-warning">Enfermagem</span>
+                      ) : (
+                        <span className="badge badge-info">Podólogo</span>
+                      )}
+                    </td>
+                    <td>{String(row.responsavel_nome ?? responsavelById[uid] ?? `Usuário #${uid}`)}</td>
+                    <td>{enfermagem ? "Ficha de enfermagem" : resumoTextosCondicoes(row as Record<string, unknown>)}</td>
                     <td>{formatDataHora(row.data)}</td>
                     <td>{row.ativo === false ? <span className="badge badge-secondary">Inativo</span> : <span className="badge badge-success">Ativo</span>}</td>
                     <td className="text-right text-nowrap">
+                      {enfermagem ? (
+                        <>
+                          <button
+                            type="button"
+                            className="btn btn-sm btn-outline-primary mr-1"
+                            onClick={() => {
+                              const idAg = Number(row.id_agendamento);
+                              const idPac = Number(row.id_paciente);
+                              if (!Number.isFinite(idAg) || idAg <= 0 || !Number.isFinite(idPac) || idPac <= 0) return;
+                              setEdicaoEnfermagem({
+                                id: idAg,
+                                id_paciente: idPac,
+                                paciente_nome: nomePacienteDaLinhaEvolucao(row, pacientesById),
+                              });
+                            }}
+                          >
+                            <i className="fas fa-edit" aria-hidden /> Editar
+                          </button>
+                          {podeExcluirEvolucaoPacientes ? (
+                            <button
+                              type="button"
+                              className="btn btn-sm btn-outline-danger"
+                              onClick={() => solicitarExclusaoEvolucao(row)}
+                            >
+                              Excluir
+                            </button>
+                          ) : null}
+                        </>
+                      ) : (
+                        <>
                       <button className="btn btn-sm btn-outline-primary mr-1" onClick={() => openEdit(row)}>
                         <i className="fas fa-edit" aria-hidden /> Editar
                       </button>
@@ -687,6 +802,8 @@ export function AvaliacoesClient(props: Props) {
                           Excluir
                         </button>
                       ) : null}
+                        </>
+                      )}
                     </td>
                   </tr>
                 );
@@ -1180,6 +1297,125 @@ export function AvaliacoesClient(props: Props) {
         </ModalBackdrop>
       ) : null}
 
+      {consultaEnfermagem ? (
+        <ModalBackdrop onBackdropClick={() => setConsultaEnfermagem(null)}>
+          <div className="modal-dialog modal-xl modal-dialog-centered" role="document" style={{ width: "calc(100% - 1rem)", maxWidth: "min(1140px, calc(100vw - 1rem))", margin: "0.5rem auto" }}>
+            <div className="modal-content">
+              <div className="modal-header">
+                <h5 className="modal-title">Avaliação de enfermagem</h5>
+                <button type="button" className="close" onClick={() => setConsultaEnfermagem(null)}>
+                  <span aria-hidden="true">&times;</span>
+                </button>
+              </div>
+              <div className="modal-body" ref={consultaEnfermagemRef} style={{ maxHeight: "70vh", overflowY: "auto" }}>
+                <div className="row">
+                  <div className="col-md-6 mb-2">
+                    <div className="text-muted small">Paciente</div>
+                    <div className="font-weight-bold">{nomePacienteDaLinhaEvolucao(consultaEnfermagem, pacientesById)}</div>
+                  </div>
+                  <div className="col-md-6 mb-2">
+                    <div className="text-muted small">Responsável</div>
+                    <div className="font-weight-bold">
+                      {String(
+                        consultaEnfermagem.responsavel_nome ??
+                          responsavelById[Number(consultaEnfermagem.id_responsavel)] ??
+                          `Usuário #${consultaEnfermagem.id_responsavel}`,
+                      )}
+                    </div>
+                  </div>
+                  <div className="col-md-6 mb-3">
+                    <div className="text-muted small">Atualizada em</div>
+                    <div>{formatDataHora(consultaEnfermagem.data)}</div>
+                  </div>
+                </div>
+                <ConsultaFichaEnfermagem dados={consultaEnfermagem.dados} />
+                <hr />
+                <h6 className="text-primary mb-3">Termo com assinatura virtual (PDF)</h6>
+                {(() => {
+                  const pathTermo = consultaEnfermagem.arquivo_termo_assinatura_virtual;
+                  const urlPdf = urlTermoAssinaturaVirtualPublica(pathTermo);
+                  const dataAval =
+                    consultaEnfermagem.data != null ? new Date(String(consultaEnfermagem.data)) : new Date();
+                  const downloadName = montarNomeArquivoTermoAssinatura(
+                    nomePacienteDaLinhaEvolucao(consultaEnfermagem, pacientesById),
+                    dataAval,
+                  );
+                  if (!urlPdf) {
+                    return (
+                      <p className="text-muted small mb-0">
+                        Nenhum PDF de termo com assinatura virtual foi anexado a esta avaliação.
+                      </p>
+                    );
+                  }
+                  return (
+                    <div className="mb-3 d-flex justify-content-center">
+                      <div
+                        className="border rounded bg-white shadow-sm position-relative"
+                        style={{ width: "100%", maxWidth: 280, padding: "1rem 1rem 1.5rem" }}
+                      >
+                        <div className="d-flex justify-content-between align-items-center mb-3">
+                          <a
+                            href={urlPdf}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="text-secondary"
+                            title="Visualizar PDF"
+                            aria-label="Visualizar PDF em nova aba"
+                          >
+                            <i className="fas fa-eye fa-lg" aria-hidden />
+                          </a>
+                          <a
+                            href={urlPdf}
+                            download={downloadName}
+                            className="text-secondary"
+                            title="Baixar PDF"
+                            aria-label="Baixar PDF"
+                          >
+                            <i className="fas fa-download fa-lg" aria-hidden />
+                          </a>
+                        </div>
+                        <div className="text-center pt-1">
+                          <i className="fas fa-file-pdf text-danger" style={{ fontSize: "3.25rem" }} aria-hidden />
+                          <div className="small text-muted font-weight-bold mt-2 mb-0">PDF</div>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })()}
+              </div>
+              <div className="modal-footer">
+                <button
+                  type="button"
+                  className="btn btn-outline-primary"
+                  onClick={() => {
+                    if (!consultaEnfermagemRef.current) return;
+                    imprimirHtml(
+                      consultaEnfermagemRef.current,
+                      `Avaliação de enfermagem — ${nomePacienteDaLinhaEvolucao(consultaEnfermagem, pacientesById)}`,
+                    );
+                  }}
+                >
+                  Imprimir PDF
+                </button>
+                <button type="button" className="btn btn-secondary" onClick={() => setConsultaEnfermagem(null)}>
+                  Fechar
+                </button>
+              </div>
+            </div>
+          </div>
+        </ModalBackdrop>
+      ) : null}
+
+      {edicaoEnfermagem ? (
+        <ModalAvaliacaoEnfermagem
+          ag={edicaoEnfermagem}
+          onClose={() => setEdicaoEnfermagem(null)}
+          onSalvo={() => {
+            router.refresh();
+          }}
+        />
+      ) : null}
+
       {modalParamAnamOpen ? (
         <ModalBackdrop onBackdropClick={() => !paramAnamSaving && setModalParamAnamOpen(false)}>
           <div className="modal-dialog modal-dialog-centered" role="document">
@@ -1192,15 +1428,16 @@ export function AvaliacoesClient(props: Props) {
               </div>
               <div className="modal-body">
                 <p className="small text-muted mb-3">
-                  Quando preenchido, a opção para registrar nova anamnese fica disponível apenas após o número indicado de
-                  dias corridos (fuso Brasília) desde a data da última ficha do paciente, nos cards da agenda (
-                  Início), na fila de Atendimento e ao cadastrar avaliações. Deixe vazio para não exigir intervalo.
+                  Quando preenchido, a opção para registrar nova ficha fica disponível apenas após o número indicado de
+                  dias corridos (fuso Brasília) desde a última do paciente. O intervalo do podólogo vale para a anamnese
+                  nos cards da agenda e na fila de Atendimento. O da enfermagem vale para a avaliação de enfermagem.
+                  Deixe vazio para não exigir intervalo naquele formulário.
                 </p>
                 {paramAnamError ? (
                   <div className="alert alert-danger py-2 small">{paramAnamError}</div>
                 ) : null}
-                <div className="form-group mb-0">
-                  <label htmlFor="param-anam-dias">Dias mínimos desde a última anamnese</label>
+                <div className="form-group">
+                  <label htmlFor="param-anam-dias">Podólogo — dias mínimos desde a última anamnese</label>
                   <input
                     id="param-anam-dias"
                     type="number"
@@ -1211,6 +1448,20 @@ export function AvaliacoesClient(props: Props) {
                     value={paramAnamDias}
                     disabled={paramAnamSaving}
                     onChange={(e) => setParamAnamDias(e.target.value)}
+                  />
+                </div>
+                <div className="form-group mb-0">
+                  <label htmlFor="param-anam-dias-enf">Enfermagem — dias mínimos desde a última avaliação</label>
+                  <input
+                    id="param-anam-dias-enf"
+                    type="number"
+                    inputMode="numeric"
+                    min={1}
+                    className="form-control"
+                    placeholder="Ex.: 30 (vazio = desativado)"
+                    value={paramAnamDiasEnf}
+                    disabled={paramAnamSaving}
+                    onChange={(e) => setParamAnamDiasEnf(e.target.value)}
                   />
                   <small className="form-text text-muted">Somente usuários Administrador ou Diretoria veem esta tela.</small>
                 </div>
@@ -1259,8 +1510,11 @@ export function AvaliacoesClient(props: Props) {
                   <strong>{nomePacienteDaLinhaEvolucao(excluirConfirmRow, pacientesById)}</strong>?
                 </p>
                 <p className="small text-muted mb-0">
-                  Os anexos no armazenamento (fotos e termo em PDF) também serão removidos. Esta ação não pode ser
-                  desfeita.
+                  Os anexos no armazenamento
+                  {excluirConfirmRow.origem === "enfermagem"
+                    ? " (termo em PDF)"
+                    : " (fotos e termo em PDF)"}{" "}
+                  também serão removidos. Esta ação não pode ser desfeita.
                 </p>
               </div>
               <div className="modal-footer">

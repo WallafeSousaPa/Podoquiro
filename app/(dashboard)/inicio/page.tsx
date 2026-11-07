@@ -9,7 +9,7 @@ export default async function InicioPage() {
     redirect("/login");
   }
 
-  const { nomeEmpresaCurto, somenteMenuInicio, podeAgendarRetroativo } =
+  const { nomeEmpresaCurto, somenteMenuInicio, podeAgendarRetroativo, perfilAnamnese } =
     await getNomesSaudacao(session.sub, session.usuario, session.idEmpresa);
 
   return (
@@ -22,6 +22,7 @@ export default async function InicioPage() {
               nomeEmpresa={nomeEmpresaCurto}
               somenteMenuInicio={somenteMenuInicio}
               podeAgendarRetroativo={podeAgendarRetroativo}
+              perfilAnamnese={perfilAnamnese}
             />
           </div>
         </div>

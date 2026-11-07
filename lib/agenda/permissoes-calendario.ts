@@ -47,6 +47,27 @@ export function grupoNomeEhAdministradorOuDiretoria(
   return grupoNomeEhAdministrador(nome) || grupoNomeEhDiretoria(nome);
 }
 
+/** Grupo Enfermagem (ficha de admissão e avaliação no atendimento). */
+export function grupoNomeEhEnfermagem(nome: string | null | undefined): boolean {
+  if (nome == null || String(nome).trim() === "") return false;
+  const c = normalizarNomeGrupoAgenda(String(nome));
+  return c.includes("enfermagem") || c.includes("enfermeir");
+}
+
+/** Quem vê e grava a ficha de avaliação no card do atendimento. */
+export function grupoNomePodeFichaAvaliacao(nome: string | null | undefined): boolean {
+  return grupoNomeEhEnfermagem(nome) || grupoNomeEhAdministradorOuDiretoria(nome);
+}
+
+/** Qual formulário o botão Anamnese abre. */
+export type PerfilAnamnese = "podologo" | "enfermagem" | "escolher";
+
+export function perfilAnamneseDoGrupo(nome: string | null | undefined): PerfilAnamnese {
+  if (grupoNomeEhEnfermagem(nome)) return "enfermagem";
+  if (grupoNomeEhAdministradorOuDiretoria(nome)) return "escolher";
+  return "podologo";
+}
+
 /**
  * Perfis que podem lançar mercadorias no modal do caixa sem ser Administrador/Diretoria.
  * Inclui grafias comuns ("Receção" → rececao) e papéis de balcão.

@@ -14,6 +14,13 @@ import {
   type AnamneseAgendamentoContext,
 } from "../../inicio/modal-anamnese-agenda";
 import { ModalProntuarioPodologo } from "../../inicio/modal-prontuario-podologo";
+import {
+  ModalAvaliacaoEnfermagem,
+  type AvaliacaoAgendamento,
+} from "./modal-avaliacao-enfermagem";
+import { ModalEscolherAnamnese } from "@/components/modal-escolher-anamnese";
+import { ModalContratoEnfermagem } from "./modal-contrato-enfermagem";
+import type { PerfilAnamnese } from "@/lib/agenda/permissoes-calendario";
 import "../../inicio/agenda.css";
 import "./atendimento-fila.css";
 
@@ -28,6 +35,9 @@ type AgendamentoDia = {
   status: string;
   anamnese_bloqueada?: boolean;
   anamnese_bloqueio_texto?: string | null;
+  anamnese_enfermagem_bloqueada?: boolean;
+  anamnese_enfermagem_bloqueio_texto?: string | null;
+  tem_contrato?: boolean;
 };
 
 type UsuarioCol = {
@@ -92,7 +102,11 @@ function classeStatus(status: string): string {
   return "aguardando";
 }
 
-export function AtendimentoFila() {
+export function AtendimentoFila({
+  perfilAnamnese = "podologo",
+}: {
+  perfilAnamnese?: PerfilAnamnese;
+}) {
   const router = useRouter();
   const filaRef = useRef<HTMLDivElement | null>(null);
   const [dataDia, setDataDia] = useState(() => toYmd(new Date()));
@@ -107,7 +121,11 @@ export function AtendimentoFila() {
     null,
   );
   const [anamneseAg, setAnamneseAg] = useState<AnamneseAgendamentoContext | null>(null);
+  const [avaliacaoAg, setAvaliacaoAg] = useState<AvaliacaoAgendamento | null>(null);
+  const [escolhaAg, setEscolhaAg] = useState<AgendamentoDia | null>(null);
+  const [contratoAg, setContratoAg] = useState<AgendamentoDia | null>(null);
   const [modoFoco, setModoFoco] = useState(false);
+  const podeContrato = perfilAnamnese === "enfermagem" || perfilAnamnese === "escolher";
 
   const cardsOrdenados = useMemo(() => {
     return [...agendamentos].sort((a, b) => {
@@ -265,6 +283,53 @@ export function AtendimentoFila() {
     setProntuarioAg(ag);
   }
 
+  function abrirAnamnesePodologo(ag: AgendamentoDia) {
+    if (ag.status === "realizado") {
+      setProntuarioAg(ag);
+      return;
+    }
+    if (ag.anamnese_bloqueada) {
+      setErro(
+        ag.anamnese_bloqueio_texto?.trim() ||
+          "Aguarde o intervalo mínimo entre anamneses.",
+      );
+      return;
+    }
+    setAnamneseAg({
+      id: ag.id,
+      id_paciente: ag.id_paciente,
+      paciente_nome: ag.paciente_nome,
+    });
+  }
+
+  function abrirAvaliacaoEnfermagem(ag: AgendamentoDia) {
+    if (ag.anamnese_enfermagem_bloqueada) {
+      setErro(
+        ag.anamnese_enfermagem_bloqueio_texto?.trim() ||
+          "Aguarde o intervalo mínimo entre avaliações de enfermagem.",
+      );
+      return;
+    }
+    setAvaliacaoAg({
+      id: ag.id,
+      id_paciente: ag.id_paciente,
+      paciente_nome: ag.paciente_nome,
+    });
+  }
+
+  function abrirPeloPerfil(ag: AgendamentoDia) {
+    setErro(null);
+    if (perfilAnamnese === "enfermagem") {
+      abrirAvaliacaoEnfermagem(ag);
+      return;
+    }
+    if (perfilAnamnese === "escolher") {
+      setEscolhaAg(ag);
+      return;
+    }
+    abrirAnamnesePodologo(ag);
+  }
+
   return (
     <div className={`atendimento-fila-page ${modoFoco ? "modo-foco" : ""}`}>
       {!modoFoco ? (
@@ -337,7 +402,13 @@ export function AtendimentoFila() {
               const isPendente = ag.status === "pendente" || ag.status === "confirmado";
               const isAndamento = ag.status === "em_andamento";
               const isRealizado = ag.status === "realizado";
-              const bloqueiaAnamnese = !isRealizado && ag.anamnese_bloqueada === true;
+              const bloqueiaPodologo = perfilAnamnese === "podologo" && !isRealizado && ag.anamnese_bloqueada === true;
+              const bloqueiaEnfermagem =
+                perfilAnamnese === "enfermagem" && ag.anamnese_enfermagem_bloqueada === true;
+              const bloqueiaBotao = bloqueiaPodologo || bloqueiaEnfermagem;
+              const textoBloqueio = bloqueiaEnfermagem
+                ? ag.anamnese_enfermagem_bloqueio_texto?.trim()
+                : ag.anamnese_bloqueio_texto?.trim();
               const cardHabilitado = isActive;
               const responsavel = usuarios.find((u) => u.id === ag.id_usuario);
               const nomeResponsavel = responsavel?.nome ?? "Responsável";
@@ -348,7 +419,7 @@ export function AtendimentoFila() {
                 <article
                   key={ag.id}
                   data-card-id={ag.id}
-                  className={`card-atendimento ${isActive ? "active" : ""}`}
+                  className={`card-atendimento ${isActive ? "active" : ""} ${podeContrato ? "com-contrato" : ""}`}
                   onClick={() => setActiveId(ag.id)}
                   style={
                     corResponsavel
@@ -369,27 +440,33 @@ export function AtendimentoFila() {
                       className="btn btn-anamnese"
                       onClick={(e) => {
                         e.stopPropagation();
-                        if (isRealizado) {
-                          setProntuarioAg(ag);
-                        } else {
-                          setAnamneseAg({
-                            id: ag.id,
-                            id_paciente: ag.id_paciente,
-                            paciente_nome: ag.paciente_nome,
-                          });
-                        }
+                        abrirPeloPerfil(ag);
                       }}
                       onMouseDown={(e) => e.stopPropagation()}
-                      disabled={salvandoId === ag.id || !cardHabilitado || bloqueiaAnamnese}
+                      disabled={salvandoId === ag.id || !cardHabilitado || bloqueiaBotao}
                       title={
-                        bloqueiaAnamnese
-                          ? ag.anamnese_bloqueio_texto?.trim() ??
-                            "Aguarde o intervalo mínimo entre anamneses."
+                        bloqueiaBotao
+                          ? textoBloqueio || "Aguarde o intervalo mínimo definido pela clínica."
                           : undefined
                       }
                     >
-                      {isRealizado ? "Ver ficha" : "Anamnese"}
+                      {perfilAnamnese === "podologo" && isRealizado ? "Ver ficha" : "Anamnese"}
                     </button>
+                    {podeContrato ? (
+                      <button
+                        className={`btn btn-contrato ${ag.tem_contrato ? "preenchido" : ""}`}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setErro(null);
+                          setContratoAg(ag);
+                        }}
+                        onMouseDown={(e) => e.stopPropagation()}
+                        disabled={salvandoId === ag.id || !cardHabilitado}
+                        title={ag.tem_contrato ? "Contrato já preenchido" : "Gerar contrato"}
+                      >
+                        Contrato
+                      </button>
+                    ) : null}
                     {isPendente ? (
                       <button
                         className="btn btn-status"
@@ -424,6 +501,46 @@ export function AtendimentoFila() {
           onSalvo={() => {
             router.refresh();
             void refetchAgendamentos();
+          }}
+        />
+      ) : null}
+
+      {avaliacaoAg ? (
+        <ModalAvaliacaoEnfermagem
+          key={`avaliacao-${avaliacaoAg.id}`}
+          ag={avaliacaoAg}
+          onClose={() => setAvaliacaoAg(null)}
+          onSalvo={() => {
+            void refetchAgendamentos();
+          }}
+        />
+      ) : null}
+
+      {contratoAg ? (
+        <ModalContratoEnfermagem
+          key={`contrato-${contratoAg.id}-${contratoAg.tem_contrato ? "tem" : "novo"}`}
+          ag={contratoAg}
+          inicio={contratoAg.tem_contrato ? "perguntar" : "novo"}
+          onClose={() => setContratoAg(null)}
+          onSalvo={() => {
+            void refetchAgendamentos();
+          }}
+        />
+      ) : null}
+
+      {escolhaAg ? (
+        <ModalEscolherAnamnese
+          pacienteNome={escolhaAg.paciente_nome}
+          onClose={() => setEscolhaAg(null)}
+          onPodologo={() => {
+            const alvo = escolhaAg;
+            setEscolhaAg(null);
+            abrirAnamnesePodologo(alvo);
+          }}
+          onEnfermagem={() => {
+            const alvo = escolhaAg;
+            setEscolhaAg(null);
+            abrirAvaliacaoEnfermagem(alvo);
           }}
         />
       ) : null}

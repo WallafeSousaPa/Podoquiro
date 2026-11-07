@@ -1,0 +1,269 @@
+.modal-contrato-enfermagem {
+  --enf-primary: #4f1964;
+  --enf-accent: #de765b;
+}
+
+.modal-contrato-enfermagem .modal {
+  position: fixed;
+  inset: 0;
+  z-index: 1080;
+  width: 100%;
+  height: 100dvh;
+  overflow: hidden;
+  background: rgba(53, 16, 67, 0.45);
+  display: flex;
+  padding: 0;
+}
+
+.modal-contrato-enfermagem .modal-dialog {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  max-width: none;
+  height: 100%;
+  margin: 0;
+}
+
+.modal-contrato-enfermagem .modal-content {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+  border: 0;
+  border-radius: 0;
+  overflow: hidden;
+  background: #fff;
+}
+
+.modal-contrato-enfermagem .card-header-custom {
+  background: var(--enf-primary);
+  color: #fff;
+  border-bottom: 4px solid var(--enf-accent);
+  padding: 0.9rem 1rem;
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.modal-contrato-enfermagem .card-header-custom h2 {
+  margin: 0;
+  font-size: 1.15rem;
+  font-weight: 700;
+}
+
+.modal-contrato-enfermagem .card-header-custom p {
+  margin: 0.15rem 0 0;
+  color: rgba(255, 255, 255, 0.86);
+  font-size: 0.9rem;
+}
+
+.modal-contrato-enfermagem .btn-fechar {
+  background: transparent;
+  border: 0;
+  color: #fff;
+  font-size: 1.6rem;
+  line-height: 1;
+  padding: 0 0.2rem;
+}
+
+.modal-contrato-enfermagem .ficha-corpo {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
+  padding: 1rem;
+  -webkit-overflow-scrolling: touch;
+}
+
+.modal-contrato-enfermagem .ficha-acoes {
+  display: flex;
+  flex-direction: column-reverse;
+  gap: 0.5rem;
+  padding: 0.75rem 1rem calc(0.75rem + env(safe-area-inset-bottom));
+  border-top: 1px solid #eadff0;
+  background: #fff;
+}
+
+.modal-contrato-enfermagem .section-title {
+  color: var(--enf-primary);
+  border-bottom: 2px solid var(--enf-accent);
+  padding-bottom: 4px;
+  margin: 0.4rem 0 0.8rem;
+  font-weight: 700;
+  font-size: 1rem;
+}
+
+.modal-contrato-enfermagem .btn-custom {
+  background: var(--enf-primary);
+  color: #fff;
+  border: none;
+  font-weight: 700;
+}
+
+.modal-contrato-enfermagem .btn-custom:hover,
+.modal-contrato-enfermagem .btn-custom:focus {
+  background: #351043;
+  color: #fff;
+}
+
+.modal-contrato-enfermagem .contrato-doc {
+  color: #2b2430;
+  font-size: 0.95rem;
+  line-height: 1.55;
+  text-align: justify;
+}
+
+.modal-contrato-enfermagem .contrato-doc h2 {
+  text-align: center;
+  color: var(--enf-primary);
+  font-size: 1.15rem;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  margin: 0 0 1rem;
+}
+
+.modal-contrato-enfermagem .contrato-doc h3 {
+  color: var(--enf-primary);
+  font-size: 0.95rem;
+  font-weight: 700;
+  margin: 1rem 0 0.35rem;
+  text-align: left;
+}
+
+.modal-contrato-enfermagem .contrato-valor {
+  color: #351043;
+  border-bottom: 1px solid #de765b;
+  padding: 0 0.15rem;
+}
+
+.modal-contrato-enfermagem .contrato-local {
+  margin-top: 1.4rem;
+  text-align: left;
+  font-weight: 700;
+}
+
+.modal-contrato-enfermagem .contrato-assinaturas {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1.5rem;
+  margin-top: 1.5rem;
+  text-align: center;
+}
+
+.modal-contrato-enfermagem .contrato-assinaturas > div {
+  flex: 1 1 220px;
+}
+
+.modal-contrato-enfermagem .contrato-rubrica {
+  height: 64px;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+}
+
+.modal-contrato-enfermagem .contrato-rubrica img {
+  max-height: 64px;
+  max-width: 220px;
+  object-fit: contain;
+}
+
+.modal-contrato-enfermagem .contrato-linha {
+  border-top: 1px solid #351043;
+  margin: 0.2rem 1rem 0.4rem;
+}
+
+.modal-contrato-enfermagem .assinatura-paciente {
+  align-items: stretch;
+  justify-content: flex-start;
+  overflow: auto;
+  padding: 1rem;
+}
+
+.modal-contrato-enfermagem .assinatura-painel {
+  width: min(920px, 100%);
+  margin: 0 auto;
+  background: #fff;
+  border: 1px solid #eadff0;
+  border-radius: 12px;
+  padding: 1.25rem;
+  pointer-events: auto;
+}
+
+.modal-contrato-enfermagem .contrato-papel {
+  color: #7d6a86;
+  font-size: 0.78rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.modal-contrato-enfermagem .pergunta-dialog {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  background: transparent;
+  pointer-events: none;
+}
+
+.modal-contrato-enfermagem .pergunta {
+  max-width: 460px;
+  margin: auto;
+  background: #fff;
+  border-radius: 12px;
+  padding: 1.25rem;
+  border-top: 4px solid var(--enf-accent);
+  pointer-events: auto;
+  position: relative;
+  z-index: 2;
+}
+
+@media (min-width: 768px) {
+  .modal-contrato-enfermagem .modal {
+    padding: 1.25rem;
+  }
+
+  .modal-contrato-enfermagem .modal-dialog {
+    width: calc(100% - 2.5rem);
+    max-width: 920px;
+    height: calc(100dvh - 2.5rem);
+    margin: auto;
+  }
+
+  .modal-contrato-enfermagem .modal-content {
+    border-radius: 12px;
+  }
+
+  .modal-contrato-enfermagem .ficha-acoes {
+    flex-direction: row;
+    justify-content: flex-end;
+  }
+
+  .modal-contrato-enfermagem .ficha-acoes .btn {
+    min-width: 140px;
+  }
+}
+
+@media (max-width: 767.98px) {
+  .modal-contrato-enfermagem input,
+  .modal-contrato-enfermagem select,
+  .modal-contrato-enfermagem textarea {
+    font-size: 16px;
+  }
+
+  .modal-contrato-enfermagem .ficha-acoes .btn {
+    width: 100%;
+  }
+
+  .modal-contrato-enfermagem .pergunta {
+    width: calc(100% - 1.5rem);
+  }
+
+  .modal-contrato-enfermagem .assinatura-acoes {
+    flex-direction: column;
+  }
+
+  .modal-contrato-enfermagem .assinatura-acoes .btn {
+    width: 100%;
+  }
+}

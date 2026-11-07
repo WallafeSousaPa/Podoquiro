@@ -15,6 +15,9 @@ import {
 } from "react";
 import "./agenda.css";
 import { ModalAnamneseAgenda } from "./modal-anamnese-agenda";
+import { ModalAvaliacaoEnfermagem } from "../atendimentos/atendimento/modal-avaliacao-enfermagem";
+import { ModalEscolherAnamnese } from "@/components/modal-escolher-anamnese";
+import type { PerfilAnamnese } from "@/lib/agenda/permissoes-calendario";
 import { ModalImportarAgendamentosPlanilha } from "./modal-importar-agendamentos-planilha";
 import { ModalProntuarioPodologo } from "./modal-prontuario-podologo";
 import {
@@ -194,17 +197,32 @@ type AgendamentoDia = {
   /** Quando verdadeiro, bloqueia nova anamnese até cumprido o intervalo da empresa. */
   anamnese_bloqueada?: boolean;
   anamnese_bloqueio_texto?: string | null;
+  anamnese_enfermagem_bloqueada?: boolean;
+  anamnese_enfermagem_bloqueio_texto?: string | null;
   procedimentos?: { procedimento?: string | null }[];
 };
 
-function bloqueadaAnamneseAgendaCard(ag: AgendamentoDia): boolean {
+function bloqueadaAnamneseAgendaCard(
+  ag: AgendamentoDia,
+  perfil: "podologo" | "enfermagem" | "escolher",
+): boolean {
+  if (perfil === "escolher") return false;
+  if (perfil === "enfermagem") return ag.anamnese_enfermagem_bloqueada === true;
   return ag.anamnese_bloqueada === true;
 }
 
-function textoBloqueioAnamneseAgenda(ag: AgendamentoDia): string {
-  const t = ag.anamnese_bloqueio_texto?.trim();
+function textoBloqueioAnamneseAgenda(
+  ag: AgendamentoDia,
+  perfil: "podologo" | "enfermagem" | "escolher",
+): string {
+  const t =
+    perfil === "enfermagem"
+      ? ag.anamnese_enfermagem_bloqueio_texto?.trim()
+      : ag.anamnese_bloqueio_texto?.trim();
   if (t) return t;
-  return "Nova anamnese ainda não liberada conforme o intervalo definido pela clínica.";
+  return perfil === "enfermagem"
+    ? "Nova avaliação de enfermagem ainda não liberada conforme o intervalo definido pela clínica."
+    : "Nova anamnese ainda não liberada conforme o intervalo definido pela clínica.";
 }
 
 type ProcCatalogoAgendaItem = {
@@ -690,6 +708,8 @@ type Props = {
   somenteMenuInicio?: boolean;
   /** Exceção para agendar horários retroativos (Administrador/Diretoria). */
   podeAgendarRetroativo?: boolean;
+  /** Formulário do botão Anamnese. */
+  perfilAnamnese?: PerfilAnamnese;
 };
 
 export function AgendaCalendario({
@@ -697,6 +717,7 @@ export function AgendaCalendario({
   nomeEmpresa,
   somenteMenuInicio = false,
   podeAgendarRetroativo = false,
+  perfilAnamnese = "podologo",
 }: Props) {
   const router = useRouter();
   const modalId = useId();
@@ -792,6 +813,8 @@ export function AgendaCalendario({
     horaInicio: string;
   } | null>(null);
   const [anamneseAgModal, setAnamneseAgModal] = useState<AgendamentoDia | null>(null);
+  const [avaliacaoEnfermagemAg, setAvaliacaoEnfermagemAg] = useState<AgendamentoDia | null>(null);
+  const [escolhaAnamneseAg, setEscolhaAnamneseAg] = useState<AgendamentoDia | null>(null);
 
   useEffect(() => {
     if (menuCardAbertoId == null) return;
@@ -1530,10 +1553,40 @@ export function AgendaCalendario({
     });
   }
 
+  function abrirAnamnesePodologo(ag: AgendamentoDia) {
+    if (ag.anamnese_bloqueada) {
+      setErroModal(
+        ag.anamnese_bloqueio_texto?.trim() ||
+          "Nova anamnese ainda não liberada conforme o intervalo definido pela clínica.",
+      );
+      return;
+    }
+    setAnamneseAgModal(ag);
+  }
+
+  function abrirAvaliacaoEnfermagem(ag: AgendamentoDia) {
+    if (ag.anamnese_enfermagem_bloqueada) {
+      setErroModal(
+        ag.anamnese_enfermagem_bloqueio_texto?.trim() ||
+          "Nova avaliação de enfermagem ainda não liberada conforme o intervalo definido pela clínica.",
+      );
+      return;
+    }
+    setAvaliacaoEnfermagemAg(ag);
+  }
+
   function abrirAnamnese(ag: AgendamentoDia) {
     setMenuCardAbertoId(null);
-    if (bloqueadaAnamneseAgendaCard(ag)) {
-      setErroModal(textoBloqueioAnamneseAgenda(ag));
+    if (perfilAnamnese === "enfermagem") {
+      abrirAvaliacaoEnfermagem(ag);
+      return;
+    }
+    if (perfilAnamnese === "escolher") {
+      setEscolhaAnamneseAg(ag);
+      return;
+    }
+    if (bloqueadaAnamneseAgendaCard(ag, perfilAnamnese)) {
+      setErroModal(textoBloqueioAnamneseAgenda(ag, perfilAnamnese));
       return;
     }
     setAnamneseAgModal(ag);
@@ -2136,12 +2189,12 @@ export function AgendaCalendario({
                                       type="button"
                                       role="menuitem"
                                       className={`dropdown-item${
-                                        bloqueadaAnamneseAgendaCard(a) ? " disabled" : ""
+                                        bloqueadaAnamneseAgendaCard(a, perfilAnamnese) ? " disabled" : ""
                                       }`}
-                                      disabled={bloqueadaAnamneseAgendaCard(a)}
+                                      disabled={bloqueadaAnamneseAgendaCard(a, perfilAnamnese)}
                                       title={
-                                        bloqueadaAnamneseAgendaCard(a)
-                                          ? textoBloqueioAnamneseAgenda(a)
+                                        bloqueadaAnamneseAgendaCard(a, perfilAnamnese)
+                                          ? textoBloqueioAnamneseAgenda(a, perfilAnamnese)
                                           : undefined
                                       }
                                       onClick={(ev) => {
@@ -2199,12 +2252,12 @@ export function AgendaCalendario({
                                 <button
                                   type="button"
                                   className={`btn btn-link btn-sm p-0 ${
-                                    bloqueadaAnamneseAgendaCard(a) ? "text-muted" : ""
+                                    bloqueadaAnamneseAgendaCard(a, perfilAnamnese) ? "text-muted" : ""
                                   }`}
-                                  disabled={bloqueadaAnamneseAgendaCard(a)}
+                                  disabled={bloqueadaAnamneseAgendaCard(a, perfilAnamnese)}
                                   title={
-                                    bloqueadaAnamneseAgendaCard(a)
-                                      ? textoBloqueioAnamneseAgenda(a)
+                                    bloqueadaAnamneseAgendaCard(a, perfilAnamnese)
+                                      ? textoBloqueioAnamneseAgenda(a, perfilAnamnese)
                                       : undefined
                                   }
                                   onClick={(ev) => {
@@ -2381,12 +2434,12 @@ export function AgendaCalendario({
                                 <button
                                   type="button"
                                   className={`btn btn-link btn-sm p-0 ${
-                                    bloqueadaAnamneseAgendaCard(a) ? "text-muted" : ""
+                                    bloqueadaAnamneseAgendaCard(a, perfilAnamnese) ? "text-muted" : ""
                                   }`}
-                                  disabled={bloqueadaAnamneseAgendaCard(a)}
+                                  disabled={bloqueadaAnamneseAgendaCard(a, perfilAnamnese)}
                                   title={
-                                    bloqueadaAnamneseAgendaCard(a)
-                                      ? textoBloqueioAnamneseAgenda(a)
+                                    bloqueadaAnamneseAgendaCard(a, perfilAnamnese)
+                                      ? textoBloqueioAnamneseAgenda(a, perfilAnamnese)
                                       : undefined
                                   }
                                   onClick={(ev) => {
@@ -2500,12 +2553,12 @@ export function AgendaCalendario({
                                         <button
                                           type="button"
                                           className={`btn btn-link btn-sm p-0 ${
-                                            bloqueadaAnamneseAgendaCard(a) ? "text-muted" : ""
+                                            bloqueadaAnamneseAgendaCard(a, perfilAnamnese) ? "text-muted" : ""
                                           }`}
-                                          disabled={bloqueadaAnamneseAgendaCard(a)}
+                                          disabled={bloqueadaAnamneseAgendaCard(a, perfilAnamnese)}
                                           title={
-                                            bloqueadaAnamneseAgendaCard(a)
-                                              ? textoBloqueioAnamneseAgenda(a)
+                                            bloqueadaAnamneseAgendaCard(a, perfilAnamnese)
+                                              ? textoBloqueioAnamneseAgenda(a, perfilAnamnese)
                                               : undefined
                                           }
                                           onClick={(ev) => {
@@ -2798,6 +2851,38 @@ export function AgendaCalendario({
           onSalvo={() => {
             router.refresh();
             void loadAgenda();
+          }}
+        />
+      ) : null}
+
+      {avaliacaoEnfermagemAg ? (
+        <ModalAvaliacaoEnfermagem
+          key={`avaliacao-${avaliacaoEnfermagemAg.id}`}
+          ag={{
+            id: avaliacaoEnfermagemAg.id,
+            id_paciente: avaliacaoEnfermagemAg.id_paciente,
+            paciente_nome: avaliacaoEnfermagemAg.paciente_nome,
+          }}
+          onClose={() => setAvaliacaoEnfermagemAg(null)}
+          onSalvo={() => {
+            void loadAgenda();
+          }}
+        />
+      ) : null}
+
+      {escolhaAnamneseAg ? (
+        <ModalEscolherAnamnese
+          pacienteNome={escolhaAnamneseAg.paciente_nome}
+          onClose={() => setEscolhaAnamneseAg(null)}
+          onPodologo={() => {
+            const alvo = escolhaAnamneseAg;
+            setEscolhaAnamneseAg(null);
+            abrirAnamnesePodologo(alvo);
+          }}
+          onEnfermagem={() => {
+            const alvo = escolhaAnamneseAg;
+            setEscolhaAnamneseAg(null);
+            abrirAvaliacaoEnfermagem(alvo);
           }}
         />
       ) : null}

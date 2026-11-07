@@ -154,6 +154,7 @@
 .atendimento-fila-page .acoes {
   margin-top: 15px;
   display: flex;
+  flex-wrap: wrap;
   gap: 10px;
 }
 
@@ -169,6 +170,42 @@
 .atendimento-fila-page .btn-anamnese {
   background: #3498db;
   color: #fff;
+}
+
+.atendimento-fila-page .card-atendimento.com-contrato {
+  min-height: 248px;
+}
+
+.atendimento-fila-page .card-atendimento.com-contrato .btn-anamnese,
+.atendimento-fila-page .card-atendimento.com-contrato .btn-contrato {
+  flex: 1 1 calc(50% - 10px);
+}
+
+.atendimento-fila-page .card-atendimento.com-contrato .btn-status {
+  flex: 1 1 100%;
+}
+
+.atendimento-fila-page .btn-contrato {
+  background: #4f1964;
+  color: #fff;
+}
+
+.atendimento-fila-page .btn-contrato.preenchido {
+  background: #fff;
+  color: #4f1964;
+  box-shadow: inset 0 0 0 2px #4f1964;
+}
+
+.atendimento-fila-page .btn-avaliacao {
+  background: #de765b;
+  color: #fff;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+  flex: 1 1 100%;
+}
+
+.atendimento-fila-page .btn-avaliacao.salva {
+  box-shadow: inset 0 0 0 2px #4f1964;
 }
 
 .atendimento-fila-page .btn-status {
