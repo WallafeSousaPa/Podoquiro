@@ -201,6 +201,12 @@ export const MENUS_LATERAIS: MenuLateralGrupo[] = [
         rotas: ["/financeiro/caixa-movimento"],
       },
       {
+        chave: "financeiro.lancamentos",
+        label: "Lançamentos",
+        href: "/financeiro/lancamentos",
+        rotas: ["/financeiro/lancamentos"],
+      },
+      {
         chave: "financeiro.parametrizacao.maquinetas",
         label: "Maquinetas",
         href: "/financeiro/parametrizacao/maquinetas",
