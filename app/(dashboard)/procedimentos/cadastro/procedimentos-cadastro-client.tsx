@@ -9,6 +9,7 @@ import {
   useMemo,
   useState,
 } from "react";
+import { baixarPdfProcedimentos } from "@/lib/client/render-procedimentos-pdf";
 import { calcularValorTotalProcedimento } from "@/lib/procedimentos";
 
 type ProcedimentoRaw = {
@@ -133,6 +134,7 @@ export function ProcedimentosCadastroClient({
   const [feedback, setFeedback] = useState<{ title: string; message: string } | null>(
     null,
   );
+  const [gerandoPdf, setGerandoPdf] = useState(false);
 
   const previewTotal = useMemo(() => {
     const c = Number(String(custoBase).trim().replace(",", "."));
@@ -273,6 +275,19 @@ export function ProcedimentosCadastroClient({
     }
   }
 
+  async function gerarPdf() {
+    if (rows.length === 0 || gerandoPdf) return;
+    setGerandoPdf(true);
+    setListError(null);
+    try {
+      await baixarPdfProcedimentos(rows);
+    } catch (err) {
+      setListError(err instanceof Error ? err.message : "Não foi possível gerar o PDF.");
+    } finally {
+      setGerandoPdf(false);
+    }
+  }
+
   if (loadError) {
     return (
       <div className="alert alert-danger" role="alert">
@@ -300,9 +315,20 @@ export function ProcedimentosCadastroClient({
       <div className="card card-outline card-primary">
         <div className="card-header d-flex flex-wrap justify-content-between align-items-center">
           <h3 className="card-title mb-2 mb-sm-0">Procedimentos</h3>
-          <button type="button" className="btn btn-primary btn-sm" onClick={openCreate}>
-            <i className="fas fa-plus mr-1" aria-hidden /> Novo procedimento
-          </button>
+          <div className="d-flex flex-wrap mb-2 mb-sm-0">
+            <button
+              type="button"
+              className="btn btn-outline-danger btn-sm mr-2 mb-1"
+              onClick={() => void gerarPdf()}
+              disabled={rows.length === 0 || gerandoPdf}
+            >
+              <i className="fas fa-file-pdf mr-1" aria-hidden />
+              {gerandoPdf ? "Gerando..." : "Gerar PDF"}
+            </button>
+            <button type="button" className="btn btn-primary btn-sm mb-1" onClick={openCreate}>
+              <i className="fas fa-plus mr-1" aria-hidden /> Novo procedimento
+            </button>
+          </div>
         </div>
         <div className="card-body table-responsive p-0">
           <table className="table table-hover table-striped mb-0">

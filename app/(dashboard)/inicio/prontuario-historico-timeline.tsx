@@ -2,6 +2,7 @@
 
 import type { HistoricoAtendimentoDetalhe, HistoricoAtendimentoResumo } from "@/lib/prontuario/historico-atendimentos";
 import { rotuloStatusAgendamentoHistorico } from "@/lib/prontuario/historico-atendimentos";
+import type { TermoAssinadoPaciente } from "@/lib/prontuario/termo-paciente";
 import { useCallback, useEffect, useId, useState } from "react";
 
 function fmtDataHora(iso: string) {
@@ -58,15 +59,23 @@ function FotoHistoricoVisualizar({
 type Props = {
   idAgendamentoAtual: number;
   historico: HistoricoAtendimentoResumo[];
+  pacienteNome: string;
+  termo?: TermoAssinadoPaciente | null;
   disabled?: boolean;
 };
 
 export function ProntuarioHistoricoTimeline({
   idAgendamentoAtual,
   historico,
+  pacienteNome,
+  termo = null,
   disabled,
 }: Props) {
   const detalheTitleId = useId();
+  const termoPdfId = useId();
+  const [incluirTermo, setIncluirTermo] = useState(true);
+  const [gerandoPdf, setGerandoPdf] = useState(false);
+  const [erroPdf, setErroPdf] = useState<string | null>(null);
   const [selecionadoId, setSelecionadoId] = useState<number | null>(null);
   const [detalhe, setDetalhe] = useState<HistoricoAtendimentoDetalhe | null>(null);
   const [loadingDetalhe, setLoadingDetalhe] = useState(false);
@@ -295,13 +304,74 @@ export function ProntuarioHistoricoTimeline({
                           Nenhuma foto registrada neste atendimento.
                         </p>
                       )}
+                      {erroPdf ? (
+                        <div className="alert alert-danger py-2 small mt-3 mb-0" role="alert">
+                          {erroPdf}
+                        </div>
+                      ) : null}
                     </>
                   ) : null}
                 </div>
-                <div className="modal-footer">
+                <div className="modal-footer d-flex flex-wrap align-items-center">
+                  {termo && detalhe ? (
+                    <div className="custom-control custom-checkbox mr-auto mb-1">
+                      <input
+                        type="checkbox"
+                        className="custom-control-input"
+                        id={termoPdfId}
+                        checked={incluirTermo}
+                        disabled={gerandoPdf}
+                        onChange={(e) => setIncluirTermo(e.target.checked)}
+                      />
+                      <label className="custom-control-label" htmlFor={termoPdfId}>
+                        Incluir termo assinado
+                      </label>
+                    </div>
+                  ) : (
+                    <span className="mr-auto" />
+                  )}
                   <button
                     type="button"
-                    className="btn btn-secondary"
+                    className="btn btn-outline-danger mb-1"
+                    disabled={!detalhe || loadingDetalhe || gerandoPdf}
+                    onClick={() => {
+                      if (!detalhe) return;
+                      setGerandoPdf(true);
+                      setErroPdf(null);
+                      const contagem = new Map<string, { nome: string; quantidade: number }>();
+                      for (const proc of detalhe.procedimentos) {
+                        const chave = `${proc.id_procedimento}:${proc.nome}`;
+                        const atual = contagem.get(chave);
+                        if (atual) atual.quantidade += 1;
+                        else contagem.set(chave, { nome: proc.nome, quantidade: 1 });
+                      }
+                      void import("@/lib/client/render-prontuario-pdf")
+                        .then(({ baixarPdfProntuario }) =>
+                          baixarPdfProntuario({
+                            pacienteNome,
+                            dataInicio: detalhe.data_hora_inicio,
+                            dataFim: detalhe.data_hora_fim,
+                            status: rotuloStatusAgendamentoHistorico(detalhe.status),
+                            responsavel: detalhe.responsavel_nome,
+                            procedimentos: [...contagem.values()],
+                            evolucao: detalhe.evolucao,
+                            fotos: detalhe.fotos.map((f) => ({ src: f.url })),
+                            termo,
+                            incluirTermo: Boolean(termo) && incluirTermo,
+                          }),
+                        )
+                        .catch((e: unknown) => {
+                          setErroPdf(e instanceof Error ? e.message : "Não foi possível gerar o PDF.");
+                        })
+                        .finally(() => setGerandoPdf(false));
+                    }}
+                  >
+                    <i className="fas fa-file-pdf mr-1" aria-hidden />
+                    {gerandoPdf ? "Gerando..." : "Gerar PDF"}
+                  </button>
+                  <button
+                    type="button"
+                    className="btn btn-secondary mb-1"
                     onClick={() => setSelecionadoId(null)}
                   >
                     Fechar

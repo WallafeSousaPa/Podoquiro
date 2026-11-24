@@ -1,6 +1,7 @@
 "use client";
 
 import type { HistoricoAtendimentoResumo } from "@/lib/prontuario/historico-atendimentos";
+import type { TermoAssinadoPaciente } from "@/lib/prontuario/termo-paciente";
 import { useId } from "react";
 import { ProntuarioHistoricoTimeline } from "./prontuario-historico-timeline";
 
@@ -9,6 +10,7 @@ type Props = {
   pacienteNome: string;
   idAgendamentoAtual: number;
   historico: HistoricoAtendimentoResumo[];
+  termo?: TermoAssinadoPaciente | null;
   onClose: () => void;
 };
 
@@ -17,6 +19,7 @@ export function ModalProntuarioHistorico({
   pacienteNome,
   idAgendamentoAtual,
   historico,
+  termo = null,
   onClose,
 }: Props) {
   const titleId = useId();
@@ -58,6 +61,8 @@ export function ModalProntuarioHistorico({
               <ProntuarioHistoricoTimeline
                 idAgendamentoAtual={idAgendamentoAtual}
                 historico={historico}
+                pacienteNome={pacienteNome}
+                termo={termo}
               />
             </div>
             <div className="modal-footer">

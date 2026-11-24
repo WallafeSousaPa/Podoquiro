@@ -7,6 +7,7 @@ import {
   statusAgendamentoPermiteProntuario,
 } from "@/lib/prontuario/fotos-storage";
 import { listarHistoricoProntuarioPaciente } from "@/lib/prontuario/historico-atendimentos";
+import { buscarTermoAssinadoPaciente } from "@/lib/prontuario/termo-paciente";
 import { getSession } from "@/lib/auth/session";
 import { createAdminClient } from "@/lib/supabase/admin";
 
@@ -180,6 +181,13 @@ export async function GET(_request: Request, context: RouteContext) {
     console.error(histErr);
   }
 
+  let termo: Awaited<ReturnType<typeof buscarTermoAssinadoPaciente>> = null;
+  try {
+    termo = await buscarTermoAssinadoPaciente(supabase, ag.id_paciente as number);
+  } catch (termoErr) {
+    console.error(termoErr);
+  }
+
   return NextResponse.json({
     paciente_nome: pacienteNome,
     historico,
@@ -191,6 +199,7 @@ export async function GET(_request: Request, context: RouteContext) {
       agendar_retorno: Boolean(ag.agendar_retorno),
     },
     procedimentos,
+    termo,
     prontuario: pront
       ? {
           id: pront.id,

@@ -6,7 +6,9 @@ import {
   MAX_TOTAL_ANEXOS_ANAMNESE_BYTES,
   somaTamanhosArquivos,
 } from "@/lib/client/comprimir-imagem-anamnese";
+import type { DadosPdfProntuario } from "@/lib/client/render-prontuario-pdf";
 import type { HistoricoAtendimentoResumo } from "@/lib/prontuario/historico-atendimentos";
+import type { TermoAssinadoPaciente } from "@/lib/prontuario/termo-paciente";
 import {
   type FormEvent,
   useCallback,
@@ -235,6 +237,7 @@ function DropdownChecklistProcedimentos({
 
 export function ModalProntuarioPodologo({ ag, onClose, onSalvo }: Props) {
   const titleId = useId();
+  const termoPdfId = useId();
   const [loading, setLoading] = useState(true);
   const [salvando, setSalvando] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
@@ -248,6 +251,9 @@ export function ModalProntuarioPodologo({ ag, onClose, onSalvo }: Props) {
   const [novosArquivos, setNovosArquivos] = useState<File[]>([]);
   const [historico, setHistorico] = useState<HistoricoAtendimentoResumo[]>([]);
   const [modalHistoricoAberto, setModalHistoricoAberto] = useState(false);
+  const [termo, setTermo] = useState<TermoAssinadoPaciente | null>(null);
+  const [incluirTermo, setIncluirTermo] = useState(true);
+  const [gerandoPdf, setGerandoPdf] = useState(false);
 
   const previewsNovos = useMemo(
     () => novosArquivos.map((f) => URL.createObjectURL(f)),
@@ -272,6 +278,7 @@ export function ModalProntuarioPodologo({ ag, onClose, onSalvo }: Props) {
         procedimentos?: ProcLinha[];
         historico?: HistoricoAtendimentoResumo[];
         agendamento?: { agendar_retorno?: boolean };
+        termo?: TermoAssinadoPaciente | null;
         prontuario?: {
           evolucao: string;
           procedimentos_realizados: number[];
@@ -281,6 +288,8 @@ export function ModalProntuarioPodologo({ ag, onClose, onSalvo }: Props) {
       if (!res.ok) throw new Error(j.error ?? "Erro ao carregar.");
       setProcedimentos(j.procedimentos ?? []);
       setHistorico(j.historico ?? []);
+      setTermo(j.termo ?? null);
+      setIncluirTermo(Boolean(j.termo));
       const pr = j.prontuario;
       setAgendarRetorno(Boolean(j.agendamento?.agendar_retorno));
       setNovosArquivos([]);
@@ -339,6 +348,48 @@ export function ModalProntuarioPodologo({ ag, onClose, onSalvo }: Props) {
 
   function removerExistente(path: string) {
     setFotosExistentes((prev) => prev.filter((f) => f.path !== path));
+  }
+
+  function procedimentosParaPdf(): DadosPdfProntuario["procedimentos"] {
+    const vistos = new Set<number>();
+    const lista: DadosPdfProntuario["procedimentos"] = [];
+    for (const id of selecionados) {
+      if (vistos.has(id)) continue;
+      vistos.add(id);
+      lista.push({
+        nome: procedimentos.find((p) => p.id_procedimento === id)?.nome ?? `Procedimento #${id}`,
+        quantidade: selecionados.filter((x) => x === id).length,
+      });
+    }
+    return lista;
+  }
+
+  async function gerarPdf() {
+    if (gerandoPdf) return;
+    setGerandoPdf(true);
+    setErro(null);
+    try {
+      const { baixarPdfProntuario } = await import("@/lib/client/render-prontuario-pdf");
+      await baixarPdfProntuario({
+        pacienteNome: ag.paciente_nome,
+        dataInicio: ag.data_hora_inicio,
+        dataFim: ag.data_hora_fim,
+        sala: ag.nome_sala,
+        status: rotuloStatus,
+        procedimentos: procedimentosParaPdf(),
+        evolucao,
+        fotos: [
+          ...fotosExistentes.map((f) => ({ src: f.url })),
+          ...previewsNovos.filter((src): src is string => Boolean(src)).map((src) => ({ src })),
+        ],
+        termo,
+        incluirTermo: Boolean(termo) && incluirTermo,
+      });
+    } catch (e) {
+      setErro(e instanceof Error ? e.message : "Não foi possível gerar o PDF.");
+    } finally {
+      setGerandoPdf(false);
+    }
   }
 
   async function enviar(e: FormEvent) {
@@ -598,14 +649,38 @@ export function ModalProntuarioPodologo({ ag, onClose, onSalvo }: Props) {
                           />
                         ))}
                       </div>
+                      {termo ? (
+                        <div className="custom-control custom-checkbox mt-3">
+                          <input
+                            type="checkbox"
+                            className="custom-control-input"
+                            id={termoPdfId}
+                            checked={incluirTermo}
+                            disabled={gerandoPdf || salvando}
+                            onChange={(e) => setIncluirTermo(e.target.checked)}
+                          />
+                          <label className="custom-control-label" htmlFor={termoPdfId}>
+                            Incluir o termo assinado pelo paciente
+                          </label>
+                        </div>
+                      ) : null}
                     </div>
                   </>
                 )}
               </div>
-              <div className="modal-footer">
+              <div className="modal-footer d-flex flex-wrap">
                 <button
                   type="button"
-                  className="btn btn-secondary"
+                  className="btn btn-outline-danger mr-auto mb-1"
+                  disabled={salvando || loading || gerandoPdf}
+                  onClick={() => void gerarPdf()}
+                >
+                  <i className="fas fa-file-pdf mr-1" aria-hidden />
+                  {gerandoPdf ? "Gerando..." : "Gerar PDF"}
+                </button>
+                <button
+                  type="button"
+                  className="btn btn-secondary mb-1"
                   disabled={salvando || loading}
                   onClick={onClose}
                 >
@@ -613,7 +688,7 @@ export function ModalProntuarioPodologo({ ag, onClose, onSalvo }: Props) {
                 </button>
                 <button
                   type="submit"
-                  className="btn btn-primary"
+                  className="btn btn-primary mb-1"
                   disabled={salvando || loading}
                 >
                   {salvando
@@ -639,6 +714,7 @@ export function ModalProntuarioPodologo({ ag, onClose, onSalvo }: Props) {
         pacienteNome={ag.paciente_nome}
         idAgendamentoAtual={ag.id}
         historico={historico}
+        termo={termo}
         onClose={() => setModalHistoricoAberto(false)}
       />
     </>

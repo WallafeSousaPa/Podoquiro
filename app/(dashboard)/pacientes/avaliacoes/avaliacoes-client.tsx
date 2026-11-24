@@ -77,6 +77,13 @@ function toNullableString(v: unknown): string {
   return typeof v === "string" ? v : "";
 }
 
+function nomeCatalogo(itens: OptionItem[], id: unknown): string {
+  const n = Number(id);
+  if (!Number.isFinite(n) || n <= 0) return "-";
+  const item = itens.find((x) => x.id === n);
+  return item?.tipo?.trim() || item?.condicao?.trim() || "-";
+}
+
 function formatDataHora(v: unknown): string {
   if (typeof v !== "string" || !v) return "-";
   const d = new Date(v);
@@ -126,6 +133,9 @@ export function AvaliacoesClient(props: Props) {
   const consultaEnfermagemRef = useRef<HTMLDivElement>(null);
   const [menuAuxOpen, setMenuAuxOpen] = useState(false);
   const [consultaRow, setConsultaRow] = useState<Evolucao | null>(null);
+  const [gerandoPdfConsulta, setGerandoPdfConsulta] = useState(false);
+  const [incluirTermoConsulta, setIncluirTermoConsulta] = useState(true);
+  const [erroPdfConsulta, setErroPdfConsulta] = useState<string | null>(null);
 
   const [modalOpen, setModalOpen] = useState(false);
   const [editingId, setEditingId] = useState<number | null>(null);
@@ -482,6 +492,71 @@ export function AvaliacoesClient(props: Props) {
   function urlTermoAssinaturaVirtualPublica(path: unknown): string | null {
     if (typeof path !== "string" || !path.trim() || !supabaseUrl) return null;
     return `${supabaseUrl}/storage/v1/object/public/termo_assinatura_virtual/${path}`;
+  }
+
+  function termoDaAvaliacao(row: Evolucao) {
+    const urlPdf = urlTermoAssinaturaVirtualPublica(row.arquivo_termo_assinatura_virtual);
+    if (urlPdf) return { tipo: "pdf" as const, url: urlPdf, rotulo: "Termo assinado" };
+    const urlFoto = urlFotoPublica(row.foto_doc_termo_consentimento);
+    if (urlFoto) return { tipo: "imagem" as const, url: urlFoto, rotulo: "Termo de consentimento" };
+    return null;
+  }
+
+  async function gerarPdfConsulta(row: Evolucao) {
+    if (gerandoPdfConsulta) return;
+    setGerandoPdfConsulta(true);
+    setErroPdfConsulta(null);
+    try {
+      const { baixarPdfAvaliacao } = await import("@/lib/client/render-avaliacao-pdf");
+      const paciente = nomePacienteDaLinhaEvolucao(row, pacientesById);
+      const responsavel =
+        responsavelById[Number(row.id_responsavel)] ?? `Usuário #${row.id_responsavel}`;
+      const fotos = [
+        { rotulo: "Plantar direito", src: urlFotoPublica(row.foto_plantar_direito) },
+        { rotulo: "Plantar esquerdo", src: urlFotoPublica(row.foto_plantar_esquerdo) },
+        { rotulo: "Dorso direito", src: urlFotoPublica(row.foto_dorso_direito) },
+        { rotulo: "Dorso esquerdo", src: urlFotoPublica(row.foto_dorso_esquerdo) },
+      ].flatMap((foto) => (foto.src ? [{ rotulo: foto.rotulo, src: foto.src }] : []));
+      const termo = termoDaAvaliacao(row);
+      await baixarPdfAvaliacao({
+        pacienteNome: paciente,
+        campos: [
+          { rotulo: "Paciente", valor: paciente },
+          { rotulo: "Responsável", valor: responsavel },
+          { rotulo: "Data", valor: formatDataHora(row.data) },
+          { rotulo: "Status", valor: row.ativo === false ? "Inativo" : "Ativo" },
+          { rotulo: "Forma de contato", valor: String(row.forma_contato ?? "-") },
+          { rotulo: "Condições de saúde", valor: resumoTextosCondicoes(row as Record<string, unknown>) },
+          { rotulo: "Pressão arterial", valor: String(row.pressao_arterial ?? "-") },
+          { rotulo: "Glicemia", valor: String(row.glicemia ?? "-") },
+          { rotulo: "Atividade física", valor: String(row.atividade_fisica ?? "-") },
+          { rotulo: "Tipo de calçado", valor: String(row.tipo_calcado ?? "-") },
+          { rotulo: "Alergias", valor: String(row.alergias ?? "-") },
+          { rotulo: "Dígito pressão", valor: String(row.digito_pressao ?? "-") },
+          { rotulo: "Varizes", valor: String(row.varizes ?? "-") },
+          { rotulo: "Claudicação", valor: String(row.claudicacao ?? "-") },
+          { rotulo: "Temperatura", valor: String(row.temperatura ?? "-") },
+          { rotulo: "Óleo", valor: String(row.oleo ?? "-") },
+          { rotulo: "Água", valor: String(row.agua ?? "-") },
+          { rotulo: "Tratamento sugerido", valor: String(row.tratamento_sugerido ?? "-") },
+          { rotulo: "Tipos de unha", valor: resumoTextosTiposUnha(row as Record<string, unknown>) },
+          { rotulo: "Pé esquerdo", valor: nomeCatalogo(props.tiposPe, row.id_pe_esquerdo) },
+          { rotulo: "Pé direito", valor: nomeCatalogo(props.tiposPe, row.id_pe_direito) },
+          { rotulo: "Hidroses", valor: resumoTextosHidroses(row as Record<string, unknown>) },
+          { rotulo: "Lesões mecânicas", valor: resumoTextosLesoesMecanicas(row as Record<string, unknown>) },
+          { rotulo: "Formato dos dedos", valor: nomeCatalogo(props.formatosDedos, row.id_formato_dedos) },
+          { rotulo: "Formato do pé", valor: nomeCatalogo(props.formatosPe, row.id_formato_pe) },
+          { rotulo: "Observação", valor: String(row.observacao ?? "-") },
+        ],
+        fotos,
+        termo,
+        incluirTermo: Boolean(termo) && incluirTermoConsulta,
+      });
+    } catch (e) {
+      setErroPdfConsulta(e instanceof Error ? e.message : "Não foi possível gerar o PDF.");
+    } finally {
+      setGerandoPdfConsulta(false);
+    }
   }
 
   async function toggleAtivo(row: Evolucao, ativo: boolean) {
@@ -1289,8 +1364,48 @@ export function AvaliacoesClient(props: Props) {
                   })}
                 </div>
               </div>
-              <div className="modal-footer">
-                <button type="button" className="btn btn-secondary" onClick={() => setConsultaRow(null)}>Fechar</button>
+              <div className="modal-footer d-flex flex-wrap align-items-center">
+                {erroPdfConsulta ? (
+                  <div className="alert alert-danger py-2 small w-100 mb-2" role="alert">
+                    {erroPdfConsulta}
+                  </div>
+                ) : null}
+                {termoDaAvaliacao(consultaRow) ? (
+                  <div className="custom-control custom-checkbox mr-auto mb-1">
+                    <input
+                      type="checkbox"
+                      className="custom-control-input"
+                      id="avaliacao-incluir-termo"
+                      checked={incluirTermoConsulta}
+                      disabled={gerandoPdfConsulta}
+                      onChange={(e) => setIncluirTermoConsulta(e.target.checked)}
+                    />
+                    <label className="custom-control-label" htmlFor="avaliacao-incluir-termo">
+                      Incluir o termo assinado pelo paciente
+                    </label>
+                  </div>
+                ) : (
+                  <span className="mr-auto" />
+                )}
+                <button
+                  type="button"
+                  className="btn btn-outline-danger mb-1"
+                  disabled={gerandoPdfConsulta}
+                  onClick={() => void gerarPdfConsulta(consultaRow)}
+                >
+                  <i className="fas fa-file-pdf mr-1" aria-hidden />
+                  {gerandoPdfConsulta ? "Gerando..." : "Gerar PDF"}
+                </button>
+                <button
+                  type="button"
+                  className="btn btn-secondary mb-1"
+                  onClick={() => {
+                    setErroPdfConsulta(null);
+                    setConsultaRow(null);
+                  }}
+                >
+                  Fechar
+                </button>
               </div>
             </div>
           </div>
